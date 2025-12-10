@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import "./EscrowFactory.sol";
+import "../factory/EscrowFactory.sol";
 
 /// @title FactoryRelay
 /// @notice Allows merchants to execute factory functions gaslessly via signature

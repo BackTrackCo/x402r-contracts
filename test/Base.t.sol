@@ -4,8 +4,8 @@ pragma solidity ^0.8.30;
 import "forge-std/Test.sol";
 import "../src/simple/main/factory/EscrowFactory.sol";
 import "../src/simple/main/escrow/Escrow.sol";
-import "../src/simple/main/relay/DepositRelay.sol";
-import "../src/simple/main/factory/FactoryRelay.sol";
+import "../src/simple/main/x402/DepositRelay.sol";
+import "../src/simple/main/x402/FactoryRelay.sol";
 import "../src/simple/interfaces/IERC3009.sol";
 
 // Mock contracts
