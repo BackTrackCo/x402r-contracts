@@ -15,22 +15,36 @@ contract MerchantFactoryTest is BaseTest {
         registerMerchant();
         
         vm.expectRevert("Already registered");
-        factory.registerMerchant(merchant);
+        factory.registerMerchant(merchant, defaultArbiter);
     }
     
     function test_RegisterMerchant_MultipleMerchants() public {
         address merchant2 = address(0x9999);
         
         address escrow1 = registerMerchant();
-        address escrow2 = factory.registerMerchant(merchant2);
+        address escrow2 = factory.registerMerchant(merchant2, defaultArbiter);
         
         assertTrue(escrow1 != escrow2, "Escrows should be different");
         assertEq(factory.getEscrow(merchant), escrow1, "First escrow should be registered");
         assertEq(factory.getEscrow(merchant2), escrow2, "Second escrow should be registered");
     }
     
+    function test_RegisterMerchant_DifferentArbiters() public {
+        address arbiter1 = address(0xAAAA);
+        address arbiter2 = address(0xBBBB);
+        address merchant2 = address(0x9999);
+        
+        address escrow1 = factory.registerMerchant(merchant, arbiter1);
+        address escrow2 = factory.registerMerchant(merchant2, arbiter2);
+        
+        Escrow escrow1Contract = Escrow(escrow1);
+        Escrow escrow2Contract = Escrow(escrow2);
+        
+        assertEq(escrow1Contract.arbiter(), arbiter1, "First escrow should have arbiter1");
+        assertEq(escrow2Contract.arbiter(), arbiter2, "Second escrow should have arbiter2");
+    }
+    
     function test_Factory_ImmutableValues() public view {
-        assertEq(factory.defaultArbiter(), defaultArbiter, "Default arbiter should match");
         assertEq(factory.token(), address(token), "Token should match");
         assertEq(factory.aToken(), address(aToken), "AToken should match");
         assertEq(factory.pool(), address(pool), "Pool should match");

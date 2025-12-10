@@ -1,17 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "../escrow/Escrow.sol";
 
-contract EscrowFactory is Ownable {
-    address public immutable defaultArbiter;
+contract EscrowFactory {
     address public immutable token;     // USDC address (chain-specific)
     address public immutable aToken;    // aUSDC address (chain-specific)
     address public immutable pool;      // Aave pool address (chain-specific)
 
     event MerchantRegistered(
         address merchantPayout,
+        address arbiter,
         address escrow
     );
 
@@ -29,35 +28,35 @@ contract EscrowFactory is Ownable {
     }
 
     constructor(
-        address _defaultArbiter,
         address _token,
         address _aToken,
         address _pool
-    ) Ownable(msg.sender) {
-        require(_defaultArbiter != address(0), "Zero default arbiter");
+    ) {
         require(_token != address(0), "Zero token");
         require(_aToken != address(0), "Zero aToken");
         require(_pool != address(0), "Zero pool");
         
-        defaultArbiter = _defaultArbiter;
         token = _token;
         aToken = _aToken;
         pool = _pool;
     }
 
     function registerMerchant(
-        address merchantPayout
+        address merchantPayout,
+        address arbiter
     ) external returns (address escrowAddr) {
+        require(merchantPayout != address(0), "Zero merchant payout");
+        require(arbiter != address(0), "Zero arbiter");
         require(
             merchants[merchantPayout].escrow == address(0),
             "Already registered"
         );
 
-        // Create escrow with single arbiter (release delay is hardcoded to 3 days)
+        // Create escrow with merchant-chosen arbiter (release delay is hardcoded to 3 days)
         // Token, aToken, and pool are set at factory construction (chain-specific)
         Escrow escrow = new Escrow(
             merchantPayout,
-            defaultArbiter,
+            arbiter,
             token,
             aToken,
             pool
@@ -69,6 +68,7 @@ contract EscrowFactory is Ownable {
 
         emit MerchantRegistered(
             merchantPayout,
+            arbiter,
             address(escrow)
         );
 

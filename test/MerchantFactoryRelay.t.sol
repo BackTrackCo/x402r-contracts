@@ -19,6 +19,7 @@ contract MerchantFactoryRelayTest is BaseTest {
                 factoryRelay.REGISTER_MERCHANT_TYPEHASH(),
                 address(factory),
                 merchant,
+                defaultArbiter,
                 nonce,
                 deadline
             )
@@ -33,6 +34,7 @@ contract MerchantFactoryRelayTest is BaseTest {
         address escrow = factoryRelay.executeRegisterMerchant(
             address(factory),
             merchant,
+            defaultArbiter,
             nonce,
             deadline,
             v,
@@ -54,6 +56,7 @@ contract MerchantFactoryRelayTest is BaseTest {
                 factoryRelay.REGISTER_MERCHANT_TYPEHASH(),
                 address(factory),
                 merchant,
+                defaultArbiter,
                 nonce,
                 deadline
             )
@@ -70,6 +73,7 @@ contract MerchantFactoryRelayTest is BaseTest {
         factoryRelay.executeRegisterMerchant(
             address(factory),
             merchant,
+            defaultArbiter,
             nonce,
             deadline,
             v,
@@ -87,6 +91,7 @@ contract MerchantFactoryRelayTest is BaseTest {
                 factoryRelay.REGISTER_MERCHANT_TYPEHASH(),
                 address(factory),
                 merchant,
+                defaultArbiter,
                 nonce,
                 deadline
             )
@@ -106,6 +111,7 @@ contract MerchantFactoryRelayTest is BaseTest {
         factoryRelay.executeRegisterMerchant(
             address(factory),
             merchant,
+            defaultArbiter,
             nonce,
             deadline,
             v,
@@ -128,6 +134,7 @@ contract MerchantFactoryRelayTest is BaseTest {
                 factoryRelay.REGISTER_MERCHANT_TYPEHASH(),
                 address(factory),
                 merchant,
+                defaultArbiter,
                 nonce,
                 deadline
             )
@@ -143,6 +150,7 @@ contract MerchantFactoryRelayTest is BaseTest {
         factoryRelay.executeRegisterMerchant(
             address(factory),
             merchant,
+            defaultArbiter,
             nonce,
             deadline,
             v,
@@ -155,6 +163,7 @@ contract MerchantFactoryRelayTest is BaseTest {
         factoryRelay.executeRegisterMerchant(
             address(factory),
             merchant,
+            defaultArbiter,
             nonce,
             deadline,
             v,

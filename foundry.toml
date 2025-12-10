@@ -15,3 +15,6 @@ remappings = [
 ]
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+
+[etherscan]
+base-sepolia = { key = "35UWIXGVAHG46D88ZK8PWSXU83NRWK1X7Z", url = "https://api-sepolia.basescan.org/api" }

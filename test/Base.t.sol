@@ -155,7 +155,6 @@ contract BaseTest is Test {
     
     function _deployContracts() internal {
         factory = new EscrowFactory(
-            defaultArbiter,
             address(token),
             address(aToken),
             address(pool)
@@ -170,7 +169,7 @@ contract BaseTest is Test {
     }
     
     function registerMerchant() internal returns (address escrow) {
-        return factory.registerMerchant(merchant);
+        return factory.registerMerchant(merchant, defaultArbiter);
     }
     
     function getEscrow() internal view returns (Escrow) {

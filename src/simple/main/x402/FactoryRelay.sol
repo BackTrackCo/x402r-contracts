@@ -7,7 +7,7 @@ import "../factory/EscrowFactory.sol";
 /// @notice Allows merchants to execute factory functions gaslessly via signature
 contract FactoryRelay {
     bytes32 public constant REGISTER_MERCHANT_TYPEHASH = keccak256(
-        "RegisterMerchant(address factory,address merchantPayout,uint256 nonce,uint256 deadline)"
+        "RegisterMerchant(address factory,address merchantPayout,address arbiter,uint256 nonce,uint256 deadline)"
     );
     
     bytes32 public constant DOMAIN_TYPEHASH = keccak256(
@@ -40,6 +40,7 @@ contract FactoryRelay {
     /// @notice Execute registerMerchant on behalf of merchant using signature
     /// @param factory The factory contract address
     /// @param merchantPayout The merchant's payout address (must match signer)
+    /// @param arbiter The arbiter address chosen by the merchant
     /// @param nonce Unique nonce to prevent replay attacks
     /// @param deadline Signature expiration deadline
     /// @param v Signature v component
@@ -49,6 +50,7 @@ contract FactoryRelay {
     function executeRegisterMerchant(
         address factory,
         address merchantPayout,
+        address arbiter,
         uint256 nonce,
         uint256 deadline,
         uint8 v,
@@ -64,6 +66,7 @@ contract FactoryRelay {
                 REGISTER_MERCHANT_TYPEHASH,
                 factory,
                 merchantPayout,
+                arbiter,
                 nonce,
                 deadline
             )
@@ -80,7 +83,7 @@ contract FactoryRelay {
         usedNonces[factory][nonce] = true;
         
         // Execute registerMerchant
-        return EscrowFactory(factory).registerMerchant(merchantPayout);
+        return EscrowFactory(factory).registerMerchant(merchantPayout, arbiter);
     }
 }
 
