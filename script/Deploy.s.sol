@@ -7,49 +7,46 @@ import {DepositRelay} from "../src/simple/main/x402/DepositRelay.sol";
 import {FactoryRelay} from "../src/simple/main/x402/FactoryRelay.sol";
 
 contract DeployScript is Script {
-    function run() external {
-        // Get private key from environment
+    function run() public {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
-
-        // Get addresses from environment variables
-        // For Base Sepolia, you need to provide these addresses
-        // Check Aave v3 testnet deployments: https://github.com/aave/aave-v3-deployments
+        
+        // Get addresses from environment variables or use defaults
+        // Base Sepolia Aave v3 addresses
+        // These can be found at: https://docs.aave.com/developers/deployed-contracts/v3-testnet-addresses
         address usdc = vm.envOr("USDC_ADDRESS", address(0x036CbD53842c5426634e7929541eC2318f3dCF7e));
-        address aUsdc = vm.envOr("AUSDC_ADDRESS", address(0x5b8B23A19e0F3C3FAA780aA8b736bF6E8f3153b9));
-        address pool = vm.envOr("AAVE_POOL_ADDRESS", address(0x0A1d576f3EfEF75B330424287a95A366e8281d80));
+        address ausdc = vm.envOr("AUSDC_ADDRESS", address(0x16da4541Ad1807f4443D92db2609C28c199c358E));
+        address pool = vm.envOr("POOL_ADDRESS", address(0x4CB093f226983713164a62138c3f718a9166E6E8));
 
         vm.startBroadcast(deployerPrivateKey);
 
         console.log("Deploying contracts to Base Sepolia...");
-        console.log("Deployer:", vm.addr(deployerPrivateKey));
-        console.log("USDC Address:", usdc);
-        console.log("aUSDC Address:", aUsdc);
-        console.log("Aave Pool Address:", pool);
+        console.log("USDC address:", usdc);
+        console.log("aUSDC address:", ausdc);
+        console.log("Pool address:", pool);
 
-        // Deploy FactoryRelay (no constructor params)
-        console.log("\nDeploying FactoryRelay...");
-        FactoryRelay factoryRelay = new FactoryRelay();
-        console.log("FactoryRelay deployed at:", address(factoryRelay));
+        // Deploy EscrowFactory
+        console.log("\n=== Deploying EscrowFactory ===");
+        EscrowFactory factory = new EscrowFactory(
+            usdc,
+            ausdc,
+            pool
+        );
+        console.log("EscrowFactory deployed at:", address(factory));
 
-        // Deploy DepositRelay (requires USDC address)
-        console.log("\nDeploying DepositRelay...");
+        // Deploy DepositRelay
+        console.log("\n=== Deploying DepositRelay ===");
         DepositRelay depositRelay = new DepositRelay(usdc);
         console.log("DepositRelay deployed at:", address(depositRelay));
 
-        // Deploy EscrowFactory (requires USDC, aUSDC, pool)
-        // Note: Merchants choose their own arbiter when registering
-        console.log("\nDeploying EscrowFactory...");
-        EscrowFactory escrowFactory = new EscrowFactory(
-            usdc,
-            aUsdc,
-            pool
-        );
-        console.log("EscrowFactory deployed at:", address(escrowFactory));
+        // Deploy FactoryRelay
+        console.log("\n=== Deploying FactoryRelay ===");
+        FactoryRelay factoryRelay = new FactoryRelay();
+        console.log("FactoryRelay deployed at:", address(factoryRelay));
 
         console.log("\n=== Deployment Summary ===");
-        console.log("FactoryRelay:", address(factoryRelay));
+        console.log("EscrowFactory:", address(factory));
         console.log("DepositRelay:", address(depositRelay));
-        console.log("EscrowFactory:", address(escrowFactory));
+        console.log("FactoryRelay:", address(factoryRelay));
 
         vm.stopBroadcast();
     }

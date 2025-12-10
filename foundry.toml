@@ -10,11 +10,11 @@ via_ir = true
 
 # Remappings
 remappings = [
-    "@openzeppelin/=lib/openzeppelin-contracts/contracts/",
     "@aave-v3-core/=lib/aave-v3-core/contracts/"
 ]
 
-# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
-
+# Etherscan configuration
 [etherscan]
-base-sepolia = { key = "35UWIXGVAHG46D88ZK8PWSXU83NRWK1X7Z", url = "https://api-sepolia.basescan.org/api" }
+base-sepolia = { key = "35UWIXGVAHG46D88ZK8PWSXU83NRWK1X7Z" }
+
+# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
