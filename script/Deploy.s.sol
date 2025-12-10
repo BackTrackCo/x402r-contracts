@@ -15,8 +15,8 @@ contract DeployScript is Script {
         // For Base Sepolia, you need to provide these addresses
         // Check Aave v3 testnet deployments: https://github.com/aave/aave-v3-deployments
         address usdc = vm.envOr("USDC_ADDRESS", address(0x036CbD53842c5426634e7929541eC2318f3dCF7e));
-        address aUsdc = vm.envOr("AUSDC_ADDRESS", address(0x5B8B23A19E0f3c3FaA780Aa8B736bF6e8F3153B9));
-        address pool = vm.envOr("AAVE_POOL_ADDRESS", address(0x0a1d576f3eFeF75b330424287a95A366e8281D80));
+        address aUsdc = vm.envOr("AUSDC_ADDRESS", address(0x5b8B23A19e0F3C3FAA780aA8b736bF6E8f3153b9));
+        address pool = vm.envOr("AAVE_POOL_ADDRESS", address(0x0A1d576f3EfEF75B330424287a95A366e8281d80));
 
         vm.startBroadcast(deployerPrivateKey);
 
