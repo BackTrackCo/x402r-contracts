@@ -46,16 +46,12 @@ https://book.getfoundry.sh/
 The following contracts have been deployed and verified on Base Sepolia testnet:
 
 ### EscrowFactory
-- **Address**: [`0x0b3fC8BA8952C6cA6807F667894b0b7c9C40FC8b`](https://sepolia.basescan.org/address/0x0b3fc8ba8952c6ca6807f667894b0b7c9c40fc8b)
+- **Address**: [`0xa155fCd256aBc676F724704006E5938C911c05FA`](https://sepolia.basescan.org/address/0xa155fcd256abc676f724704006e5938c911c05fa)
 - **Contract**: `src/simple/main/factory/EscrowFactory.sol:EscrowFactory`
 
 ### DepositRelay
-- **Address**: [`0xC409e6da89E54253fbA86C1CE3E553d24E03f6bC`](https://sepolia.basescan.org/address/0xc409e6da89e54253fba86c1ce3e553d24e03f6bc)
+- **Address**: [`0xa09e1EBE63D82b47f1223f5A4230012dA743B4Fc`](https://sepolia.basescan.org/address/0xa09e1ebe63d82b47f1223f5a4230012da743b4fc)
 - **Contract**: `src/simple/main/x402/DepositRelay.sol:DepositRelay`
-
-### FactoryRelay
-- **Address**: [`0x41Cc4D337FEC5E91ddcf4C363700FC6dB5f3A814`](https://sepolia.basescan.org/address/0x41cc4d337fec5e91ddcf4c363700fc6db5f3a814)
-- **Contract**: `src/simple/main/x402/FactoryRelay.sol:FactoryRelay`
 
 ## Usage
 

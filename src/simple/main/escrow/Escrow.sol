@@ -16,9 +16,18 @@ contract Escrow is EscrowAccess {
         uint256 nonce;       // Unique nonce for this deposit
     }
 
-    IERC20 public immutable token;     // e.g. USDC
-    IPool public immutable pool;       // Aave pool
-    IAToken public immutable aToken;   // aUSDC or equivalent
+    enum RequestStatus { Pending, Approved, Rejected }
+
+    struct RefundRequest {
+        address user;
+        uint256 depositNonce;
+        string ipfsLink;
+        RequestStatus status;
+    }
+
+    IERC20 public immutable TOKEN;     // e.g. USDC
+    IPool public immutable POOL;       // Aave pool
+    IAToken public immutable A_TOKEN;   // aUSDC or equivalent
 
     uint256 public constant RELEASE_DELAY = 3 days;
 
@@ -30,9 +39,14 @@ contract Escrow is EscrowAccess {
     mapping(address => uint256) public userDepositNonce;
     uint256 public totalPrincipal;
 
+    // user → depositNonce → refund request
+    mapping(address => mapping(uint256 => RefundRequest)) public refundRequests;
+
     event DepositCreated(address indexed user, uint256 amount, uint256 nonce);
     event DepositReleased(address indexed user, address indexed merchant, uint256 principal, uint256 yield, uint256 nonce);
     event DepositRefunded(address indexed user, address indexed refundedBy, uint256 principal, uint256 yield, uint256 nonce);
+    event RefundRequestCreated(address indexed user, uint256 depositNonce, string ipfsLink);
+    event RefundRequestStatusChanged(address indexed user, uint256 depositNonce, RequestStatus status);
 
     constructor(
         address _merchantPayout,
@@ -45,9 +59,9 @@ contract Escrow is EscrowAccess {
         require(_aToken != address(0), "Zero aToken");
         require(_pool != address(0), "Zero pool");
 
-        token = IERC20(_token);
-        aToken = IAToken(_aToken);
-        pool = IPool(_pool);
+        TOKEN = IERC20(_token);
+        A_TOKEN = IAToken(_aToken);
+        POOL = IPool(_pool);
     }
 
     /// @notice Calculate yield for a deposit (proportional to principal)
@@ -55,7 +69,7 @@ contract Escrow is EscrowAccess {
     function _calculateYield(uint256 principalAmount) internal view returns (uint256) {
         if (totalPrincipal == 0) return 0;
         
-        uint256 totalBal = aToken.balanceOf(address(this));
+        uint256 totalBal = A_TOKEN.balanceOf(address(this));
         if (totalBal <= totalPrincipal) return 0;
         
         // Simple proportional distribution: (excess * principal) / totalPrincipal
@@ -75,11 +89,11 @@ contract Escrow is EscrowAccess {
         totalPrincipal -= principalAmount;
         
         // Withdraw principal to recipient
-        pool.withdraw(address(token), principalAmount, to);
+        POOL.withdraw(address(TOKEN), principalAmount, to);
         
         // Withdraw yield to arbiter (if any)
         if (yieldAmount > 0) {
-            pool.withdraw(address(token), yieldAmount, arbiter);
+            POOL.withdraw(address(TOKEN), yieldAmount, ARBITER);
         }
     }
 
@@ -120,8 +134,8 @@ contract Escrow is EscrowAccess {
         userDepositNonces[user].push(depositNonce);
         totalPrincipal += amount;
 
-        token.approve(address(pool), amount);
-        pool.supply(address(token), amount, address(this), 0);
+        TOKEN.approve(address(POOL), amount);
+        POOL.supply(address(TOKEN), amount, address(this), 0);
 
         emit DepositCreated(user, amount, depositNonce);
     }
@@ -158,9 +172,9 @@ contract Escrow is EscrowAccess {
         _clearDeposit(user, depositNonce);
         
         // Withdraw principal and yield
-        _withdrawAndDistribute(merchantPayout, amt, yieldAmount);
+        _withdrawAndDistribute(MERCHANT_PAYOUT, amt, yieldAmount);
         
-        emit DepositReleased(user, merchantPayout, amt, yieldAmount, depositNonce);
+        emit DepositReleased(user, MERCHANT_PAYOUT, amt, yieldAmount, depositNonce);
     }
 
     /// @notice Refund principal to user (merchant or arbiter can call)
@@ -183,6 +197,37 @@ contract Escrow is EscrowAccess {
         _withdrawAndDistribute(user, amt, yieldAmount);
         
         emit DepositRefunded(user, msg.sender, amt, yieldAmount, depositNonce);
+    }
+
+    /// @notice Request a refund for a deposit (only the user who made the deposit can call)
+    /// @param depositNonce The nonce of the deposit to request refund for
+    /// @param ipfsLink IPFS link to additional information (e.g., images, documents)
+    function requestRefund(uint256 depositNonce, string calldata ipfsLink) external {
+        address user = msg.sender;
+        Deposit memory deposit = deposits[user][depositNonce];
+        require(deposit.principal > 0, "No deposit");
+        
+        // Check if request already exists (user field will be non-zero if request exists)
+        RefundRequest storage existingRequest = refundRequests[user][depositNonce];
+        require(existingRequest.user == address(0), "Request already exists");
+        
+        // Create new request
+        refundRequests[user][depositNonce] = RefundRequest({
+            user: user,
+            depositNonce: depositNonce,
+            ipfsLink: ipfsLink,
+            status: RequestStatus.Pending
+        });
+        
+        emit RefundRequestCreated(user, depositNonce, ipfsLink);
+    }
+
+    /// @notice Get refund request details
+    /// @param user The user address
+    /// @param depositNonce The deposit nonce
+    /// @return The refund request struct
+    function getRefundRequest(address user, uint256 depositNonce) external view returns (RefundRequest memory) {
+        return refundRequests[user][depositNonce];
     }
 }
 

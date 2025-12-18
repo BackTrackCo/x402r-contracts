@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.30;
 
-import "../../interfaces/IERC3009.sol";
-import "../escrow/Escrow.sol";
+import {IERC3009} from "../../interfaces/IERC3009.sol";
+import {Escrow} from "../escrow/Escrow.sol";
 
 contract DepositRelay {
-    address public immutable token;
+    address public immutable TOKEN;
 
     constructor(address _token) {
-        token = _token;
+        TOKEN = _token;
     }
 
     function executeDeposit(
@@ -23,7 +23,7 @@ contract DepositRelay {
         bytes32 s
     ) external {
         // Pull USDC via ERC3009
-        IERC3009(token).transferWithAuthorization(
+        IERC3009(TOKEN).transferWithAuthorization(
             fromUser,
             merchantEscrow,
             amount,

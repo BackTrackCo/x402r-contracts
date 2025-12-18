@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.30;
 
-import "./Base.t.sol";
+import {BaseTest} from "./Base.t.sol";
+import {Escrow} from "../src/simple/main/escrow/Escrow.sol";
 
 contract MerchantFactoryTest is BaseTest {
     function test_RegisterMerchant() public {
@@ -40,14 +41,14 @@ contract MerchantFactoryTest is BaseTest {
         Escrow escrow1Contract = Escrow(escrow1);
         Escrow escrow2Contract = Escrow(escrow2);
         
-        assertEq(escrow1Contract.arbiter(), arbiter1, "First escrow should have arbiter1");
-        assertEq(escrow2Contract.arbiter(), arbiter2, "Second escrow should have arbiter2");
+        assertEq(escrow1Contract.ARBITER(), arbiter1, "First escrow should have arbiter1");
+        assertEq(escrow2Contract.ARBITER(), arbiter2, "Second escrow should have arbiter2");
     }
     
     function test_Factory_ImmutableValues() public view {
-        assertEq(factory.token(), address(token), "Token should match");
-        assertEq(factory.aToken(), address(aToken), "AToken should match");
-        assertEq(factory.pool(), address(pool), "Pool should match");
+        assertEq(factory.TOKEN(), address(token), "Token should match");
+        assertEq(factory.A_TOKEN(), address(aToken), "AToken should match");
+        assertEq(factory.POOL(), address(pool), "Pool should match");
     }
 }
 

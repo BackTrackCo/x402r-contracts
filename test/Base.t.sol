@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.30;
 
-import "forge-std/Test.sol";
-import "../src/simple/main/factory/EscrowFactory.sol";
-import "../src/simple/main/escrow/Escrow.sol";
-import "../src/simple/main/x402/DepositRelay.sol";
-import "../src/simple/main/x402/FactoryRelay.sol";
-import "../src/simple/interfaces/IERC3009.sol";
+import {Test} from "forge-std/Test.sol";
+import {EscrowFactory} from "../src/simple/main/factory/EscrowFactory.sol";
+import {Escrow} from "../src/simple/main/escrow/Escrow.sol";
+import {DepositRelay} from "../src/simple/main/x402/DepositRelay.sol";
+import {IERC3009} from "../src/simple/interfaces/IERC3009.sol";
 
 // Mock contracts
 contract MockERC20 {
@@ -128,7 +127,6 @@ contract MockPool {
 contract BaseTest is Test {
     EscrowFactory public factory;
     DepositRelay public depositRelay;
-    FactoryRelay public factoryRelay;
     
     MockERC3009 public token;
     MockAToken public aToken;
@@ -160,7 +158,6 @@ contract BaseTest is Test {
             address(pool)
         );
         depositRelay = new DepositRelay(address(token));
-        factoryRelay = new FactoryRelay();
     }
     
     function _setupBalances() internal {

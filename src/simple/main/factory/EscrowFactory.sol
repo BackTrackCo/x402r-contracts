@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.30;
 
-import "../escrow/Escrow.sol";
+import {Escrow} from "../escrow/Escrow.sol";
 
 contract EscrowFactory {
-    address public immutable token;     // USDC address (chain-specific)
-    address public immutable aToken;    // aUSDC address (chain-specific)
-    address public immutable pool;      // Aave pool address (chain-specific)
+    address public immutable TOKEN;     // USDC address (chain-specific)
+    address public immutable A_TOKEN;    // aUSDC address (chain-specific)
+    address public immutable POOL;      // Aave pool address (chain-specific)
 
     event MerchantRegistered(
         address merchantPayout,
@@ -36,9 +36,9 @@ contract EscrowFactory {
         require(_aToken != address(0), "Zero aToken");
         require(_pool != address(0), "Zero pool");
         
-        token = _token;
-        aToken = _aToken;
-        pool = _pool;
+        TOKEN = _token;
+        A_TOKEN = _aToken;
+        POOL = _pool;
     }
 
     function registerMerchant(
@@ -57,9 +57,9 @@ contract EscrowFactory {
         Escrow escrow = new Escrow(
             merchantPayout,
             arbiter,
-            token,
-            aToken,
-            pool
+            TOKEN,
+            A_TOKEN,
+            POOL
         );
 
         merchants[merchantPayout] = MerchantInfo({

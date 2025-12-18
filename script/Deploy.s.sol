@@ -4,7 +4,6 @@ pragma solidity ^0.8.30;
 import {Script, console} from "forge-std/Script.sol";
 import {EscrowFactory} from "../src/simple/main/factory/EscrowFactory.sol";
 import {DepositRelay} from "../src/simple/main/x402/DepositRelay.sol";
-import {FactoryRelay} from "../src/simple/main/x402/FactoryRelay.sol";
 
 contract DeployScript is Script {
     function run() public {
@@ -38,15 +37,9 @@ contract DeployScript is Script {
         DepositRelay depositRelay = new DepositRelay(usdc);
         console.log("DepositRelay deployed at:", address(depositRelay));
 
-        // Deploy FactoryRelay
-        console.log("\n=== Deploying FactoryRelay ===");
-        FactoryRelay factoryRelay = new FactoryRelay();
-        console.log("FactoryRelay deployed at:", address(factoryRelay));
-
         console.log("\n=== Deployment Summary ===");
         console.log("EscrowFactory:", address(factory));
         console.log("DepositRelay:", address(depositRelay));
-        console.log("FactoryRelay:", address(factoryRelay));
 
         vm.stopBroadcast();
     }
