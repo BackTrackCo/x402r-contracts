@@ -1,54 +1,70 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity ^0.8.30;
+pragma solidity >=0.8.23 <0.9.0;
 
 import {BaseTest} from "./Base.t.sol";
+import {DepositRelayFactory} from "../src/simple/main/x402/DepositRelayFactory.sol";
+import {RelayProxy} from "../src/simple/main/x402/RelayProxy.sol";
 import {Escrow} from "../src/simple/main/escrow/Escrow.sol";
 
 contract MerchantFactoryTest is BaseTest {
-    function test_RegisterMerchant() public {
-        address escrow = registerMerchant();
+    function test_DeployRelay() public {
+        address relay = factory.deployRelay(merchant);
         
-        assertTrue(escrow != address(0), "Escrow should be created");
-        assertEq(factory.getEscrow(merchant), escrow, "Escrow should be registered");
+        assertTrue(relay != address(0), "Relay should be created");
+        assertEq(factory.getMerchantFromRelay(relay), merchant, "Relay should be mapped to merchant");
     }
     
-    function test_RegisterMerchant_AlreadyRegistered() public {
-        registerMerchant();
+    function test_DeployRelay_AlreadyDeployed() public {
+        address relay1 = factory.deployRelay(merchant);
+        address relay2 = factory.deployRelay(merchant);
         
-        vm.expectRevert("Already registered");
-        factory.registerMerchant(merchant, defaultArbiter);
+        assertEq(relay1, relay2, "Same merchant should get same relay");
+        assertEq(factory.getMerchantFromRelay(relay1), merchant, "Relay should be mapped to merchant");
     }
     
-    function test_RegisterMerchant_MultipleMerchants() public {
+    function test_DeployRelay_MultipleMerchants() public {
         address merchant2 = address(0x9999);
+        address arbiter2 = address(0xAAAA);
         
-        address escrow1 = registerMerchant();
-        address escrow2 = factory.registerMerchant(merchant2, defaultArbiter);
+        // Register second merchant (merchant must call it themselves)
+        // For testing, use the same vault
+        vm.prank(merchant2);
+        escrow.registerMerchant(arbiter2, address(vault));
         
-        assertTrue(escrow1 != escrow2, "Escrows should be different");
-        assertEq(factory.getEscrow(merchant), escrow1, "First escrow should be registered");
-        assertEq(factory.getEscrow(merchant2), escrow2, "Second escrow should be registered");
+        address relay1 = factory.deployRelay(merchant);
+        address relay2 = factory.deployRelay(merchant2);
+        
+        assertTrue(relay1 != relay2, "Different merchants should get different relays");
+        assertEq(factory.getMerchantFromRelay(relay1), merchant, "First relay should map to first merchant");
+        assertEq(factory.getMerchantFromRelay(relay2), merchant2, "Second relay should map to second merchant");
     }
     
-    function test_RegisterMerchant_DifferentArbiters() public {
-        address arbiter1 = address(0xAAAA);
-        address arbiter2 = address(0xBBBB);
-        address merchant2 = address(0x9999);
+    function test_GetRelayAddress() public {
+        address computedRelay = factory.getRelayAddress(merchant);
+        address deployedRelay = factory.deployRelay(merchant);
         
-        address escrow1 = factory.registerMerchant(merchant, arbiter1);
-        address escrow2 = factory.registerMerchant(merchant2, arbiter2);
-        
-        Escrow escrow1Contract = Escrow(escrow1);
-        Escrow escrow2Contract = Escrow(escrow2);
-        
-        assertEq(escrow1Contract.ARBITER(), arbiter1, "First escrow should have arbiter1");
-        assertEq(escrow2Contract.ARBITER(), arbiter2, "Second escrow should have arbiter2");
+        assertEq(computedRelay, deployedRelay, "Computed address should match deployed address");
     }
     
-    function test_Factory_ImmutableValues() public view {
+    function test_Factory_ImmutableValues() public {
         assertEq(factory.TOKEN(), address(token), "Token should match");
-        assertEq(factory.A_TOKEN(), address(aToken), "AToken should match");
-        assertEq(factory.POOL(), address(pool), "Pool should match");
+        assertEq(factory.ESCROW(), address(escrow), "Escrow should match");
+        assertTrue(factory.IMPLEMENTATION() != address(0), "Implementation should be deployed");
+    }
+    
+    function test_RelayProxy_Storage() public {
+        address relayAddr = deployRelay();
+        address payable relayAddrPayable = payable(relayAddr);
+        RelayProxy proxy = RelayProxy(relayAddrPayable);
+        
+        assertEq(proxy.MERCHANT_PAYOUT(), merchant, "Proxy should store merchant payout");
+        assertEq(proxy.TOKEN(), address(token), "Proxy should store token address");
+        assertEq(proxy.ESCROW(), address(escrow), "Proxy should store escrow address");
+        assertEq(proxy.IMPLEMENTATION(), factory.IMPLEMENTATION(), "Proxy should store implementation address");
+    }
+    
+    function test_DeployRelay_ZeroMerchant() public {
+        vm.expectRevert("Zero merchant payout");
+        factory.deployRelay(address(0));
     }
 }
-

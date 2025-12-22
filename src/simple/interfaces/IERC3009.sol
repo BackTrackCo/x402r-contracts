@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity ^0.8.30;
+pragma solidity >=0.8.23 <0.9.0;
 
 /// @title IERC3009
 /// @notice Interface for ERC-3009 Transfer with Authorization

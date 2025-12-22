@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity ^0.8.30;
+pragma solidity >=0.8.23 <0.9.0;
 
 import {Test} from "forge-std/Test.sol";
-import {EscrowFactory} from "../src/simple/main/factory/EscrowFactory.sol";
+import {DepositRelayFactory} from "../src/simple/main/x402/DepositRelayFactory.sol";
+import {RelayProxy} from "../src/simple/main/x402/RelayProxy.sol";
 import {Escrow} from "../src/simple/main/escrow/Escrow.sol";
-import {DepositRelay} from "../src/simple/main/x402/DepositRelay.sol";
 import {IERC3009} from "../src/simple/interfaces/IERC3009.sol";
+import {CreateX} from "@createx/CreateX.sol";
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 // Mock contracts
 contract MockERC20 {
@@ -71,66 +74,130 @@ contract MockERC3009 is MockERC20, IERC3009 {
     }
 }
 
-contract MockAToken {
-    mapping(address => uint256) public balanceOf;
-    MockERC20 public underlying;
+// Simple ERC4626 mock vault for testing
+contract MockERC4626 is ERC20, IERC4626 {
+    MockERC20 public immutable assetToken;
+    uint256 private _totalAssets;
     
-    constructor(address _underlying) {
-        underlying = MockERC20(_underlying);
+    constructor(address _asset) ERC20("Mock Vault", "MV") {
+        assetToken = MockERC20(_asset);
+        _totalAssets = 0;
     }
     
-    function mint(address to, uint256 amount) external {
-        balanceOf[to] += amount;
+    function asset() external view override returns (address) {
+        return address(assetToken);
     }
     
-    function burn(address from, uint256 amount) external {
-        require(balanceOf[from] >= amount, "Insufficient balance");
-        balanceOf[from] -= amount;
-    }
-}
-
-contract MockPool {
-    MockERC20 public token;
-    MockAToken public aToken;
-    
-    constructor(address _token, address _aToken) {
-        token = MockERC20(_token);
-        aToken = MockAToken(_aToken);
+    function totalAssets() external view override returns (uint256) {
+        return _totalAssets;
     }
     
-    function supply(address asset, uint256 amount, address onBehalfOf, uint16) external {
-        if (asset != address(token)) revert("Invalid asset");
-        if (!token.transferFrom(msg.sender, address(this), amount)) revert("Transfer failed");
-        aToken.mint(onBehalfOf, amount);
+    function convertToShares(uint256 assets) external view override returns (uint256) {
+        if (_totalAssets == 0) return assets; // 1:1 initially
+        return (assets * totalSupply()) / _totalAssets;
     }
     
-    function withdraw(address asset, uint256 amount, address to) external returns (uint256) {
-        if (asset != address(token)) revert("Invalid asset");
-        uint256 aTokenBal = aToken.balanceOf(msg.sender);
-        // Withdraw the requested amount, but if there's yield, we can withdraw more
-        // For simplicity, just withdraw what's requested (principal) and yield separately
-        uint256 withdrawAmount = amount <= aTokenBal ? amount : aTokenBal;
-        aToken.burn(msg.sender, withdrawAmount);
-        // Ensure we have enough tokens - mint if needed
-        if (token.balanceOf(address(this)) < withdrawAmount) {
-            token.mint(address(this), withdrawAmount - token.balanceOf(address(this)));
+    function convertToAssets(uint256 shares) external view override returns (uint256) {
+        if (totalSupply() == 0) return shares; // 1:1 initially
+        return (shares * _totalAssets) / totalSupply();
+    }
+    
+    function maxDeposit(address) external pure override returns (uint256) {
+        return type(uint256).max;
+    }
+    
+    function previewDeposit(uint256 assets) external view override returns (uint256) {
+        return this.convertToShares(assets);
+    }
+    
+    function deposit(uint256 assets, address receiver) external override returns (uint256) {
+        require(assets > 0, "Zero assets");
+        require(assetToken.transferFrom(msg.sender, address(this), assets), "Transfer failed");
+        
+        uint256 shares = _totalAssets == 0 ? assets : (assets * totalSupply()) / _totalAssets;
+        _totalAssets += assets;
+        _mint(receiver, shares);
+        return shares;
+    }
+    
+    function maxMint(address) external pure override returns (uint256) {
+        return type(uint256).max;
+    }
+    
+    function previewMint(uint256 shares) external view override returns (uint256) {
+        return this.convertToAssets(shares);
+    }
+    
+    function mint(uint256 shares, address receiver) external override returns (uint256) {
+        uint256 assets = _totalAssets == 0 ? shares : (shares * _totalAssets) / totalSupply();
+        return this.deposit(assets, receiver);
+    }
+    
+    function maxWithdraw(address owner) external view override returns (uint256) {
+        return this.convertToAssets(balanceOf(owner));
+    }
+    
+    function previewWithdraw(uint256 assets) external view override returns (uint256) {
+        return this.convertToShares(assets);
+    }
+    
+    function withdraw(uint256 assets, address receiver, address owner) external override returns (uint256) {
+        uint256 shares = _totalAssets == 0 ? assets : (assets * totalSupply()) / _totalAssets;
+        if (msg.sender != owner) {
+            // In real ERC4626, would check allowance here
         }
-        if (!token.transfer(to, withdrawAmount)) revert("Transfer failed");
-        return withdrawAmount;
+        _burn(owner, shares);
+        _totalAssets -= assets;
+        require(assetToken.transfer(receiver, assets), "Transfer failed");
+        return shares;
     }
     
-    function accrueYield(address to, uint256 yieldAmount) external {
-        aToken.mint(to, yieldAmount);
+    function maxRedeem(address owner) external view override returns (uint256) {
+        return balanceOf(owner);
+    }
+    
+    function previewRedeem(uint256 shares) external view override returns (uint256) {
+        return this.convertToAssets(shares);
+    }
+    
+    function redeem(uint256 shares, address receiver, address owner) external override returns (uint256) {
+        uint256 assets = _totalAssets == 0 ? shares : (shares * _totalAssets) / totalSupply();
+        if (msg.sender != owner) {
+            // In real ERC4626, would check allowance here
+        }
+        _burn(owner, shares);
+        _totalAssets -= assets;
+        require(assetToken.transfer(receiver, assets), "Transfer failed");
+        return assets;
+    }
+    
+    // Helper function to simulate yield accrual
+    function accrueYield(uint256 yieldAmount) external {
+        _totalAssets += yieldAmount;
+    }
+    
+    // Helper to mint underlying tokens to vault (for testing)
+    // This increases both tokens and _totalAssets (simulates deposits or yield)
+    function mintUnderlying(uint256 amount) external {
+        assetToken.mint(address(this), amount);
+        _totalAssets += amount;
+    }
+    
+    // Helper to add tokens to vault without increasing _totalAssets (for test setup)
+    // This is used to ensure vault has tokens for withdrawals without affecting yield calculations
+    function addTokens(uint256 amount) external {
+        assetToken.mint(address(this), amount);
+        // Don't increase _totalAssets - this is just for ensuring withdrawals work
     }
 }
 
 contract BaseTest is Test {
-    EscrowFactory public factory;
-    DepositRelay public depositRelay;
+    DepositRelayFactory public factory;
+    Escrow public escrow;
+    CreateX public createx;
     
     MockERC3009 public token;
-    MockAToken public aToken;
-    MockPool public pool;
+    MockERC4626 public vault;
     
     address public defaultArbiter = address(0x1234);
     address public merchant = address(0x5678);
@@ -143,35 +210,51 @@ contract BaseTest is Test {
         _deployMocks();
         _deployContracts();
         _setupBalances();
+        _registerMerchant();
     }
     
     function _deployMocks() internal {
         token = new MockERC3009();
-        aToken = new MockAToken(address(token));
-        pool = new MockPool(address(token), address(aToken));
+        vault = new MockERC4626(address(token));
     }
     
     function _deployContracts() internal {
-        factory = new EscrowFactory(
-            address(token),
-            address(aToken),
-            address(pool)
+        // Deploy CreateX for CREATE3
+        createx = new CreateX();
+        
+        // Deploy shared escrow (merchantPayout = 0, arbiter = 0 for shared escrow)
+        escrow = new Escrow(
+            address(0), // merchantPayout = 0 (shared escrow)
+            address(0),  // arbiter = 0 (merchants register separately)
+            address(token)
         );
-        depositRelay = new DepositRelay(address(token));
+        
+        // Deploy factory (uses CreateX and merchant address as salt; fresh factory per version)
+        factory = new DepositRelayFactory(
+            address(token),
+            address(escrow),
+            address(createx)
+        );
     }
     
     function _setupBalances() internal {
         token.mint(user, INITIAL_BALANCE);
-        token.mint(address(pool), INITIAL_BALANCE * 10);
+        // Add tokens to vault for withdrawals without affecting _totalAssets (for accurate yield calculations)
+        vault.addTokens(INITIAL_BALANCE * 10);
     }
     
-    function registerMerchant() internal returns (address escrow) {
-        return factory.registerMerchant(merchant, defaultArbiter);
+    function _registerMerchant() internal {
+        // Register merchant with shared escrow (merchant must call it themselves)
+        // Include vault address in registration
+        vm.prank(merchant);
+        escrow.registerMerchant(defaultArbiter, address(vault));
     }
     
-    function getEscrow() internal view returns (Escrow) {
-        address escrowAddr = factory.getEscrow(merchant);
-        return Escrow(escrowAddr);
+    function deployRelay() internal returns (address) {
+        return factory.deployRelay(merchant);
+    }
+    
+    function getRelay() internal view returns (address) {
+        return factory.getRelayAddress(merchant);
     }
 }
-
