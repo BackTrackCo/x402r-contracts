@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
+// CONTRACTS UNAUDITED: USE AT YOUR OWN RISK
 pragma solidity >=0.8.23 <0.9.0;
 
 import {Proxy} from "@openzeppelin/contracts/proxy/Proxy.sol";
@@ -41,6 +42,14 @@ contract RelayProxy is Proxy {
      */
     function _implementation() internal view override returns (address) {
         return IMPLEMENTATION;
+    }
+
+    /**
+     * @notice Receive function to handle plain Ether transfers
+     * @dev This contract should not receive Ether, but we include this for completeness
+     */
+    receive() external payable {
+        revert("RelayProxy: Cannot receive Ether");
     }
 }
 

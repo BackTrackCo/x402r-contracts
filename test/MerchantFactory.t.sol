@@ -27,9 +27,8 @@ contract MerchantFactoryTest is BaseTest {
         address arbiter2 = address(0xAAAA);
         
         // Register second merchant (merchant must call it themselves)
-        // For testing, use the same vault
         vm.prank(merchant2);
-        escrow.registerMerchant(arbiter2, address(vault));
+        escrow.registerMerchant(arbiter2);
         
         address relay1 = factory.deployRelay(merchant);
         address relay2 = factory.deployRelay(merchant2);

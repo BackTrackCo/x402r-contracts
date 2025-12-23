@@ -7,14 +7,24 @@ import {Escrow} from "../src/simple/main/escrow/Escrow.sol";
 contract MerchantEscrowTest is BaseTest {
     uint256 public constant DEPOSIT_AMOUNT = 1000 * 1e6; // 1000 USDC
     
+    function _getDeposit(address user, uint256 nonce) internal view returns (Escrow.Deposit memory) {
+        (uint256[] memory nonces, Escrow.Deposit[] memory deposits) = escrow.getUserDeposits(user);
+        for (uint256 i = 0; i < nonces.length; i++) {
+            if (nonces[i] == nonce) {
+                return deposits[i];
+            }
+        }
+        revert("Deposit not found");
+    }
+    
     function test_NoteDeposit() public {
         token.mint(address(escrow), DEPOSIT_AMOUNT);
         
         uint256 depositNonce = escrow.noteDeposit(user, merchant, DEPOSIT_AMOUNT);
         
-        (uint256 principal, uint256 timestamp,,) = escrow.deposits(user, depositNonce);
-        assertEq(principal, DEPOSIT_AMOUNT, "Principal should match");
-        assertEq(timestamp, block.timestamp, "Timestamp should match");
+        Escrow.Deposit memory deposit = _getDeposit(user, depositNonce);
+        assertEq(deposit.principal, DEPOSIT_AMOUNT, "Principal should match");
+        assertEq(deposit.timestamp, block.timestamp, "Timestamp should match");
         assertEq(escrow.totalPrincipal(), DEPOSIT_AMOUNT, "Total principal should match");
     }
     
@@ -42,10 +52,10 @@ contract MerchantEscrowTest is BaseTest {
         uint256 depositNonce2 = escrow.noteDeposit(user, merchant, DEPOSIT_AMOUNT);
         
         // Both deposits should exist
-        (uint256 principal1,,,) = escrow.deposits(user, depositNonce1);
-        (uint256 principal2,,,) = escrow.deposits(user, depositNonce2);
-        assertEq(principal1, DEPOSIT_AMOUNT, "First deposit should exist");
-        assertEq(principal2, DEPOSIT_AMOUNT, "Second deposit should exist");
+        Escrow.Deposit memory deposit1 = _getDeposit(user, depositNonce1);
+        Escrow.Deposit memory deposit2 = _getDeposit(user, depositNonce2);
+        assertEq(deposit1.principal, DEPOSIT_AMOUNT, "First deposit should exist");
+        assertEq(deposit2.principal, DEPOSIT_AMOUNT, "Second deposit should exist");
         assertEq(escrow.totalPrincipal(), DEPOSIT_AMOUNT * 2, "Total principal should match");
     }
     
@@ -87,8 +97,16 @@ contract MerchantEscrowTest is BaseTest {
         assertEq(merchantBalanceAfter - merchantBalanceBefore, DEPOSIT_AMOUNT, "Merchant should receive principal");
         assertGt(arbiterBalanceAfter - arbiterBalanceBefore, 0, "Arbiter should receive yield");
         
-        (uint256 principal,,,) = escrow.deposits(user, depositNonce);
-        assertEq(principal, 0, "Deposit should be cleared");
+        // Check that deposit is cleared (no longer in the list)
+        (uint256[] memory nonces, ) = escrow.getUserDeposits(user);
+        bool depositFound = false;
+        for (uint256 i = 0; i < nonces.length; i++) {
+            if (nonces[i] == depositNonce) {
+                depositFound = true;
+                break;
+            }
+        }
+        assertFalse(depositFound, "Deposit should be cleared");
         assertEq(escrow.totalPrincipal(), 0, "Total principal should be zero");
     }
     
@@ -123,8 +141,16 @@ contract MerchantEscrowTest is BaseTest {
             assertEq(userBalanceAfter - userBalanceBefore, DEPOSIT_AMOUNT, "User should only receive principal on refund");
         }
         
-        (uint256 principal,,,) = escrow.deposits(user, depositNonce);
-        assertEq(principal, 0, "Deposit should be cleared");
+        // Check that deposit is cleared (no longer in the list)
+        (uint256[] memory nonces, ) = escrow.getUserDeposits(user);
+        bool depositFound = false;
+        for (uint256 i = 0; i < nonces.length; i++) {
+            if (nonces[i] == depositNonce) {
+                depositFound = true;
+                break;
+            }
+        }
+        assertFalse(depositFound, "Deposit should be cleared");
     }
     
     // Tests for simplified proportional yield calculation (all deposits stay for 3 days)
@@ -348,8 +374,16 @@ contract MerchantEscrowTest is BaseTest {
         
         assertEq(userBalanceAfter - userBalanceBefore, DEPOSIT_AMOUNT, "User should receive principal");
         
-        (uint256 principal,,,) = escrow.deposits(user, depositNonce);
-        assertEq(principal, 0, "Deposit should be cleared");
+        // Check that deposit is cleared (no longer in the list)
+        (uint256[] memory nonces, ) = escrow.getUserDeposits(user);
+        bool depositFound = false;
+        for (uint256 i = 0; i < nonces.length; i++) {
+            if (nonces[i] == depositNonce) {
+                depositFound = true;
+                break;
+            }
+        }
+        assertFalse(depositFound, "Deposit should be cleared");
     }
     
     function test_Refund_ByArbiter_StillWorks() public {
@@ -387,9 +421,21 @@ contract MerchantEscrowTest is BaseTest {
         escrow.refund(user, depositNonce1);
         
         // Verify first deposit is cleared but second remains
-        (uint256 principal1,,,) = escrow.deposits(user, depositNonce1);
-        (uint256 principal2,,,) = escrow.deposits(user, depositNonce2);
-        assertEq(principal1, 0, "First deposit should be cleared");
-        assertEq(principal2, DEPOSIT_AMOUNT, "Second deposit should still exist");
+        (uint256[] memory nonces, Escrow.Deposit[] memory deposits) = escrow.getUserDeposits(user);
+        bool deposit1Found = false;
+        bool deposit2Found = false;
+        uint256 deposit2Principal = 0;
+        for (uint256 i = 0; i < nonces.length; i++) {
+            if (nonces[i] == depositNonce1) {
+                deposit1Found = true;
+            }
+            if (nonces[i] == depositNonce2) {
+                deposit2Found = true;
+                deposit2Principal = deposits[i].principal;
+            }
+        }
+        assertFalse(deposit1Found, "First deposit should be cleared");
+        assertTrue(deposit2Found, "Second deposit should still exist");
+        assertEq(deposit2Principal, DEPOSIT_AMOUNT, "Second deposit should still exist");
     }
 }

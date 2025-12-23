@@ -51,8 +51,9 @@ contract ExecuteDepositRelayTest is BaseTest {
         );
         
         // Check that deposit was created
-        uint256 depositNonce = escrow.getLatestDepositNonce(user);
-        (uint256 principal,,,) = escrow.deposits(user, depositNonce);
+        (, Escrow.Deposit[] memory depositData) = escrow.getUserDeposits(user);
+        require(depositData.length > 0, "No deposits found");
+        uint256 principal = depositData[depositData.length - 1].principal;
         assertEq(principal, DEPOSIT_AMOUNT, "Deposit should be created");
         
         // Check that tokens were transferred to escrow

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
+// CONTRACTS UNAUDITED: USE AT YOUR OWN RISK
 pragma solidity >=0.8.23 <0.9.0;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -93,7 +94,7 @@ contract DepositRelay {
         require(escrowBalance >= amount, "DepositRelay: Escrow did not receive tokens");
 
         // Notify escrow with merchantPayout
-        try Escrow(escrow).noteDeposit(fromUser, merchantPayout, amount) returns (uint256 depositNonce) {
+        try Escrow(escrow).noteDeposit(fromUser, merchantPayout, amount) returns (uint256 /* depositNonce */) {
             // Success - deposit noted
         } catch Error(string memory reason) {
             revert(string(abi.encodePacked("DepositRelay: noteDeposit failed - ", reason)));

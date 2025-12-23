@@ -222,11 +222,10 @@ contract BaseTest is Test {
         // Deploy CreateX for CREATE3
         createx = new CreateX();
         
-        // Deploy shared escrow (merchantPayout = 0, arbiter = 0 for shared escrow)
+        // Deploy shared escrow
         escrow = new Escrow(
-            address(0), // merchantPayout = 0 (shared escrow)
-            address(0),  // arbiter = 0 (merchants register separately)
-            address(token)
+            address(token),
+            address(vault)
         );
         
         // Deploy factory (uses CreateX and merchant address as salt; fresh factory per version)
@@ -245,9 +244,8 @@ contract BaseTest is Test {
     
     function _registerMerchant() internal {
         // Register merchant with shared escrow (merchant must call it themselves)
-        // Include vault address in registration
         vm.prank(merchant);
-        escrow.registerMerchant(defaultArbiter, address(vault));
+        escrow.registerMerchant(defaultArbiter);
     }
     
     function deployRelay() internal returns (address) {
