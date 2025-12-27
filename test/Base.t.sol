@@ -7,7 +7,9 @@ import {RelayProxy} from "../src/simple/main/x402/RelayProxy.sol";
 import {Escrow} from "../src/simple/main/escrow/Escrow.sol";
 import {IERC3009} from "../src/simple/interfaces/IERC3009.sol";
 import {CreateX} from "@createx/CreateX.sol";
-import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import {IPool} from "@aave-v3-core/interfaces/IPool.sol";
+import {IPoolAddressesProvider} from "@aave-v3-core/interfaces/IPoolAddressesProvider.sol";
+import {DataTypes} from "@aave-v3-core/protocol/libraries/types/DataTypes.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 // Mock contracts
@@ -74,120 +76,303 @@ contract MockERC3009 is MockERC20, IERC3009 {
     }
 }
 
-// Simple ERC4626 mock vault for testing
-contract MockERC4626 is ERC20, IERC4626 {
-    MockERC20 public immutable assetToken;
+// Mock aToken (rebasing token for Aave)
+// In Aave, aTokens are rebasing - balanceOf() directly represents underlying amount
+// When yield accrues, balances increase proportionally
+// We use ERC20 balance as shares, and calculate underlying balance from exchange rate
+contract MockAToken is ERC20 {
+    MockERC20 public immutable UNDERLYING;
     uint256 private _totalAssets;
     
-    constructor(address _asset) ERC20("Mock Vault", "MV") {
-        assetToken = MockERC20(_asset);
+    constructor(address _underlying) ERC20("Mock aToken", "aToken") {
+        UNDERLYING = MockERC20(_underlying);
         _totalAssets = 0;
     }
     
-    function asset() external view override returns (address) {
-        return address(assetToken);
-    }
-    
-    function totalAssets() external view override returns (uint256) {
-        return _totalAssets;
-    }
-    
-    function convertToShares(uint256 assets) external view override returns (uint256) {
-        if (_totalAssets == 0) return assets; // 1:1 initially
-        return (assets * totalSupply()) / _totalAssets;
-    }
-    
-    function convertToAssets(uint256 shares) external view override returns (uint256) {
-        if (totalSupply() == 0) return shares; // 1:1 initially
+    // Override balanceOf to return underlying amount (rebasing)
+    // balance = (shares * totalAssets) / totalSupply
+    // where shares = ERC20 balance
+    function balanceOf(address account) public view override returns (uint256) {
+        uint256 shares = super.balanceOf(account); // Use ERC20 balance as shares
+        if (shares == 0 || _totalAssets == 0 || totalSupply() == 0) {
+            return 0;
+        }
         return (shares * _totalAssets) / totalSupply();
     }
     
-    function maxDeposit(address) external pure override returns (uint256) {
-        return type(uint256).max;
+    // In Aave, aTokens are rebasing - balanceOf() returns underlying amount
+    // We simulate this by tracking shares (ERC20 balance) and total assets
+    function mint(address to, uint256 amount) external {
+        uint256 currentAssets = _totalAssets;
+        _totalAssets += amount;
+        // Mint shares based on current exchange rate
+        // If totalSupply is 0, mint 1:1
+        // Otherwise: shares = (amount * totalSupply) / currentAssets
+        uint256 shares = totalSupply() == 0 || currentAssets == 0
+            ? amount
+            : (amount * totalSupply()) / currentAssets;
+        _mint(to, shares); // ERC20 balance = shares
     }
     
-    function previewDeposit(uint256 assets) external view override returns (uint256) {
-        return this.convertToShares(assets);
+    function burn(address from, uint256 underlyingAmount) external {
+        // Calculate shares to burn based on current exchange rate
+        uint256 shares = _totalAssets > 0 && totalSupply() > 0
+            ? (underlyingAmount * totalSupply()) / _totalAssets
+            : underlyingAmount;
+        _totalAssets -= underlyingAmount;
+        _burn(from, shares);
     }
     
-    function deposit(uint256 assets, address receiver) external override returns (uint256) {
-        require(assets > 0, "Zero assets");
-        require(assetToken.transferFrom(msg.sender, address(this), assets), "Transfer failed");
-        
-        uint256 shares = _totalAssets == 0 ? assets : (assets * totalSupply()) / _totalAssets;
-        _totalAssets += assets;
-        _mint(receiver, shares);
-        return shares;
-    }
-    
-    function maxMint(address) external pure override returns (uint256) {
-        return type(uint256).max;
-    }
-    
-    function previewMint(uint256 shares) external view override returns (uint256) {
-        return this.convertToAssets(shares);
-    }
-    
-    function mint(uint256 shares, address receiver) external override returns (uint256) {
-        uint256 assets = _totalAssets == 0 ? shares : (shares * _totalAssets) / totalSupply();
-        return this.deposit(assets, receiver);
-    }
-    
-    function maxWithdraw(address owner) external view override returns (uint256) {
-        return this.convertToAssets(balanceOf(owner));
-    }
-    
-    function previewWithdraw(uint256 assets) external view override returns (uint256) {
-        return this.convertToShares(assets);
-    }
-    
-    function withdraw(uint256 assets, address receiver, address owner) external override returns (uint256) {
-        uint256 shares = _totalAssets == 0 ? assets : (assets * totalSupply()) / _totalAssets;
-        if (msg.sender != owner) {
-            // In real ERC4626, would check allowance here
-        }
-        _burn(owner, shares);
-        _totalAssets -= assets;
-        require(assetToken.transfer(receiver, assets), "Transfer failed");
-        return shares;
-    }
-    
-    function maxRedeem(address owner) external view override returns (uint256) {
-        return balanceOf(owner);
-    }
-    
-    function previewRedeem(uint256 shares) external view override returns (uint256) {
-        return this.convertToAssets(shares);
-    }
-    
-    function redeem(uint256 shares, address receiver, address owner) external override returns (uint256) {
-        uint256 assets = _totalAssets == 0 ? shares : (shares * _totalAssets) / totalSupply();
-        if (msg.sender != owner) {
-            // In real ERC4626, would check allowance here
-        }
-        _burn(owner, shares);
-        _totalAssets -= assets;
-        require(assetToken.transfer(receiver, assets), "Transfer failed");
-        return assets;
-    }
-    
-    // Helper function to simulate yield accrual
+    // Simulate yield accrual by increasing total assets (rebasing)
+    // In Aave, aTokens rebase automatically - all balances increase proportionally
+    // No need to mint additional tokens - the exchange rate changes
     function accrueYield(uint256 yieldAmount) external {
         _totalAssets += yieldAmount;
+        // Balances increase automatically via rebasing (balanceOf calculates from shares and totalAssets)
     }
     
-    // Helper to mint underlying tokens to vault (for testing)
-    // This increases both tokens and _totalAssets (simulates deposits or yield)
-    function mintUnderlying(uint256 amount) external {
-        assetToken.mint(address(this), amount);
+    // Helper to add underlying tokens (for test setup)
+    // This increases totalAssets without minting shares, which affects the exchange rate
+    // This simulates having underlying tokens available for withdrawal
+    function addUnderlying(uint256 amount) external {
+        UNDERLYING.mint(address(this), amount);
         _totalAssets += amount;
+        // Don't mint shares - this is just for ensuring withdrawals work
+        // The exchange rate will change, making existing shares worth more
     }
     
-    // Helper to add tokens to vault without increasing _totalAssets (for test setup)
-    // This is used to ensure vault has tokens for withdrawals without affecting yield calculations
-    function addTokens(uint256 amount) external {
-        assetToken.mint(address(this), amount);
-        // Don't increase _totalAssets - this is just for ensuring withdrawals work
+    function getTotalAssets() external view returns (uint256) {
+        return _totalAssets;
+    }
+}
+
+// Mock Aave Pool for testing
+contract MockAavePool is IPool {
+    MockERC20 public immutable UNDERLYING;
+    MockAToken public immutable ATOKEN;
+    mapping(address => DataTypes.ReserveData) private reserves;
+    
+    constructor(address _underlying) {
+        UNDERLYING = MockERC20(_underlying);
+        ATOKEN = new MockAToken(_underlying);
+        
+        // Set up reserve data
+        DataTypes.ReserveData memory reserveData;
+        reserveData.aTokenAddress = address(ATOKEN);
+        reserves[_underlying] = reserveData;
+    }
+    
+    function supply(address asset, uint256 amount, address onBehalfOf, uint16) external override {
+        require(asset == address(UNDERLYING), "Invalid asset");
+        require(amount > 0, "Zero amount");
+        require(UNDERLYING.transferFrom(msg.sender, address(this), amount), "Transfer failed");
+        
+        // Mint aTokens 1:1 (rebasing means balance = underlying)
+        ATOKEN.mint(onBehalfOf, amount);
+    }
+    
+    function withdraw(address asset, uint256 amount, address to) external override returns (uint256) {
+        require(asset == address(UNDERLYING), "Invalid asset");
+        require(amount > 0, "Zero amount");
+        
+        // Check aToken balance (rebasing - balance = underlying)
+        uint256 aTokenBalance = ATOKEN.balanceOf(msg.sender);
+        require(aTokenBalance >= amount, "Insufficient aToken balance");
+        
+        // Burn aTokens
+        ATOKEN.burn(msg.sender, amount);
+        
+        // Transfer underlying
+        require(UNDERLYING.transfer(to, amount), "Transfer failed");
+        return amount;
+    }
+    
+    function getReserveData(address asset) external view override returns (DataTypes.ReserveData memory) {
+        return reserves[asset];
+    }
+    
+    // Helper to simulate yield accrual
+    function accrueYield(uint256 yieldAmount) external {
+        ATOKEN.accrueYield(yieldAmount);
+        // Also add underlying tokens to pool
+        UNDERLYING.mint(address(this), yieldAmount);
+    }
+    
+    // Helper to add underlying tokens (for test setup)
+    function addUnderlying(uint256 amount) external {
+        UNDERLYING.mint(address(this), amount);
+        ATOKEN.addUnderlying(amount);
+    }
+    
+    // Stub implementations for other IPool functions (not used in tests)
+    function mintUnbacked(address, uint256, address, uint16) external pure override {
+        revert("Not implemented");
+    }
+    
+    function backUnbacked(address, uint256, uint256) external pure override returns (uint256) {
+        revert("Not implemented");
+    }
+    
+    function supplyWithPermit(address, uint256, address, uint16, uint256, uint8, bytes32, bytes32) external pure override {
+        revert("Not implemented");
+    }
+    
+    function borrow(address, uint256, uint256, uint16, address) external pure override {
+        revert("Not implemented");
+    }
+    
+    function repay(address, uint256, uint256, address) external pure override returns (uint256) {
+        revert("Not implemented");
+    }
+    
+    function repayWithPermit(address, uint256, uint256, address, uint256, uint8, bytes32, bytes32) external pure override returns (uint256) {
+        revert("Not implemented");
+    }
+    
+    function repayWithATokens(address, uint256, uint256) external pure override returns (uint256) {
+        revert("Not implemented");
+    }
+    
+    function swapBorrowRateMode(address, uint256) external pure override {
+        revert("Not implemented");
+    }
+    
+    function rebalanceStableBorrowRate(address, address) external pure override {
+        revert("Not implemented");
+    }
+    
+    function setUserUseReserveAsCollateral(address, bool) external pure override {
+        revert("Not implemented");
+    }
+    
+    function liquidationCall(address, address, address, uint256, bool) external pure override {
+        revert("Not implemented");
+    }
+    
+    function flashLoan(address, address[] calldata, uint256[] calldata, uint256[] calldata, address, bytes calldata, uint16) external pure override {
+        revert("Not implemented");
+    }
+    
+    function flashLoanSimple(
+        address receiverAddress,
+        address asset,
+        uint256 amount,
+        bytes calldata params,
+        uint16 referralCode
+    ) external pure override {
+        revert("Not implemented");
+    }
+    
+    function getUserAccountData(address) external pure override returns (uint256, uint256, uint256, uint256, uint256, uint256) {
+        revert("Not implemented");
+    }
+    
+    function initReserve(address, address, address, address, address) external pure override {
+        revert("Not implemented");
+    }
+    
+    function dropReserve(address) external pure override {
+        revert("Not implemented");
+    }
+    
+    function setReserveInterestRateStrategyAddress(address, address) external pure override {
+        revert("Not implemented");
+    }
+    
+    function setConfiguration(address, DataTypes.ReserveConfigurationMap memory) external pure override {
+        revert("Not implemented");
+    }
+    
+    function getConfiguration(address) external pure override returns (DataTypes.ReserveConfigurationMap memory) {
+        revert("Not implemented");
+    }
+    
+    function getUserConfiguration(address) external pure override returns (DataTypes.UserConfigurationMap memory) {
+        revert("Not implemented");
+    }
+    
+    function getReserveNormalizedIncome(address) external pure override returns (uint256) {
+        revert("Not implemented");
+    }
+    
+    function getReserveNormalizedVariableDebt(address) external pure override returns (uint256) {
+        revert("Not implemented");
+    }
+    
+    function finalizeTransfer(address, address, address, uint256, uint256, uint256) external pure override {
+        revert("Not implemented");
+    }
+    
+    function getReservesList() external pure override returns (address[] memory) {
+        revert("Not implemented");
+    }
+    
+    function getReserveAddressById(uint16) external pure override returns (address) {
+        revert("Not implemented");
+    }
+    
+    function mintToTreasury(address[] calldata) external pure override {
+        revert("Not implemented");
+    }
+    
+    function deposit(address, uint256, address, uint16) external pure override {
+        revert("Not implemented");
+    }
+    
+    function ADDRESSES_PROVIDER() external pure override returns (IPoolAddressesProvider) {
+        revert("Not implemented");
+    }
+    
+    function MAX_STABLE_RATE_BORROW_SIZE_PERCENT() external pure override returns (uint256) {
+        revert("Not implemented");
+    }
+    
+    function FLASHLOAN_PREMIUM_TOTAL() external pure override returns (uint128) {
+        revert("Not implemented");
+    }
+    
+    function BRIDGE_PROTOCOL_FEE() external pure override returns (uint256) {
+        revert("Not implemented");
+    }
+    
+    function FLASHLOAN_PREMIUM_TO_PROTOCOL() external pure override returns (uint128) {
+        revert("Not implemented");
+    }
+    
+    function MAX_NUMBER_RESERVES() external pure override returns (uint16) {
+        revert("Not implemented");
+    }
+    
+    function updateBridgeProtocolFee(uint256) external pure override {
+        revert("Not implemented");
+    }
+    
+    function updateFlashloanPremiums(uint128, uint128) external pure override {
+        revert("Not implemented");
+    }
+    
+    function configureEModeCategory(uint8, DataTypes.EModeCategory memory) external pure override {
+        revert("Not implemented");
+    }
+    
+    function getEModeCategoryData(uint8) external pure override returns (DataTypes.EModeCategory memory) {
+        revert("Not implemented");
+    }
+    
+    function setUserEMode(uint8) external pure override {
+        revert("Not implemented");
+    }
+    
+    function getUserEMode(address) external pure override returns (uint256) {
+        revert("Not implemented");
+    }
+    
+    function resetIsolationModeTotalDebt(address) external pure override {
+        revert("Not implemented");
+    }
+    
+    function rescueTokens(address, address, uint256) external pure override {
+        revert("Not implemented");
     }
 }
 
@@ -197,7 +382,7 @@ contract BaseTest is Test {
     CreateX public createx;
     
     MockERC3009 public token;
-    MockERC4626 public vault;
+    MockAavePool public pool;
     
     address public defaultArbiter = address(0x1234);
     address public merchant = address(0x5678);
@@ -215,17 +400,17 @@ contract BaseTest is Test {
     
     function _deployMocks() internal {
         token = new MockERC3009();
-        vault = new MockERC4626(address(token));
+        pool = new MockAavePool(address(token));
     }
     
     function _deployContracts() internal {
         // Deploy CreateX for CREATE3
         createx = new CreateX();
         
-        // Deploy shared escrow
+        // Deploy shared escrow with Aave Pool
         escrow = new Escrow(
             address(token),
-            address(vault)
+            address(pool)
         );
         
         // Deploy factory (uses CreateX and merchant address as salt; fresh factory per version)
@@ -238,8 +423,8 @@ contract BaseTest is Test {
     
     function _setupBalances() internal {
         token.mint(user, INITIAL_BALANCE);
-        // Add tokens to vault for withdrawals without affecting _totalAssets (for accurate yield calculations)
-        vault.addTokens(INITIAL_BALANCE * 10);
+        // No need to pre-fund Aave pool - it gets tokens from deposits
+        // The pool will have underlying tokens available from the supply() calls
     }
     
     function _registerMerchant() internal {

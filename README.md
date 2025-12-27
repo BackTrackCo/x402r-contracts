@@ -56,33 +56,57 @@ losses incurred from using these contracts.
 - **Description**: CREATE3 deployment contract used by the factory for deterministic address generation. This is the standard CreateX deployment for Base.
 
 ### Shared Escrow
-- **Address**: [`0xC409e6da89E54253fbA86C1CE3E553d24E03f6bC`](https://basescan.org/address/0xc409e6da89e54253fba86c1ce3e553d24e03f6bc)
+- **Address**: [`0x9b606d91C012547bB33746270cd2AC183Eb9184B`](https://basescan.org/address/0x9b606d91c012547bb33746270cd2ac183eb9184b)
 - **Contract**: `src/simple/main/escrow/Escrow.sol:Escrow`
-- **Description**: Shared escrow contract for refund extension. Merchants register with this escrow to enable deposits and refunds. Deployed with ERC4626 vault for yield generation.
+- **Description**: Shared escrow contract for refund extension. Merchants register with this escrow to enable deposits and refunds. Deployed with Aave Pool for yield generation. Includes `getDeposit()` function for querying deposit information.
 
 ### DepositRelayFactory
-- **Address**: [`0x41Cc4D337FEC5E91ddcf4C363700FC6dB5f3A814`](https://basescan.org/address/0x41cc4d337fec5e91ddcf4c363700fc6db5f3a814)
+- **Address**: [`0x6a2966E0Cf2D74F60143751E33fEb198309ed7dF`](https://basescan.org/address/0x6a2966e0cf2d74f60143751e33feb198309ed7df)
 - **Contract**: `src/simple/main/x402/DepositRelayFactory.sol:DepositRelayFactory`
-- **Description**: Factory contract that deploys DepositRelay proxies for merchants via CREATE3. Each merchant gets a deterministic proxy address. Uses the standard CreateX address.
+- **Description**: Factory contract that deploys DepositRelay proxies for merchants via CREATE3. Each merchant gets a deterministic proxy address. Uses the standard CreateX address. Deployed with Base Mainnet USDC address (`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`).
 
 ### DepositRelay (Implementation)
-- **Address**: [`0x55eEC2951Da58118ebf32fD925A9bBB13096e828`](https://basescan.org/address/0x55eec2951da58118ebf32fd925a9bbb13096e828)
+- **Address**: [`0x00231D0c19ee8Abd5d88AC64D269f4879df83ad1`](https://basescan.org/address/0x00231d0c19ee8abd5d88ac64d269f4879df83ad1)
 - **Contract**: `src/simple/main/x402/DepositRelay.sol:DepositRelay`
 - **Description**: Stateless implementation contract for deposit relays. Shared across all merchants via proxy pattern. Handles ERC3009 transfers signed for the relay proxy address and forwards tokens to the escrow.
+
+### RefundRequest
+- **Address**: [`0x5D9B31ed7E5F12CE974C9F6b8bbEBd370056C5F6`](https://basescan.org/address/0x5d9b31ed7e5f12ce974c9f6b8bbebd370056c5f6)
+- **Contract**: `src/simple/main/requests/RefundRequest.sol:RefundRequest`
+- **Description**: Contract for managing refund requests for escrow deposits. Users can create refund requests with IPFS links, and merchants or arbiters can approve or deny them. Tracks refund request status (Pending, Approved, Denied).
+
+### MerchantRegistrationRouter
+- **Address**: [`0xB3a787296747F5259bF29bbfB7E5B598a2db5D29`](https://basescan.org/address/0xb3a787296747f5259bf29bbfb7e5b598a2db5d29)
+- **Contract**: `src/simple/main/x402/MerchantRegistrationRouter.sol:MerchantRegistrationRouter`
+- **Description**: Router contract that atomically registers merchants with the escrow and deploys their relay proxy via the factory. Prevents frontrunning by combining both operations in a single transaction.
+
+### Aave Pool (Production)
+- **Address**: [`0xA238Dd80C259a72e81d7e4664a9801593F98d1c5`](https://basescan.org/address/0xa238dd80c259a72e81d7e4664a9801593f98d1c5)
+- **Contract**: Aave V3 Pool
+- **Description**: The Escrow contract uses Aave Pool directly (not ERC4626). Aave provides a secure, audited, and well-established lending protocol with strong security track record. The Escrow supplies USDC to Aave and receives aUSDC tokens, which accrue interest over time.
 
 ### Example ERC4626 Vault (for testing)
 - **Address**: [`0x0b3fC8BA8952C6cA6807F667894b0b7c9C40FC8b`](https://basescan.org/address/0x0b3fc8ba8952c6ca6807f667894b0b7c9c40fc8b)
 - **Contract**: `lib/openzeppelin-contracts/contracts/mocks/token/ERC4626Mock.sol:ERC4626Mock`
-- **Description**: Example ERC4626 vault for testing purposes. This is a mock vault from OpenZeppelin that implements the ERC4626 standard. In production, merchants should deploy their own ERC4626 vaults or use existing ones (e.g., Aave aUSDC).
+- **Description**: Example ERC4626 vault for testing purposes. This is a mock vault from OpenZeppelin that implements the ERC4626 standard. Used only for testing.
 
 ### Configuration
-- **DEPOSIT_RELAY_FACTORY_ADDRESS**: `0x41Cc4D337FEC5E91ddcf4C363700FC6dB5f3A814`
-- **SHARED_ESCROW_ADDRESS**: `0xC409e6da89E54253fbA86C1CE3E553d24E03f6bC`
+- **DEPOSIT_RELAY_FACTORY_ADDRESS**: `0x6a2966E0Cf2D74F60143751E33fEb198309ed7dF`
+- **SHARED_ESCROW_ADDRESS**: `0x9b606d91C012547bB33746270cd2AC183Eb9184B`
+- **REFUND_REQUEST_ADDRESS**: `0x5D9B31ed7E5F12CE974C9F6b8bbEBd370056C5F6`
+- **MERCHANT_REGISTRATION_ROUTER_ADDRESS**: `0xB3a787296747F5259bF29bbfB7E5B598a2db5D29`
+- **DEPOSIT_RELAY_IMPLEMENTATION_ADDRESS**: `0x00231D0c19ee8Abd5d88AC64D269f4879df83ad1`
 - **CREATEX_ADDRESS**: `0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed` (Standard CreateX deployment for Base)
-- **TEST_VAULT_ADDRESS**: `0x0b3fC8BA8952C6cA6807F667894b0b7c9C40FC8b` (Example vault for testing)
-- **USDC_ADDRESS**: `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`
+- **AAVE_POOL_ADDRESS**: `0xA238Dd80C259a72e81d7e4664a9801593F98d1c5` (Aave Pool on Base Mainnet)
+- **USDC_ADDRESS**: `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` (Canonical USDC on Base Mainnet)
 
-**Note**: Merchants must register with the shared escrow before using the system:
+**Note**: Merchants must register with the shared escrow before using the system. They can either:
+1. Use the MerchantRegistrationRouter (recommended - atomic registration and proxy deployment):
+```solidity
+// Merchant calls this function themselves (msg.sender is used as merchantPayout)
+router.registerMerchantAndDeployProxy(arbiter)
+```
+2. Register directly with escrow:
 ```solidity
 // Merchant calls this function themselves (msg.sender is used as merchantPayout)
 escrow.registerMerchant(arbiter)
@@ -190,7 +214,17 @@ For easier testing, contracts can be deployed separately:
    SHARED_ESCROW_ADDRESS=0xF7F2Bc463d79Bd3E5Cb693944B422c39114De058 forge script script/DeployFactory.s.sol:DeployFactory --rpc-url https://sepolia.base.org --broadcast --verify --private-key $PRIVATE_KEY
    ```
 
-3. **Deploy Example Vault** (independent, for testing):
+3. **Deploy RefundRequest** (requires Escrow address):
+   ```shell
+   SHARED_ESCROW_ADDRESS=0xF7F2Bc463d79Bd3E5Cb693944B422c39114De058 forge script script/DeployRefundRequest.s.sol:DeployRefundRequest --rpc-url https://sepolia.base.org --broadcast --verify --private-key $PRIVATE_KEY
+   ```
+
+4. **Deploy MerchantRegistrationRouter** (requires Factory and Escrow addresses):
+   ```shell
+   DEPOSIT_RELAY_FACTORY_ADDRESS=0xf981D813842eE78d18ef8ac825eef8e2C8A8BaC2 SHARED_ESCROW_ADDRESS=0xF7F2Bc463d79Bd3E5Cb693944B422c39114De058 forge script script/DeployRouter.s.sol:DeployRouter --rpc-url https://sepolia.base.org --broadcast --verify --private-key $PRIVATE_KEY
+   ```
+
+5. **Deploy Example Vault** (independent, for testing):
    ```shell
    forge script script/DeployVault.s.sol:DeployVault --rpc-url https://sepolia.base.org --broadcast --verify --private-key $PRIVATE_KEY
    ```

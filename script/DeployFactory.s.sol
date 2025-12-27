@@ -14,21 +14,37 @@ import {DepositRelayFactory} from "../src/simple/main/x402/DepositRelayFactory.s
  */
 contract DeployFactory is Script {
     function run() public {
-        // Get addresses from environment variables or use defaults
-        // Base Sepolia USDC address
-        address usdc = vm.envOr("USDC_ADDRESS", address(0x036CbD53842c5426634e7929541eC2318f3dCF7e));
+        uint256 chainId = block.chainid;
+        
+        // Get addresses from environment variables or use chain-specific defaults
+        address usdc;
+        address createxAddress;
+        
+        if (chainId == 84532) {
+            // Base Sepolia
+            usdc = vm.envOr("USDC_ADDRESS", address(0x036CbD53842c5426634e7929541eC2318f3dCF7e));
+            createxAddress = vm.envOr("CREATEX_ADDRESS", address(0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed));
+        } else if (chainId == 8453) {
+            // Base Mainnet
+            usdc = vm.envOr("USDC_ADDRESS", address(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913));
+            // CreateX mainnet address - check https://github.com/pcaversaccio/createx#createx-deployments
+            createxAddress = vm.envOr("CREATEX_ADDRESS", address(0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed));
+        } else {
+            // For other chains or local testing, require env vars
+            usdc = vm.envAddress("USDC_ADDRESS");
+            createxAddress = vm.envAddress("CREATEX_ADDRESS");
+            require(usdc != address(0), "USDC_ADDRESS must be set for this chain");
+            require(createxAddress != address(0), "CREATEX_ADDRESS must be set for this chain");
+        }
         
         // Escrow address - REQUIRED (should be deployed first using DeployEscrow.s.sol)
         address escrowAddress = vm.envOr("SHARED_ESCROW_ADDRESS", address(0));
         require(escrowAddress != address(0), "SHARED_ESCROW_ADDRESS must be set");
         
-        // CreateX address - use existing deployment or deploy new one
-        // Standard CreateX address for Base Sepolia: 0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed
-        address createxAddress = vm.envOr("CREATEX_ADDRESS", address(0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed));
-        
         vm.startBroadcast();
         
         console.log("=== Deploying DepositRelayFactory ===");
+        console.log("Chain ID:", chainId);
         console.log("USDC address:", usdc);
         console.log("Escrow address:", escrowAddress);
         console.log("CreateX address:", createxAddress);

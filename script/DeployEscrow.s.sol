@@ -16,22 +16,26 @@ contract DeployEscrow is Script {
         
         // Get addresses from environment variables or use chain-specific defaults
         address usdc;
-        address vault;
+        address pool;
         
         if (chainId == 84532) {
             // Base Sepolia
             usdc = vm.envOr("USDC_ADDRESS", address(0x036CbD53842c5426634e7929541eC2318f3dCF7e));
-            vault = vm.envOr("VAULT_ADDRESS", address(0xdA2502536e0E004b0AaAe30BDFd64902EA1b8849)); // Test vault
+            // Aave Pool on Base Sepolia - get from PoolAddressesProvider
+            pool = vm.envOr("AAVE_POOL_ADDRESS", address(0x2Ed4E8435eFf62Eb48E613159a6a5Fe86b19fa16)); // Base Sepolia Pool
         } else if (chainId == 8453) {
             // Base Mainnet
             usdc = vm.envOr("USDC_ADDRESS", address(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913));
-            vault = vm.envOr("VAULT_ADDRESS", address(0x7BfA7C4f149E7415b73bdeDfe609237e29CBF34A)); // Mainnet vault
+            // Aave Pool on Base Mainnet - get from PoolAddressesProvider.getPool()
+            // For now, set via AAVE_POOL_ADDRESS env var
+            pool = vm.envOr("AAVE_POOL_ADDRESS", address(0)); // Aave Pool Base Mainnet - MUST BE SET
+            require(pool != address(0), "AAVE_POOL_ADDRESS must be set for Base Mainnet");
         } else {
             // For other chains or local testing, require env vars
             usdc = vm.envAddress("USDC_ADDRESS");
-            vault = vm.envAddress("VAULT_ADDRESS");
+            pool = vm.envAddress("AAVE_POOL_ADDRESS");
             require(usdc != address(0), "USDC_ADDRESS must be set for this chain");
-            require(vault != address(0), "VAULT_ADDRESS must be set for this chain");
+            require(pool != address(0), "AAVE_POOL_ADDRESS must be set for this chain");
         }
         
         vm.startBroadcast();
@@ -39,14 +43,14 @@ contract DeployEscrow is Script {
         console.log("=== Deploying Shared Escrow ===");
         console.log("Chain ID:", chainId);
         console.log("USDC address:", usdc);
-        console.log("Vault address:", vault);
+        console.log("Aave Pool address:", pool);
         
         // Deploy shared Escrow for refund extension
         // Note: This escrow is shared by all merchants (merchants register with it)
-        // The vault is hardcoded at deployment and used for all deposits
+        // The Aave Pool is hardcoded at deployment and used for all deposits
         Escrow sharedEscrow = new Escrow(
             usdc,
-            vault        // vault address (hardcoded at deployment)
+            pool        // Aave Pool address (hardcoded at deployment)
         );
         
         console.log("\n=== Deployment Summary ===");
@@ -55,7 +59,7 @@ contract DeployEscrow is Script {
         console.log("SHARED_ESCROW_ADDRESS=", address(sharedEscrow));
         console.log("\nNote: Merchants must register with shared escrow:");
         console.log("      escrow.registerMerchant(arbiter)");
-        console.log("\nNote: Vault is hardcoded at deployment:", vault);
+        console.log("\nNote: Aave Pool is hardcoded at deployment:", pool);
         
         vm.stopBroadcast();
     }
