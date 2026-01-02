@@ -56,27 +56,27 @@ losses incurred from using these contracts.
 - **Description**: CREATE3 deployment contract used by the factory for deterministic address generation. This is the standard CreateX deployment for Base.
 
 ### Shared Escrow
-- **Address**: [`0x9b606d91C012547bB33746270cd2AC183Eb9184B`](https://basescan.org/address/0x9b606d91c012547bb33746270cd2ac183eb9184b)
+- **Address**: [`0x6De78B73dE889BEda028C02ECb38247EBD7e350e`](https://basescan.org/address/0x6de78b73de889beda028c02ecb38247ebd7e350e)
 - **Contract**: `src/simple/main/escrow/Escrow.sol:Escrow`
-- **Description**: Shared escrow contract for refund extension. Merchants register with this escrow to enable deposits and refunds. Deployed with Aave Pool for yield generation. Includes `getDeposit()` function for querying deposit information.
+- **Description**: Shared escrow contract for refund extension. Merchants register with this escrow to enable deposits and refunds. Deployed with Aave Pool for yield generation. Includes `getDeposit()` function for querying deposit information. Supports full refunds only (partial refunds removed).
 
 ### DepositRelayFactory
-- **Address**: [`0x6a2966E0Cf2D74F60143751E33fEb198309ed7dF`](https://basescan.org/address/0x6a2966e0cf2d74f60143751e33feb198309ed7df)
+- **Address**: [`0xb6D04024077bDfcfE3b62aF3d119bf44DBbfC41D`](https://basescan.org/address/0xb6d04024077bdfcfe3b62af3d119bf44dbbfc41d)
 - **Contract**: `src/simple/main/x402/DepositRelayFactory.sol:DepositRelayFactory`
 - **Description**: Factory contract that deploys DepositRelay proxies for merchants via CREATE3. Each merchant gets a deterministic proxy address. Uses the standard CreateX address. Deployed with Base Mainnet USDC address (`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`).
 
 ### DepositRelay (Implementation)
-- **Address**: [`0x00231D0c19ee8Abd5d88AC64D269f4879df83ad1`](https://basescan.org/address/0x00231d0c19ee8abd5d88ac64d269f4879df83ad1)
+- **Address**: [`0x3CEb7EE0309B47d127e644B47e1D2e1A4bAAfc4c`](https://basescan.org/address/0x3ceb7ee0309b47d127e644b47e1d2e1a4baafc4c)
 - **Contract**: `src/simple/main/x402/DepositRelay.sol:DepositRelay`
 - **Description**: Stateless implementation contract for deposit relays. Shared across all merchants via proxy pattern. Handles ERC3009 transfers signed for the relay proxy address and forwards tokens to the escrow.
 
 ### RefundRequest
-- **Address**: [`0x5D9B31ed7E5F12CE974C9F6b8bbEBd370056C5F6`](https://basescan.org/address/0x5d9b31ed7e5f12ce974c9f6b8bbebd370056c5f6)
+- **Address**: [`0x1e41fc012b9D8C4E24cEE79f9e1F805e2480048d`](https://basescan.org/address/0x1e41fc012b9d8c4e24cee79f9e1f805e2480048d)
 - **Contract**: `src/simple/main/requests/RefundRequest.sol:RefundRequest`
-- **Description**: Contract for managing refund requests for escrow deposits. Users can create refund requests with IPFS links, and merchants or arbiters can approve or deny them. Tracks refund request status (Pending, Approved, Denied).
+- **Description**: Contract for managing refund requests for escrow deposits. Users can create refund requests with IPFS links, cancel their own pending requests, and merchants or arbiters can approve or deny them. Tracks refund request status (Pending, Approved, Denied, Cancelled). Includes batch getters for efficient querying.
 
 ### MerchantRegistrationRouter
-- **Address**: [`0xB3a787296747F5259bF29bbfB7E5B598a2db5D29`](https://basescan.org/address/0xb3a787296747f5259bf29bbfb7e5b598a2db5d29)
+- **Address**: [`0xa48E8AdcA504D2f48e5AF6be49039354e922913F`](https://basescan.org/address/0xa48e8adca504d2f48e5af6be49039354e922913f)
 - **Contract**: `src/simple/main/x402/MerchantRegistrationRouter.sol:MerchantRegistrationRouter`
 - **Description**: Router contract that atomically registers merchants with the escrow and deploys their relay proxy via the factory. Prevents frontrunning by combining both operations in a single transaction.
 
@@ -91,11 +91,11 @@ losses incurred from using these contracts.
 - **Description**: Example ERC4626 vault for testing purposes. This is a mock vault from OpenZeppelin that implements the ERC4626 standard. Used only for testing.
 
 ### Configuration
-- **DEPOSIT_RELAY_FACTORY_ADDRESS**: `0x6a2966E0Cf2D74F60143751E33fEb198309ed7dF`
-- **SHARED_ESCROW_ADDRESS**: `0x9b606d91C012547bB33746270cd2AC183Eb9184B`
-- **REFUND_REQUEST_ADDRESS**: `0x5D9B31ed7E5F12CE974C9F6b8bbEBd370056C5F6`
-- **MERCHANT_REGISTRATION_ROUTER_ADDRESS**: `0xB3a787296747F5259bF29bbfB7E5B598a2db5D29`
-- **DEPOSIT_RELAY_IMPLEMENTATION_ADDRESS**: `0x00231D0c19ee8Abd5d88AC64D269f4879df83ad1`
+- **DEPOSIT_RELAY_FACTORY_ADDRESS**: `0xb6D04024077bDfcfE3b62aF3d119bf44DBbfC41D`
+- **SHARED_ESCROW_ADDRESS**: `0x6De78B73dE889BEda028C02ECb38247EBD7e350e`
+- **REFUND_REQUEST_ADDRESS**: `0x1e41fc012b9D8C4E24cEE79f9e1F805e2480048d`
+- **MERCHANT_REGISTRATION_ROUTER_ADDRESS**: `0xa48E8AdcA504D2f48e5AF6be49039354e922913F`
+- **DEPOSIT_RELAY_IMPLEMENTATION_ADDRESS**: `0x3CEb7EE0309B47d127e644B47e1D2e1A4bAAfc4c`
 - **CREATEX_ADDRESS**: `0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed` (Standard CreateX deployment for Base)
 - **AAVE_POOL_ADDRESS**: `0xA238Dd80C259a72e81d7e4664a9801593F98d1c5` (Aave Pool on Base Mainnet)
 - **USDC_ADDRESS**: `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` (Canonical USDC on Base Mainnet)
