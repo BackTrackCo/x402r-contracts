@@ -71,9 +71,9 @@ losses incurred from using these contracts.
 - **Description**: Stateless implementation contract for deposit relays. Shared across all merchants via proxy pattern. Handles ERC3009 transfers signed for the relay proxy address and forwards tokens to the escrow.
 
 ### RefundRequest
-- **Address**: [`0x1e41fc012b9D8C4E24cEE79f9e1F805e2480048d`](https://basescan.org/address/0x1e41fc012b9d8c4e24cee79f9e1f805e2480048d)
+- **Address**: [`0x55e0Fb85833f77A0d699346E827afa06bcf58e4e`](https://basescan.org/address/0x55e0fb85833f77a0d699346e827afa06bcf58e4e)
 - **Contract**: `src/simple/main/requests/RefundRequest.sol:RefundRequest`
-- **Description**: Contract for managing refund requests for escrow deposits. Users can create refund requests with IPFS links, cancel their own pending requests, and merchants or arbiters can approve or deny them. Tracks refund request status (Pending, Approved, Denied, Cancelled). Includes batch getters for efficient querying.
+- **Description**: Contract for managing refund requests for escrow deposits. Users can create refund requests with IPFS links, cancel their own pending requests, and merchants or arbiters can approve or deny them. Tracks refund request status (Pending, Approved, Denied, Cancelled). Includes batch getters for efficient querying. Prevents denying refunds after they've been processed. Cancelled requests remain in indexing arrays for history tracking. Stores original deposit amount (`originalAmount`) when refund request is created, allowing display of refund amounts even after deposits are refunded.
 
 ### MerchantRegistrationRouter
 - **Address**: [`0xa48E8AdcA504D2f48e5AF6be49039354e922913F`](https://basescan.org/address/0xa48e8adca504d2f48e5af6be49039354e922913f)
@@ -93,7 +93,7 @@ losses incurred from using these contracts.
 ### Configuration
 - **DEPOSIT_RELAY_FACTORY_ADDRESS**: `0xb6D04024077bDfcfE3b62aF3d119bf44DBbfC41D`
 - **SHARED_ESCROW_ADDRESS**: `0x6De78B73dE889BEda028C02ECb38247EBD7e350e`
-- **REFUND_REQUEST_ADDRESS**: `0x1e41fc012b9D8C4E24cEE79f9e1F805e2480048d`
+- **REFUND_REQUEST_ADDRESS**: `0x55e0Fb85833f77A0d699346E827afa06bcf58e4e`
 - **MERCHANT_REGISTRATION_ROUTER_ADDRESS**: `0xa48E8AdcA504D2f48e5AF6be49039354e922913F`
 - **DEPOSIT_RELAY_IMPLEMENTATION_ADDRESS**: `0x3CEb7EE0309B47d127e644B47e1D2e1A4bAAfc4c`
 - **CREATEX_ADDRESS**: `0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed` (Standard CreateX deployment for Base)
@@ -136,6 +136,11 @@ The following contracts have been deployed and verified on Base Sepolia testnet:
 - **Contract**: `src/simple/main/x402/DepositRelay.sol:DepositRelay`
 - **Description**: Stateless implementation contract for deposit relays. Shared across all merchants via proxy pattern. Handles ERC3009 transfers signed for the relay proxy address and forwards tokens to the escrow.
 
+### RefundRequest
+- **Address**: [`0x5762132fFb99d9A74Cc513c6b225A98E5C211592`](https://sepolia.basescan.org/address/0x5762132ffb99d9a74cc513c6b225a98e5c211592)
+- **Contract**: `src/simple/main/requests/RefundRequest.sol:RefundRequest`
+- **Description**: Contract for managing refund requests for escrow deposits. Users can create refund requests with IPFS links, cancel their own pending requests, and merchants or arbiters can approve or deny them. Tracks refund request status (Pending, Approved, Denied, Cancelled). Includes batch getters for efficient querying. Prevents denying refunds after they've been processed. Cancelled requests remain in indexing arrays for history tracking. Stores original deposit amount (`originalAmount`) when refund request is created, allowing display of refund amounts even after deposits are refunded.
+
 ### Example ERC4626 Vault (for testing)
 - **Address**: [`0x8ABcf992AE22B60f7Ea7D384a40018b8e07a610a`](https://sepolia.basescan.org/address/0x8abcf992ae22b60f7ea7d384a40018b8e07a610a)
 - **Contract**: `lib/openzeppelin-contracts/contracts/mocks/token/ERC4626Mock.sol:ERC4626Mock`
@@ -144,6 +149,7 @@ The following contracts have been deployed and verified on Base Sepolia testnet:
 ### Configuration
 - **DEPOSIT_RELAY_FACTORY_ADDRESS**: `0xf981D813842eE78d18ef8ac825eef8e2C8A8BaC2`
 - **SHARED_ESCROW_ADDRESS**: `0xF7F2Bc463d79Bd3E5Cb693944B422c39114De058`
+- **REFUND_REQUEST_ADDRESS**: `0x5762132fFb99d9A74Cc513c6b225A98E5C211592`
 - **CREATEX_ADDRESS**: `0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed` (Standard CreateX deployment for Base Sepolia)
 - **TEST_VAULT_ADDRESS**: `0x8ABcf992AE22B60f7Ea7D384a40018b8e07a610a` (Example vault for testing)
 

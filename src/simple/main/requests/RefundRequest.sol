@@ -32,6 +32,7 @@ contract RefundRequest {
         address merchantPayout; // Merchant payout address (stored directly)
         string ipfsLink;        // IPFS link to refund request details/evidence
         RequestStatus status;   // Current status of the request
+        uint256 originalAmount; // Original deposit amount (stored when request is created)
     }
 
     // Reference to the Escrow contract
@@ -94,13 +95,14 @@ contract RefundRequest {
             // If cancelled, we'll reuse the existing request slot and update it
         }
         
-        // Create or update refund request with merchantPayout
+        // Create or update refund request with merchantPayout and original amount
         refundRequests[user][depositNonce] = RefundRequestData({
             user: user,
             depositNonce: depositNonce,
             merchantPayout: merchantPayout,
             ipfsLink: ipfsLink,
-            status: RequestStatus.Pending
+            status: RequestStatus.Pending,
+            originalAmount: principal // Store original deposit amount
         });
         
         // Update indexing arrays (only add if not already in arrays)
@@ -176,6 +178,12 @@ contract RefundRequest {
             msg.sender == merchantPayout || msg.sender == arbiter,
             "Not merchant or arbiter"
         );
+        
+        // If denying, check deposit still exists (prevent denying after refund)
+        if (newStatus == RequestStatus.Denied) {
+            (uint256 principal, , , ) = ESCROW.getDeposit(user, depositNonce);
+            require(principal > 0, "Cannot deny: deposit already refunded/released");
+        }
         
         RequestStatus oldStatus = request.status;
         request.status = newStatus;
@@ -253,9 +261,9 @@ contract RefundRequest {
         // Update status to Cancelled
         request.status = RequestStatus.Cancelled;
         
-        // Remove from indexing arrays
-        _removeFromUserIndex(user, depositNonce);
-        _removeFromMerchantIndex(request.merchantPayout, user, depositNonce);
+        // Don't remove from indexing arrays so cancelled requests appear in archived section
+        // This allows users to see their cancellation history
+        // Note: If a new request is made for the same nonce, it will overwrite this cancelled request
         
         emit RefundRequestCancelled(user, depositNonce, msg.sender);
     }
