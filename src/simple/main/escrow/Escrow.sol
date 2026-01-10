@@ -102,8 +102,8 @@ contract Escrow is EscrowAccess {
         
         // Distribute yield if available (yield can be partial if insufficient)
         if (yieldAmount > 0) {
+            require(registeredMerchants[merchantPayout], "Merchant not registered");
             address arbiter = merchantArbiters[merchantPayout];
-            require(arbiter != address(0), "Merchant not registered");
             
             // Check how much we can withdraw for yield after principal withdrawal
             uint256 totalAssetsAfter = IERC20(ATOKEN).balanceOf(address(this));

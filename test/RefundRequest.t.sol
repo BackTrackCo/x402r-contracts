@@ -28,6 +28,7 @@ contract RefundRequestTest is BaseTest {
         assertEq(request.depositNonce, depositNonce, "Deposit nonce should match");
         assertEq(request.ipfsLink, TEST_IPFS_LINK, "IPFS link should match");
         assertEq(uint8(request.status), uint8(RefundRequest.RequestStatus.Pending), "Status should be Pending");
+        assertEq(request.originalAmount, DEPOSIT_AMOUNT, "Original amount should match deposit amount");
     }
     
     function test_RequestRefund_EmptyIPFSLink() public {
@@ -69,6 +70,31 @@ contract RefundRequestTest is BaseTest {
         assertEq(request.depositNonce, depositNonce, "Deposit nonce should match");
         assertEq(request.ipfsLink, TEST_IPFS_LINK, "IPFS link should match");
         assertEq(uint8(request.status), uint8(RefundRequest.RequestStatus.Pending), "Status should be Pending");
+        assertEq(request.originalAmount, DEPOSIT_AMOUNT, "Original amount should match deposit amount");
+    }
+    
+    function test_OriginalAmount_PersistsAfterRefund() public {
+        token.mint(address(escrow), DEPOSIT_AMOUNT);
+        uint256 depositNonce = escrow.noteDeposit(user, merchant, DEPOSIT_AMOUNT);
+        
+        vm.prank(user);
+        refundRequest.requestRefund(depositNonce, TEST_IPFS_LINK);
+        
+        // Verify originalAmount is stored
+        RefundRequest.RefundRequestData memory request = refundRequest.getRefundRequest(user, depositNonce);
+        assertEq(request.originalAmount, DEPOSIT_AMOUNT, "Original amount should be stored");
+        
+        // Refund the deposit
+        vm.prank(merchant);
+        escrow.refund(user, depositNonce);
+        
+        // Verify originalAmount persists even after refund
+        request = refundRequest.getRefundRequest(user, depositNonce);
+        assertEq(request.originalAmount, DEPOSIT_AMOUNT, "Original amount should persist after refund");
+        
+        // Verify deposit principal is now 0
+        (uint256 principal, , , ) = escrow.getDeposit(user, depositNonce);
+        assertEq(principal, 0, "Deposit principal should be 0 after refund");
     }
     
     function test_GetRefundRequest_DoesNotExist() public {
@@ -272,6 +298,50 @@ contract RefundRequestTest is BaseTest {
         
         vm.prank(merchant);
         refundRequest.updateStatus(user, depositNonce, RefundRequest.RequestStatus.Approved);
+    }
+    
+    function test_CancelRefundRequest_RemainsInArrays() public {
+        token.mint(address(escrow), DEPOSIT_AMOUNT);
+        uint256 depositNonce = escrow.noteDeposit(user, merchant, DEPOSIT_AMOUNT);
+        
+        vm.prank(user);
+        refundRequest.requestRefund(depositNonce, TEST_IPFS_LINK);
+        
+        // Verify request is in arrays
+        RefundRequest.RefundRequestData[] memory userRequests = refundRequest.getUserRefundRequests(user);
+        assertEq(userRequests.length, 1, "User should have 1 request");
+        RefundRequest.RefundRequestData[] memory merchantRequests = refundRequest.getMerchantRefundRequests(merchant);
+        assertEq(merchantRequests.length, 1, "Merchant should have 1 request");
+        
+        // Cancel the request
+        vm.prank(user);
+        refundRequest.cancelRefundRequest(depositNonce);
+        
+        // Verify request still in arrays (cancelled requests remain)
+        userRequests = refundRequest.getUserRefundRequests(user);
+        assertEq(userRequests.length, 1, "User should still have 1 request after cancel");
+        assertEq(uint8(userRequests[0].status), uint8(RefundRequest.RequestStatus.Cancelled), "Status should be Cancelled");
+        
+        merchantRequests = refundRequest.getMerchantRefundRequests(merchant);
+        assertEq(merchantRequests.length, 1, "Merchant should still have 1 request after cancel");
+        assertEq(uint8(merchantRequests[0].status), uint8(RefundRequest.RequestStatus.Cancelled), "Status should be Cancelled");
+    }
+    
+    function test_UpdateStatus_Denied_AfterRefund_Fails() public {
+        token.mint(address(escrow), DEPOSIT_AMOUNT);
+        uint256 depositNonce = escrow.noteDeposit(user, merchant, DEPOSIT_AMOUNT);
+        
+        vm.prank(user);
+        refundRequest.requestRefund(depositNonce, TEST_IPFS_LINK);
+        
+        // Process refund directly via Escrow
+        vm.prank(merchant);
+        escrow.refund(user, depositNonce);
+        
+        // Try to deny after refund - should fail
+        vm.prank(merchant);
+        vm.expectRevert("Cannot deny: deposit already refunded/released");
+        refundRequest.updateStatus(user, depositNonce, RefundRequest.RequestStatus.Denied);
     }
 }
 

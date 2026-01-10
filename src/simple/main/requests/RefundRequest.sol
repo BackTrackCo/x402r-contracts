@@ -13,18 +13,26 @@ import {Escrow} from "../escrow/Escrow.sol";
  *      Only the merchant or arbiter can update the status.
  */
 contract RefundRequest {
-    // Status enum: 0 = Pending, 1 = Approved, 2 = Denied
+    // Status enum: 0 = Pending, 1 = Approved, 2 = Denied, 3 = Cancelled
     enum RequestStatus {
         Pending,
         Approved,
-        Denied
+        Denied,
+        Cancelled
+    }
+
+    struct RefundRequestKey {
+        address user;
+        uint256 depositNonce;
     }
 
     struct RefundRequestData {
         address user;           // User who made the deposit
         uint256 depositNonce;   // Deposit nonce from Escrow
+        address merchantPayout; // Merchant payout address (stored directly)
         string ipfsLink;        // IPFS link to refund request details/evidence
         RequestStatus status;   // Current status of the request
+        uint256 originalAmount; // Original deposit amount (stored when request is created)
     }
 
     // Reference to the Escrow contract
@@ -32,6 +40,10 @@ contract RefundRequest {
 
     // user → depositNonce → refund request
     mapping(address => mapping(uint256 => RefundRequestData)) private refundRequests;
+    // user → array of deposit nonces (for iteration)
+    mapping(address => uint256[]) private userRefundRequestNonces;
+    // merchant → array of refund request keys (for iteration)
+    mapping(address => RefundRequestKey[]) private merchantRefundRequests;
 
     // Events
     event RefundRequested(
@@ -46,6 +58,12 @@ contract RefundRequest {
         RequestStatus oldStatus,
         RequestStatus newStatus,
         address updatedBy
+    );
+    
+    event RefundRequestCancelled(
+        address indexed user,
+        uint256 indexed depositNonce,
+        address cancelledBy
     );
 
     /// @notice Constructor
@@ -70,17 +88,51 @@ contract RefundRequest {
         require(principal > 0, "Deposit does not exist");
         require(merchantPayout != address(0), "Invalid merchant payout");
         
-        // Check if request already exists
+        // Check if request already exists (allow re-requesting if cancelled)
         RefundRequestData storage existingRequest = refundRequests[user][depositNonce];
-        require(existingRequest.user == address(0), "Request already exists");
+        if (existingRequest.user != address(0)) {
+            require(existingRequest.status == RequestStatus.Cancelled, "Request already exists");
+            // If cancelled, we'll reuse the existing request slot and update it
+        }
         
-        // Create new refund request
+        // Create or update refund request with merchantPayout and original amount
         refundRequests[user][depositNonce] = RefundRequestData({
             user: user,
             depositNonce: depositNonce,
+            merchantPayout: merchantPayout,
             ipfsLink: ipfsLink,
-            status: RequestStatus.Pending
+            status: RequestStatus.Pending,
+            originalAmount: principal // Store original deposit amount
         });
+        
+        // Update indexing arrays (only add if not already in arrays)
+        // For cancelled requests, they were removed from arrays, so we need to add them back
+        uint256[] storage userNonces = userRefundRequestNonces[user];
+        bool foundInUserArray = false;
+        for (uint256 i = 0; i < userNonces.length; i++) {
+            if (userNonces[i] == depositNonce) {
+                foundInUserArray = true;
+                break;
+            }
+        }
+        if (!foundInUserArray) {
+            userNonces.push(depositNonce);
+        }
+        
+        RefundRequestKey[] storage merchantKeys = merchantRefundRequests[merchantPayout];
+        bool foundInMerchantArray = false;
+        for (uint256 i = 0; i < merchantKeys.length; i++) {
+            if (merchantKeys[i].user == user && merchantKeys[i].depositNonce == depositNonce) {
+                foundInMerchantArray = true;
+                break;
+            }
+        }
+        if (!foundInMerchantArray) {
+            merchantKeys.push(RefundRequestKey({
+                user: user,
+                depositNonce: depositNonce
+            }));
+        }
         
         emit RefundRequested(user, depositNonce, ipfsLink);
     }
@@ -117,7 +169,8 @@ contract RefundRequest {
         require(request.status == RequestStatus.Pending, "Request not pending");
         
         // Verify the caller is merchant or arbiter for this deposit
-        (, , , address merchantPayout) = ESCROW.getDeposit(user, depositNonce);
+        // Use merchantPayout from struct instead of querying Escrow
+        address merchantPayout = request.merchantPayout;
         require(merchantPayout != address(0), "Invalid merchant payout");
         
         address arbiter = ESCROW.getArbiter(merchantPayout);
@@ -125,6 +178,12 @@ contract RefundRequest {
             msg.sender == merchantPayout || msg.sender == arbiter,
             "Not merchant or arbiter"
         );
+        
+        // If denying, check deposit still exists (prevent denying after refund)
+        if (newStatus == RequestStatus.Denied) {
+            (uint256 principal, , , ) = ESCROW.getDeposit(user, depositNonce);
+            require(principal > 0, "Cannot deny: deposit already refunded/released");
+        }
         
         RequestStatus oldStatus = request.status;
         request.status = newStatus;
@@ -143,7 +202,7 @@ contract RefundRequest {
     /// @notice Get the status of a refund request
     /// @param user The user address
     /// @param depositNonce The deposit nonce
-    /// @return The status of the request (0 = Pending, 1 = Approved, 2 = Denied)
+    /// @return The status of the request (0 = Pending, 1 = Approved, 2 = Denied, 3 = Cancelled)
     /// @dev Returns 0 if request doesn't exist (which also means Pending)
     function getRefundRequestStatus(address user, uint256 depositNonce)
         external
@@ -155,6 +214,93 @@ contract RefundRequest {
             return uint8(RequestStatus.Pending);
         }
         return uint8(request.status);
+    }
+
+    /// @notice Get all refund requests for a user
+    /// @param user The user address
+    /// @return Array of refund request data
+    function getUserRefundRequests(address user) 
+        external 
+        view 
+        returns (RefundRequestData[] memory) {
+        uint256[] memory nonces = userRefundRequestNonces[user];
+        RefundRequestData[] memory requests = new RefundRequestData[](nonces.length);
+        for (uint256 i = 0; i < nonces.length; i++) {
+            requests[i] = refundRequests[user][nonces[i]];
+        }
+        return requests;
+    }
+
+    /// @notice Get all refund requests for a merchant
+    /// @param merchant The merchant payout address
+    /// @return Array of refund request data
+    function getMerchantRefundRequests(address merchant) 
+        external 
+        view 
+        returns (RefundRequestData[] memory) {
+        RefundRequestKey[] memory keys = merchantRefundRequests[merchant];
+        RefundRequestData[] memory requests = new RefundRequestData[](keys.length);
+        for (uint256 i = 0; i < keys.length; i++) {
+            requests[i] = refundRequests[keys[i].user][keys[i].depositNonce];
+        }
+        return requests;
+    }
+
+    /// @notice Cancel a refund request
+    /// @param depositNonce The deposit nonce of the refund request to cancel
+    /// @dev Only the user who created the request can cancel it
+    ///      Request must be in Pending status
+    function cancelRefundRequest(uint256 depositNonce) external {
+        address user = msg.sender;
+        
+        RefundRequestData storage request = refundRequests[user][depositNonce];
+        require(request.user != address(0), "Request does not exist");
+        require(request.user == user, "Not request owner");
+        require(request.status == RequestStatus.Pending, "Request not pending");
+        
+        // Update status to Cancelled
+        request.status = RequestStatus.Cancelled;
+        
+        // Don't remove from indexing arrays so cancelled requests appear in archived section
+        // This allows users to see their cancellation history
+        // Note: If a new request is made for the same nonce, it will overwrite this cancelled request
+        
+        emit RefundRequestCancelled(user, depositNonce, msg.sender);
+    }
+
+    /// @notice Remove request from user's nonce array
+    /// @param user The user address
+    /// @param depositNonce The deposit nonce
+    function _removeFromUserIndex(address user, uint256 depositNonce) private {
+        uint256[] storage nonces = userRefundRequestNonces[user];
+        for (uint256 i = 0; i < nonces.length; i++) {
+            if (nonces[i] == depositNonce) {
+                // Swap with last element and pop
+                nonces[i] = nonces[nonces.length - 1];
+                nonces.pop();
+                break;
+            }
+        }
+    }
+
+    /// @notice Remove request from merchant's request array
+    /// @param merchant The merchant payout address
+    /// @param user The user address
+    /// @param depositNonce The deposit nonce
+    function _removeFromMerchantIndex(
+        address merchant,
+        address user,
+        uint256 depositNonce
+    ) private {
+        RefundRequestKey[] storage keys = merchantRefundRequests[merchant];
+        for (uint256 i = 0; i < keys.length; i++) {
+            if (keys[i].user == user && keys[i].depositNonce == depositNonce) {
+                // Swap with last element and pop
+                keys[i] = keys[keys.length - 1];
+                keys.pop();
+                break;
+            }
+        }
     }
 }
 
