@@ -2,36 +2,35 @@
 pragma solidity ^0.8.23;
 
 import {Script, console} from "forge-std/Script.sol";
-import {RefundRequest} from "../src/simple/main/requests/RefundRequest.sol";
+import {RefundRequest} from "../src/commerce-payments/requests/RefundRequest.sol";
 
 /**
  * @title DeployRefundRequest
  * @notice Deploys the RefundRequest contract
- * @dev This script deploys the RefundRequest contract which depends on:
- *      - Escrow address (SHARED_ESCROW_ADDRESS env var or must be provided)
+ * @dev This script deploys the RefundRequest contract for managing refund requests
+ *      for Base Commerce Payments authorizations.
+ * 
+ *      Environment variables:
+ *      - OPERATOR_ADDRESS: Address of the ArbiterationOperator contract (required)
  */
 contract DeployRefundRequest is Script {
     function run() public {
-        uint256 chainId = block.chainid;
-        
-        // Escrow address - REQUIRED (should be deployed first using DeployEscrow.s.sol)
-        address escrowAddress = vm.envOr("SHARED_ESCROW_ADDRESS", address(0));
-        require(escrowAddress != address(0), "SHARED_ESCROW_ADDRESS must be set");
+        // Get operator address from environment variables
+        address operator = vm.envAddress("OPERATOR_ADDRESS");
         
         vm.startBroadcast();
         
         console.log("=== Deploying RefundRequest ===");
-        console.log("Chain ID:", chainId);
-        console.log("Escrow address:", escrowAddress);
+        console.log("Operator address:", operator);
         
         // Deploy RefundRequest
-        RefundRequest refundRequest = new RefundRequest(escrowAddress);
+        RefundRequest refundRequest = new RefundRequest(operator);
         
         console.log("\n=== Deployment Summary ===");
         console.log("RefundRequest:", address(refundRequest));
+        console.log("Operator:", address(refundRequest.OPERATOR()));
         console.log("\n=== Configuration ===");
         console.log("REFUND_REQUEST_ADDRESS=", address(refundRequest));
-        console.log("SHARED_ESCROW_ADDRESS=", escrowAddress);
         
         vm.stopBroadcast();
     }

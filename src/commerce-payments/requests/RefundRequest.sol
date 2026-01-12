@@ -1,37 +1,44 @@
 // SPDX-License-Identifier: BUSL-1.1
 // CONTRACTS UNAUDITED: USE AT YOUR OWN RISK
-pragma solidity >=0.8.23 <0.9.0;
+pragma solidity >=0.8.33 <0.9.0;
 
-import {CommercePaymentsOperator} from "../operator/CommercePaymentsOperator.sol";
+import {ArbiterationOperator} from "../operator/ArbiterationOperator.sol";
+import {RefundRequestAccess} from "./RefundRequestAccess.sol";
 
 /**
  * @title RefundRequest
  * @notice Contract for managing refund requests for Base Commerce Payments authorizations
  * @dev Stores refund requests with authorizationId, ipfsLink, and status.
  *      Only the user who made the authorization can create a request.
- *      Pre-capture: merchant OR arbiter can approve
- *      Post-capture: merchant ONLY can approve
+ *      In escrow: merchant OR arbiter can approve
+ *      Post escrow: merchant ONLY can approve
  */
-contract RefundRequest {
-    // Status enum: 0 = Pending, 1 = Approved, 2 = Denied
+contract RefundRequest is RefundRequestAccess {
+    // Status enum: 0 = Pending, 1 = Approved, 2 = Denied, 3 = Cancelled
     enum RequestStatus {
         Pending,
         Approved,
-        Denied
+        Denied,
+        Cancelled
     }
 
     struct RefundRequestData {
         address payer;          // Payer who made the authorization
         bytes32 authorizationId; // Authorization ID from operator contract
+        address merchantPayout; // Merchant payout address (stored directly)
         string ipfsLink;        // IPFS link to refund request details/evidence
         RequestStatus status;   // Current status of the request
+        uint256 originalAmount; // Original authorization amount (stored when request is created)
     }
-
-    // Reference to the operator contract
-    CommercePaymentsOperator public immutable OPERATOR;
 
     // authorizationId → refund request
     mapping(bytes32 => RefundRequestData) private refundRequests;
+    // payer → array of authorization IDs (for iteration)
+    mapping(address => bytes32[]) private payerRefundRequests;
+    // merchant → array of authorization IDs (for iteration)
+    mapping(address => bytes32[]) private merchantRefundRequests;
+    // arbiter → array of authorization IDs (for iteration)
+    mapping(address => bytes32[]) private arbiterRefundRequests;
 
     // Events
     event RefundRequested(
@@ -46,13 +53,16 @@ contract RefundRequest {
         RequestStatus newStatus,
         address updatedBy
     );
+    
+    event RefundRequestCancelled(
+        bytes32 indexed authorizationId,
+        address indexed payer,
+        address cancelledBy
+    );
 
     /// @notice Constructor
-    /// @param _operator Address of the CommercePaymentsOperator contract
-    constructor(address _operator) {
-        require(_operator != address(0), "Zero operator");
-        OPERATOR = CommercePaymentsOperator(_operator);
-    }
+    /// @param _operator Address of the ArbiterationOperator contract
+    constructor(address _operator) RefundRequestAccess(_operator) {}
 
     /// @notice Request a refund for an authorization
     /// @param authorizationId The authorization ID to request refund for
@@ -67,17 +77,67 @@ contract RefundRequest {
         require(payer != address(0), "Authorization does not exist");
         require(msg.sender == payer, "Only payer can request refund");
         
-        // Check if request already exists
-        RefundRequestData storage existingRequest = refundRequests[authorizationId];
-        require(existingRequest.payer == address(0), "Request already exists");
+        // Get authorization data to get merchant, arbiter, and amount
+        ArbiterationOperator.AuthorizationData memory auth = OPERATOR.getAuthorization(authorizationId);
+        address merchantPayout = auth.merchant;
+        address arbiter = auth.arbiter;
+        require(merchantPayout != address(0), "Invalid merchant payout");
+        require(arbiter != address(0), "Invalid arbiter");
         
-        // Create new refund request
+        // Check if request already exists (allow re-requesting if cancelled)
+        RefundRequestData storage existingRequest = refundRequests[authorizationId];
+        if (existingRequest.payer != address(0)) {
+            require(existingRequest.status == RequestStatus.Cancelled, "Request already exists");
+            // If cancelled, we'll reuse the existing request slot and update it
+        }
+        
+        // Create or update refund request with merchantPayout and original amount
         refundRequests[authorizationId] = RefundRequestData({
             payer: payer,
             authorizationId: authorizationId,
+            merchantPayout: merchantPayout,
             ipfsLink: ipfsLink,
-            status: RequestStatus.Pending
+            status: RequestStatus.Pending,
+            originalAmount: auth.amount // Store original authorization amount
         });
+        
+        // Update indexing arrays (only add if not already in arrays)
+        // For cancelled requests, they were removed from arrays, so we need to add them back
+        bytes32[] storage payerAuthIds = payerRefundRequests[payer];
+        bool foundInPayerArray = false;
+        for (uint256 i = 0; i < payerAuthIds.length; i++) {
+            if (payerAuthIds[i] == authorizationId) {
+                foundInPayerArray = true;
+                break;
+            }
+        }
+        if (!foundInPayerArray) {
+            payerAuthIds.push(authorizationId);
+        }
+        
+        bytes32[] storage merchantAuthIds = merchantRefundRequests[merchantPayout];
+        bool foundInMerchantArray = false;
+        for (uint256 i = 0; i < merchantAuthIds.length; i++) {
+            if (merchantAuthIds[i] == authorizationId) {
+                foundInMerchantArray = true;
+                break;
+            }
+        }
+        if (!foundInMerchantArray) {
+            merchantAuthIds.push(authorizationId);
+        }
+        
+        bytes32[] storage arbiterAuthIds = arbiterRefundRequests[arbiter];
+        bool foundInArbiterArray = false;
+        for (uint256 i = 0; i < arbiterAuthIds.length; i++) {
+            if (arbiterAuthIds[i] == authorizationId) {
+                foundInArbiterArray = true;
+                break;
+            }
+        }
+        if (!foundInArbiterArray) {
+            arbiterAuthIds.push(authorizationId);
+        }
         
         emit RefundRequested(authorizationId, payer, ipfsLink);
     }
@@ -95,47 +155,69 @@ contract RefundRequest {
         return request;
     }
 
-    /// @notice Update the status of a refund request
+    /// @notice Update the status of a refund request (in escrow)
     /// @param authorizationId The authorization ID
     /// @param newStatus The new status (Approved or Denied)
-    /// @dev Pre-capture: merchant OR arbiter can approve
-    ///      Post-capture: merchant ONLY can approve
+    /// @dev Only merchant OR arbiter can approve in-escrow refunds
     ///      Status can only be changed from Pending to Approved or Denied
-    function updateStatus(
+    function updateStatusInEscrow(
         bytes32 authorizationId,
         RequestStatus newStatus
-    ) external {
+    ) public onlyMerchantOrArbiterForAuthorization(authorizationId) onlyInEscrow(authorizationId) {
         require(newStatus == RequestStatus.Approved || newStatus == RequestStatus.Denied, "Invalid status");
         
         RefundRequestData storage request = refundRequests[authorizationId];
         require(request.payer != address(0), "Request does not exist");
         require(request.status == RequestStatus.Pending, "Request not pending");
         
-        // Get authorization data from operator contract
-        CommercePaymentsOperator.AuthorizationData memory auth = OPERATOR.getAuthorization(authorizationId);
-        address merchant = auth.merchant;
-        address arbiter = auth.arbiter;
-        require(merchant != address(0), "Invalid merchant");
-        require(arbiter != address(0), "Invalid arbiter");
+        // Get authorization data for internal update
+        ArbiterationOperator.AuthorizationData memory auth = OPERATOR.getAuthorization(authorizationId);
+        _updateStatusInternal(authorizationId, newStatus, auth, false);
+    }
+    
+    /// @notice Update the status of a refund request (post escrow)
+    /// @param authorizationId The authorization ID
+    /// @param newStatus The new status (Approved or Denied)
+    /// @dev Only merchant can approve post-escrow refunds
+    ///      Status can only be changed from Pending to Approved or Denied
+    function updateStatusPostEscrow(
+        bytes32 authorizationId,
+        RequestStatus newStatus
+    ) public onlyMerchantForAuthorization(authorizationId) onlyPostEscrow(authorizationId) {
+        require(newStatus == RequestStatus.Approved || newStatus == RequestStatus.Denied, "Invalid status");
         
-        // Check if authorization is captured
-        bool isCaptured = auth.captured;
+        RefundRequestData storage request = refundRequests[authorizationId];
+        require(request.payer != address(0), "Request does not exist");
+        require(request.status == RequestStatus.Pending, "Request not pending");
         
-        // CRITICAL: Enforce approval rules based on capture status
-        // Use operator contract's access control to verify caller
-        if (isCaptured) {
-            // Post-capture: merchant ONLY can approve
-            require(OPERATOR.isMerchantRegistered(merchant), "Merchant not registered");
-            require(msg.sender == merchant, "Post-capture refund requires merchant approval only");
-        } else {
-            // Pre-capture: merchant OR arbiter can approve
-            require(OPERATOR.isMerchantRegistered(merchant), "Merchant not registered");
-            require(
-                msg.sender == merchant || msg.sender == arbiter,
-                "Pre-capture refund requires arbiter or merchant approval"
-            );
+        // Get authorization data for internal update
+        ArbiterationOperator.AuthorizationData memory auth = OPERATOR.getAuthorization(authorizationId);
+        _updateStatusInternal(authorizationId, newStatus, auth, true);
+    }
+    
+    /// @notice Internal function to update refund request status
+    /// @param authorizationId The authorization ID
+    /// @param newStatus The new status
+    /// @param auth The authorization data
+    /// @param isCaptured Whether the authorization is captured
+    function _updateStatusInternal(
+        bytes32 authorizationId,
+        RequestStatus newStatus,
+        ArbiterationOperator.AuthorizationData memory auth,
+        bool isCaptured
+    ) internal {
+        // If denying, check authorization still exists (prevent denying after full refund)
+        if (newStatus == RequestStatus.Denied) {
+            // Verify authorization still exists and hasn't been fully refunded
+            // For in escrow: check if refundedAmount >= amount
+            // For post escrow: check if refundedAmount >= capturedAmount
+            bool fullyRefunded = isCaptured 
+                ? auth.refundedAmount >= auth.capturedAmount 
+                : auth.refundedAmount >= auth.amount;
+            require(!fullyRefunded, "Cannot deny: authorization already fully refunded");
         }
         
+        RefundRequestData storage request = refundRequests[authorizationId];
         RequestStatus oldStatus = request.status;
         request.status = newStatus;
         
@@ -151,7 +233,7 @@ contract RefundRequest {
 
     /// @notice Get the status of a refund request
     /// @param authorizationId The authorization ID
-    /// @return The status of the request (0 = Pending, 1 = Approved, 2 = Denied)
+    /// @return The status of the request (0 = Pending, 1 = Approved, 2 = Denied, 3 = Cancelled)
     /// @dev Returns 0 if request doesn't exist (which also means Pending)
     function getRefundRequestStatus(bytes32 authorizationId)
         external
@@ -163,6 +245,73 @@ contract RefundRequest {
             return uint8(RequestStatus.Pending);
         }
         return uint8(request.status);
+    }
+
+    /// @notice Get all refund requests for a payer
+    /// @param payer The payer address
+    /// @return Array of refund request data
+    function getPayerRefundRequests(address payer) 
+        external 
+        view 
+        returns (RefundRequestData[] memory) {
+        bytes32[] memory authIds = payerRefundRequests[payer];
+        RefundRequestData[] memory requests = new RefundRequestData[](authIds.length);
+        for (uint256 i = 0; i < authIds.length; i++) {
+            requests[i] = refundRequests[authIds[i]];
+        }
+        return requests;
+    }
+
+    /// @notice Get all refund requests for a merchant
+    /// @param merchant The merchant payout address
+    /// @return Array of refund request data
+    function getMerchantRefundRequests(address merchant) 
+        external 
+        view 
+        returns (RefundRequestData[] memory) {
+        bytes32[] memory authIds = merchantRefundRequests[merchant];
+        RefundRequestData[] memory requests = new RefundRequestData[](authIds.length);
+        for (uint256 i = 0; i < authIds.length; i++) {
+            requests[i] = refundRequests[authIds[i]];
+        }
+        return requests;
+    }
+
+    /// @notice Get all refund requests for an arbiter
+    /// @param arbiter The arbiter address
+    /// @return Array of refund request data
+    function getArbiterRefundRequests(address arbiter) 
+        external 
+        view 
+        returns (RefundRequestData[] memory) {
+        bytes32[] memory authIds = arbiterRefundRequests[arbiter];
+        RefundRequestData[] memory requests = new RefundRequestData[](authIds.length);
+        for (uint256 i = 0; i < authIds.length; i++) {
+            requests[i] = refundRequests[authIds[i]];
+        }
+        return requests;
+    }
+
+    /// @notice Cancel a refund request
+    /// @param authorizationId The authorization ID of the refund request to cancel
+    /// @dev Only the payer who created the request can cancel it
+    ///      Request must be in Pending status
+    function cancelRefundRequest(bytes32 authorizationId) external {
+        address payer = msg.sender;
+        
+        RefundRequestData storage request = refundRequests[authorizationId];
+        require(request.payer != address(0), "Request does not exist");
+        require(request.payer == payer, "Not request owner");
+        require(request.status == RequestStatus.Pending, "Request not pending");
+        
+        // Update status to Cancelled
+        request.status = RequestStatus.Cancelled;
+        
+        // Don't remove from indexing arrays so cancelled requests appear in archived section
+        // This allows users to see their cancellation history
+        // Note: If a new request is made for the same authorizationId, it will overwrite this cancelled request
+        
+        emit RefundRequestCancelled(authorizationId, payer, msg.sender);
     }
 }
 
