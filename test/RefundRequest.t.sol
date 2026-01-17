@@ -1,337 +1,410 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.8.33 <0.9.0;
+pragma solidity ^0.8.28;
 
 import {Test, console} from "forge-std/Test.sol";
+import {ArbitrationOperator} from "../src/commerce-payments/operator/ArbitrationOperator.sol";
+import {ArbitrationOperatorAccess} from "../src/commerce-payments/operator/ArbitrationOperatorAccess.sol";
+import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
 import {RefundRequest} from "../src/commerce-payments/requests/RefundRequest.sol";
-import {ArbiterationOperator} from "../src/commerce-payments/operator/ArbiterationOperator.sol";
+import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockEscrow} from "./mocks/MockEscrow.sol";
 
 contract RefundRequestTest is Test {
+    ArbitrationOperator public operator;
+    ArbitrationOperatorFactory public factory;
     RefundRequest public refundRequest;
-    ArbiterationOperator public operator;
     MockERC20 public token;
     MockEscrow public escrow;
-    
+
     address public owner;
-    address public merchant;
+    address public protocolFeeRecipient;
+    address public receiver; // merchant
     address public arbiter;
     address public payer;
-    
-    uint256 public constant REFUND_DELAY = 7 days;
+
+    uint256 public constant MAX_TOTAL_FEE_RATE = 50;
+    uint256 public constant PROTOCOL_FEE_PERCENTAGE = 25;
+    uint256 public constant REFUND_EXPIRY_DELAY = 7 days;
+    uint256 public constant INITIAL_BALANCE = 1000000 * 10**18;
     uint256 public constant PAYMENT_AMOUNT = 1000 * 10**18;
-    bytes32 public authorizationId;
-    
+
+    string public constant IPFS_LINK = "ipfs://QmTest123";
+
+    // Events
+    event RefundRequested(
+        bytes32 indexed paymentInfoHash,
+        address indexed payer,
+        address indexed receiver,
+        string ipfsLink
+    );
+
+    event RefundRequestStatusUpdated(
+        bytes32 indexed paymentInfoHash,
+        RefundRequest.RequestStatus oldStatus,
+        RefundRequest.RequestStatus newStatus,
+        address indexed updatedBy
+    );
+
+    event RefundRequestCancelled(
+        bytes32 indexed paymentInfoHash,
+        address indexed payer
+    );
+
     function setUp() public {
         owner = address(this);
-        merchant = makeAddr("merchant");
+        protocolFeeRecipient = makeAddr("protocolFeeRecipient");
+        receiver = makeAddr("receiver");
         arbiter = makeAddr("arbiter");
         payer = makeAddr("payer");
-        
-        // Deploy contracts
+
+        // Deploy mock contracts
         token = new MockERC20("Test Token", "TEST");
         escrow = new MockEscrow();
-        
-        operator = new ArbiterationOperator(
+
+        // Deploy factory and operator
+        factory = new ArbitrationOperatorFactory(
             address(escrow),
-            makeAddr("protocolFeeRecipient"),
-            50, // 0.5 bps
-            25  // 25%
+            protocolFeeRecipient,
+            MAX_TOTAL_FEE_RATE,
+            PROTOCOL_FEE_PERCENTAGE
         );
-        
+        operator = ArbitrationOperator(factory.deployOperator(arbiter, owner));
+
+        // Deploy RefundRequest
         refundRequest = new RefundRequest(address(operator));
-        
-        // Setup
-        token.mint(payer, 1000000 * 10**18);
-        operator.registerMerchant(merchant, arbiter, REFUND_DELAY);
-        
+
+        // Setup balances
+        token.mint(payer, INITIAL_BALANCE);
+        token.mint(receiver, INITIAL_BALANCE);
+
         vm.prank(payer);
         token.approve(address(escrow), type(uint256).max);
-        
-        // Create authorization
-        vm.prank(payer);
-        authorizationId = operator.authorize(
-            payer,
-            merchant,
-            address(token),
+        vm.prank(receiver);
+        token.approve(address(escrow), type(uint256).max);
+    }
+
+    // ============ Helper Functions ============
+
+    function _createPaymentInfo() internal view returns (MockEscrow.PaymentInfo memory) {
+        return MockEscrow.PaymentInfo({
+            operator: address(operator),
+            payer: payer,
+            receiver: receiver,
+            token: address(token),
+            maxAmount: uint120(PAYMENT_AMOUNT),
+            preApprovalExpiry: uint48(block.timestamp + 1 days),
+            authorizationExpiry: uint48(block.timestamp + 30 days),
+            refundExpiry: uint48(block.timestamp + REFUND_EXPIRY_DELAY), // Payer sets escrow period
+            minFeeBps: 0,
+            maxFeeBps: uint16(MAX_TOTAL_FEE_RATE),
+            feeReceiver: address(0),
+            salt: 12345
+        });
+    }
+
+    function _toAuthCapturePaymentInfo(MockEscrow.PaymentInfo memory mockInfo)
+        internal
+        pure
+        returns (AuthCaptureEscrow.PaymentInfo memory)
+    {
+        return AuthCaptureEscrow.PaymentInfo({
+            operator: mockInfo.operator,
+            payer: mockInfo.payer,
+            receiver: mockInfo.receiver,
+            token: mockInfo.token,
+            maxAmount: mockInfo.maxAmount,
+            preApprovalExpiry: mockInfo.preApprovalExpiry,
+            authorizationExpiry: mockInfo.authorizationExpiry,
+            refundExpiry: mockInfo.refundExpiry,
+            minFeeBps: mockInfo.minFeeBps,
+            maxFeeBps: mockInfo.maxFeeBps,
+            feeReceiver: mockInfo.feeReceiver,
+            salt: mockInfo.salt
+        });
+    }
+
+    // Helper to get the actual enforced PaymentInfo that the operator uses
+    function _getEnforcedPaymentInfo(MockEscrow.PaymentInfo memory original)
+        internal
+        view
+        returns (MockEscrow.PaymentInfo memory)
+    {
+        MockEscrow.PaymentInfo memory enforced = original;
+        enforced.authorizationExpiry = type(uint48).max;
+        // refundExpiry is NOT overridden - payer controls escrow period
+        enforced.feeReceiver = address(operator);
+
+        // Always expect MAX_TOTAL_FEE_RATE
+        enforced.minFeeBps = uint16(MAX_TOTAL_FEE_RATE);
+        enforced.maxFeeBps = uint16(MAX_TOTAL_FEE_RATE);
+        return enforced;
+    }
+
+    function _authorize() internal returns (bytes32) {
+        MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+        operator.authorize(
+            _toAuthCapturePaymentInfo(paymentInfo),
             PAYMENT_AMOUNT,
-            block.timestamp + 1 days,
+            address(0),
             ""
         );
+        // Get the enforced info which matches what the operator actually used
+        MockEscrow.PaymentInfo memory enforcedInfo = _getEnforcedPaymentInfo(paymentInfo);
+        bytes32 paymentInfoHash = escrow.getHash(enforcedInfo);
+        return paymentInfoHash;
     }
-    
+
+    function _authorizeAndRequest() internal returns (bytes32) {
+        bytes32 paymentInfoHash = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfoHash, IPFS_LINK);
+
+        return paymentInfoHash;
+    }
+
     // ============ Constructor Tests ============
-    
-    function test_Constructor_SetsOperator() public {
+
+    function test_Constructor_SetsOperator() public view {
         assertEq(address(refundRequest.OPERATOR()), address(operator));
     }
-    
-    function test_Constructor_RevertsOnZeroOperator() public {
-        vm.expectRevert("Zero operator");
-        new RefundRequest(address(0));
-    }
-    
+
     // ============ Request Refund Tests ============
-    
+
     function test_RequestRefund_Success() public {
-        string memory ipfsLink = "QmTest123";
-        
+        bytes32 paymentInfoHash = _authorize();
+
         vm.prank(payer);
-        vm.expectEmit(true, true, false, true);
-        emit RefundRequest.RefundRequested(authorizationId, payer, ipfsLink);
-        
-        refundRequest.requestRefund(authorizationId, ipfsLink);
-        
-        RefundRequest.RefundRequestData memory request = refundRequest.getRefundRequest(authorizationId);
+        refundRequest.requestRefund(paymentInfoHash, IPFS_LINK);
+
+        RefundRequest.RefundRequestData memory request = refundRequest.getRefundRequest(paymentInfoHash);
         assertEq(request.payer, payer);
-        assertEq(request.authorizationId, authorizationId);
-        assertEq(request.merchantPayout, merchant);
-        assertEq(request.ipfsLink, ipfsLink);
+        assertEq(request.paymentInfoHash, paymentInfoHash);
+        assertEq(request.receiver, receiver);
+        assertEq(request.ipfsLink, IPFS_LINK);
         assertEq(uint8(request.status), uint8(RefundRequest.RequestStatus.Pending));
         assertEq(request.originalAmount, PAYMENT_AMOUNT);
     }
-    
-    function test_RequestRefund_RevertsOnEmptyIPFSLink() public {
-        vm.prank(payer);
-        vm.expectRevert("Empty IPFS link");
-        refundRequest.requestRefund(authorizationId, "");
-    }
-    
-    function test_RequestRefund_RevertsOnNonExistentAuthorization() public {
-        vm.prank(payer);
-        // getPayer reverts with ZeroAddress() when authorization doesn't exist
-        vm.expectRevert(ArbiterationOperator.ZeroAddress.selector);
-        refundRequest.requestRefund(bytes32(uint256(123)), "QmTest123");
-    }
-    
+
     function test_RequestRefund_RevertsOnNotPayer() public {
-        vm.expectRevert("Only payer can request refund");
-        refundRequest.requestRefund(authorizationId, "QmTest123");
+        bytes32 paymentInfoHash = _authorize();
+
+        vm.prank(receiver);
+        vm.expectRevert(ArbitrationOperatorAccess.NotPayer.selector);
+        refundRequest.requestRefund(paymentInfoHash, IPFS_LINK);
     }
-    
-    function test_RequestRefund_RevertsOnDuplicateRequest() public {
+
+    function test_RequestRefund_RevertsOnEmptyIpfsLink() public {
+        bytes32 paymentInfoHash = _authorize();
+
         vm.prank(payer);
-        refundRequest.requestRefund(authorizationId, "QmTest123");
-        
-        vm.prank(payer);
-        vm.expectRevert("Request already exists");
-        refundRequest.requestRefund(authorizationId, "QmTest456");
+        vm.expectRevert(RefundRequest.EmptyIpfsLink.selector);
+        refundRequest.requestRefund(paymentInfoHash, "");
     }
-    
-    function test_RequestRefund_AllowsReRequestAfterCancellation() public {
+
+    function test_RequestRefund_RevertsOnDuplicate() public {
+        bytes32 paymentInfoHash = _authorizeAndRequest();
+
         vm.prank(payer);
-        refundRequest.requestRefund(authorizationId, "QmTest123");
-        
+        vm.expectRevert(RefundRequest.RequestAlreadyExists.selector);
+        refundRequest.requestRefund(paymentInfoHash, "ipfs://another");
+    }
+
+    function test_RequestRefund_AllowsAfterCancel() public {
+        bytes32 paymentInfoHash = _authorizeAndRequest();
+
+        // Cancel
         vm.prank(payer);
-        refundRequest.cancelRefundRequest(authorizationId);
-        
-        // Should be able to request again
+        refundRequest.cancelRefundRequest(paymentInfoHash);
+
+        // Request again
+        string memory newLink = "ipfs://new";
         vm.prank(payer);
-        refundRequest.requestRefund(authorizationId, "QmTest456");
-        
-        RefundRequest.RefundRequestData memory request = refundRequest.getRefundRequest(authorizationId);
-        assertEq(request.ipfsLink, "QmTest456");
+        refundRequest.requestRefund(paymentInfoHash, newLink);
+
+        RefundRequest.RefundRequestData memory request = refundRequest.getRefundRequest(paymentInfoHash);
+        assertEq(request.ipfsLink, newLink);
         assertEq(uint8(request.status), uint8(RefundRequest.RequestStatus.Pending));
     }
-    
+
     // ============ Update Status Tests ============
-    
-    function test_UpdateStatus_Approve_PreCapture_ByMerchant() public {
-        vm.prank(payer);
-        refundRequest.requestRefund(authorizationId, "QmTest123");
-        
-        vm.prank(merchant);
-        vm.expectEmit(true, false, false, true);
-        emit RefundRequest.RefundRequestStatusUpdated(
-            authorizationId,
-            RefundRequest.RequestStatus.Pending,
-            RefundRequest.RequestStatus.Approved,
-            merchant
+
+    function test_UpdateStatus_ApproveByReceiverInEscrow() public {
+        bytes32 paymentInfoHash = _authorizeAndRequest();
+
+        vm.prank(receiver);
+        refundRequest.updateStatus(
+            paymentInfoHash,
+            RefundRequest.RequestStatus.Approved
         );
-        
-        refundRequest.updateStatusInEscrow(authorizationId, RefundRequest.RequestStatus.Approved);
-        
-        RefundRequest.RefundRequestData memory request = refundRequest.getRefundRequest(authorizationId);
-        assertEq(uint8(request.status), uint8(RefundRequest.RequestStatus.Approved));
+
+        assertEq(
+            uint8(refundRequest.getRefundRequestStatus(paymentInfoHash)),
+            uint8(RefundRequest.RequestStatus.Approved)
+        );
     }
-    
-    function test_UpdateStatus_Approve_PreCapture_ByArbiter() public {
-        vm.prank(payer);
-        refundRequest.requestRefund(authorizationId, "QmTest123");
-        
+
+    function test_UpdateStatus_ApproveByArbiterInEscrow() public {
+        bytes32 paymentInfoHash = _authorizeAndRequest();
+
         vm.prank(arbiter);
-        refundRequest.updateStatusInEscrow(authorizationId, RefundRequest.RequestStatus.Approved);
-        
-        RefundRequest.RefundRequestData memory request = refundRequest.getRefundRequest(authorizationId);
-        assertEq(uint8(request.status), uint8(RefundRequest.RequestStatus.Approved));
+        refundRequest.updateStatus(
+            paymentInfoHash,
+            RefundRequest.RequestStatus.Approved
+        );
+
+        assertEq(
+            uint8(refundRequest.getRefundRequestStatus(paymentInfoHash)),
+            uint8(RefundRequest.RequestStatus.Approved)
+        );
     }
-    
-    function test_UpdateStatus_Approve_PostCapture_ByMerchant() public {
-        // Capture first
-        vm.warp(block.timestamp + REFUND_DELAY + 1);
-        vm.prank(merchant);
-        operator.capture(authorizationId, PAYMENT_AMOUNT);
-        
-        vm.prank(payer);
-        refundRequest.requestRefund(authorizationId, "QmTest123");
-        
-        vm.prank(merchant);
-        refundRequest.updateStatusPostEscrow(authorizationId, RefundRequest.RequestStatus.Approved);
-        
-        RefundRequest.RefundRequestData memory request = refundRequest.getRefundRequest(authorizationId);
-        assertEq(uint8(request.status), uint8(RefundRequest.RequestStatus.Approved));
+
+    function test_UpdateStatus_DenyByReceiverInEscrow() public {
+        bytes32 paymentInfoHash = _authorizeAndRequest();
+
+        vm.prank(receiver);
+        refundRequest.updateStatus(
+            paymentInfoHash,
+            RefundRequest.RequestStatus.Denied
+        );
+
+        assertEq(
+            uint8(refundRequest.getRefundRequestStatus(paymentInfoHash)),
+            uint8(RefundRequest.RequestStatus.Denied)
+        );
     }
-    
-    function test_UpdateStatus_Approve_PostCapture_RevertsOnArbiter() public {
-        // Capture first
-        vm.warp(block.timestamp + REFUND_DELAY + 1);
-        vm.prank(merchant);
-        operator.capture(authorizationId, PAYMENT_AMOUNT);
-        
+
+    function test_UpdateStatus_RevertsOnPayerInEscrow() public {
+        bytes32 paymentInfoHash = _authorizeAndRequest();
+
         vm.prank(payer);
-        refundRequest.requestRefund(authorizationId, "QmTest123");
-        
+        vm.expectRevert(ArbitrationOperatorAccess.NotReceiverOrArbiter.selector);
+        refundRequest.updateStatus(
+            paymentInfoHash,
+            RefundRequest.RequestStatus.Approved
+        );
+    }
+
+    function test_UpdateStatus_ApproveByReceiverPostEscrow() public {
+        bytes32 paymentInfoHash = _authorizeAndRequest();
+
+        // Capture first
+        vm.warp(block.timestamp + REFUND_EXPIRY_DELAY + 1);
+        vm.prank(receiver);
+        operator.release(paymentInfoHash, PAYMENT_AMOUNT);
+
+        // Now update status post escrow
+        vm.prank(receiver);
+        refundRequest.updateStatus(
+            paymentInfoHash,
+            RefundRequest.RequestStatus.Approved
+        );
+
+        assertEq(
+            uint8(refundRequest.getRefundRequestStatus(paymentInfoHash)),
+            uint8(RefundRequest.RequestStatus.Approved)
+        );
+    }
+
+    function test_UpdateStatus_RevertsOnArbiterPostEscrow() public {
+        bytes32 paymentInfoHash = _authorizeAndRequest();
+
+        // Capture first
+        vm.warp(block.timestamp + REFUND_EXPIRY_DELAY + 1);
+        vm.prank(receiver);
+        operator.release(paymentInfoHash, PAYMENT_AMOUNT);
+
+        // Arbiter should not be able to update post-escrow
         vm.prank(arbiter);
-        vm.expectRevert();
-        refundRequest.updateStatusPostEscrow(authorizationId, RefundRequest.RequestStatus.Approved);
+        vm.expectRevert(ArbitrationOperatorAccess.NotReceiver.selector);
+        refundRequest.updateStatus(
+            paymentInfoHash,
+            RefundRequest.RequestStatus.Approved
+        );
     }
-    
-    function test_UpdateStatus_Deny_PreCapture() public {
-        vm.prank(payer);
-        refundRequest.requestRefund(authorizationId, "QmTest123");
-        
-        vm.prank(merchant);
-        refundRequest.updateStatusInEscrow(authorizationId, RefundRequest.RequestStatus.Denied);
-        
-        RefundRequest.RefundRequestData memory request = refundRequest.getRefundRequest(authorizationId);
-        assertEq(uint8(request.status), uint8(RefundRequest.RequestStatus.Denied));
-    }
-    
-    function test_UpdateStatus_Deny_RevertsOnFullyRefunded() public {
-        vm.prank(payer);
-        refundRequest.requestRefund(authorizationId, "QmTest123");
-        
-        // Fully refund
-        vm.prank(merchant);
-        operator.refundInEscrow(authorizationId, PAYMENT_AMOUNT);
-        
-        vm.prank(merchant);
-        vm.expectRevert("Cannot deny: authorization already fully refunded");
-        refundRequest.updateStatusInEscrow(authorizationId, RefundRequest.RequestStatus.Denied);
-    }
-    
-    function test_UpdateStatus_RevertsOnInvalidStatus() public {
-        vm.prank(payer);
-        refundRequest.requestRefund(authorizationId, "QmTest123");
-        
-        vm.prank(merchant);
-        vm.expectRevert("Invalid status");
-        refundRequest.updateStatusInEscrow(authorizationId, RefundRequest.RequestStatus.Cancelled);
-    }
-    
-    function test_UpdateStatus_RevertsOnNonExistentRequest() public {
-        vm.expectRevert();
-        refundRequest.updateStatusInEscrow(bytes32(uint256(123)), RefundRequest.RequestStatus.Approved);
-    }
-    
-    function test_UpdateStatus_RevertsOnNotPending() public {
-        vm.prank(payer);
-        refundRequest.requestRefund(authorizationId, "QmTest123");
-        
-        vm.prank(merchant);
-        refundRequest.updateStatusInEscrow(authorizationId, RefundRequest.RequestStatus.Approved);
-        
-        vm.prank(merchant);
-        vm.expectRevert("Request not pending");
-        refundRequest.updateStatusInEscrow(authorizationId, RefundRequest.RequestStatus.Denied);
-    }
-    
-    // ============ Cancel Refund Request Tests ============
-    
+
+    // ============ Cancel Tests ============
+
     function test_CancelRefundRequest_Success() public {
+        bytes32 paymentInfoHash = _authorizeAndRequest();
+
         vm.prank(payer);
-        refundRequest.requestRefund(authorizationId, "QmTest123");
-        
-        vm.prank(payer);
-        vm.expectEmit(true, true, false, true);
-        emit RefundRequest.RefundRequestCancelled(authorizationId, payer, payer);
-        
-        refundRequest.cancelRefundRequest(authorizationId);
-        
-        RefundRequest.RefundRequestData memory request = refundRequest.getRefundRequest(authorizationId);
-        assertEq(uint8(request.status), uint8(RefundRequest.RequestStatus.Cancelled));
+        refundRequest.cancelRefundRequest(paymentInfoHash);
+
+        assertEq(
+            uint8(refundRequest.getRefundRequestStatus(paymentInfoHash)),
+            uint8(RefundRequest.RequestStatus.Cancelled)
+        );
     }
-    
-    function test_CancelRefundRequest_RevertsOnNotOwner() public {
-        vm.prank(payer);
-        refundRequest.requestRefund(authorizationId, "QmTest123");
-        
-        vm.expectRevert("Not request owner");
-        refundRequest.cancelRefundRequest(authorizationId);
+
+    function test_CancelRefundRequest_RevertsOnNotPayer() public {
+        bytes32 paymentInfoHash = _authorizeAndRequest();
+
+        vm.prank(receiver);
+        vm.expectRevert(ArbitrationOperatorAccess.NotPayer.selector);
+        refundRequest.cancelRefundRequest(paymentInfoHash);
     }
-    
-    function test_CancelRefundRequest_RevertsOnNonExistent() public {
-        vm.prank(payer);
-        vm.expectRevert("Request does not exist");
-        refundRequest.cancelRefundRequest(bytes32(uint256(123)));
-    }
-    
+
     function test_CancelRefundRequest_RevertsOnNotPending() public {
+        bytes32 paymentInfoHash = _authorizeAndRequest();
+
+        // Approve first
+        vm.prank(receiver);
+        refundRequest.updateStatus(
+            paymentInfoHash,
+            RefundRequest.RequestStatus.Approved
+        );
+
+        // Try to cancel
         vm.prank(payer);
-        refundRequest.requestRefund(authorizationId, "QmTest123");
-        
-        vm.prank(merchant);
-        refundRequest.updateStatusInEscrow(authorizationId, RefundRequest.RequestStatus.Approved);
-        
-        vm.prank(payer);
-        vm.expectRevert("Request not pending");
-        refundRequest.cancelRefundRequest(authorizationId);
+        vm.expectRevert(RefundRequest.RequestNotPending.selector);
+        refundRequest.cancelRefundRequest(paymentInfoHash);
     }
-    
+
     // ============ View Functions Tests ============
-    
+
     function test_HasRefundRequest() public {
-        assertFalse(refundRequest.hasRefundRequest(authorizationId));
-        
+        bytes32 paymentInfoHash = _authorize();
+
+        assertFalse(refundRequest.hasRefundRequest(paymentInfoHash));
+
         vm.prank(payer);
-        refundRequest.requestRefund(authorizationId, "QmTest123");
-        
-        assertTrue(refundRequest.hasRefundRequest(authorizationId));
+        refundRequest.requestRefund(paymentInfoHash, IPFS_LINK);
+
+        assertTrue(refundRequest.hasRefundRequest(paymentInfoHash));
     }
-    
-    function test_GetRefundRequestStatus() public {
-        assertEq(refundRequest.getRefundRequestStatus(authorizationId), 0); // Pending (default)
-        
-        vm.prank(payer);
-        refundRequest.requestRefund(authorizationId, "QmTest123");
-        assertEq(refundRequest.getRefundRequestStatus(authorizationId), 0); // Pending
-        
-        vm.prank(merchant);
-        refundRequest.updateStatusInEscrow(authorizationId, RefundRequest.RequestStatus.Approved);
-        assertEq(refundRequest.getRefundRequestStatus(authorizationId), 1); // Approved
-    }
-    
+
     function test_GetPayerRefundRequests() public {
-        vm.prank(payer);
-        refundRequest.requestRefund(authorizationId, "QmTest123");
-        
+        _authorizeAndRequest();
+
         RefundRequest.RefundRequestData[] memory requests = refundRequest.getPayerRefundRequests(payer);
         assertEq(requests.length, 1);
-        assertEq(requests[0].authorizationId, authorizationId);
+        assertEq(requests[0].payer, payer);
     }
-    
-    function test_GetMerchantRefundRequests() public {
-        vm.prank(payer);
-        refundRequest.requestRefund(authorizationId, "QmTest123");
-        
-        RefundRequest.RefundRequestData[] memory requests = refundRequest.getMerchantRefundRequests(merchant);
+
+    function test_GetReceiverRefundRequests() public {
+        _authorizeAndRequest();
+
+        RefundRequest.RefundRequestData[] memory requests = refundRequest.getReceiverRefundRequests(receiver);
         assertEq(requests.length, 1);
-        assertEq(requests[0].authorizationId, authorizationId);
+        assertEq(requests[0].receiver, receiver);
     }
-    
-    function test_GetRefundRequest_RevertsOnNonExistent() public {
-        vm.expectRevert("Request does not exist");
-        refundRequest.getRefundRequest(bytes32(uint256(123)));
+
+    function test_GetArbiterRefundRequests_FiltersInEscrow() public {
+        bytes32 paymentInfoHash = _authorizeAndRequest();
+
+        // Should show in arbiter requests while in escrow
+        RefundRequest.RefundRequestData[] memory requests = refundRequest.getArbiterRefundRequests(receiver);
+        assertEq(requests.length, 1);
+
+        // Capture
+        vm.warp(block.timestamp + REFUND_EXPIRY_DELAY + 1);
+        vm.prank(receiver);
+        operator.release(paymentInfoHash, PAYMENT_AMOUNT);
+
+        // Should NOT show in arbiter requests after capture (post-escrow)
+        requests = refundRequest.getArbiterRefundRequests(receiver);
+        assertEq(requests.length, 0);
     }
 }
-

@@ -1,98 +1,101 @@
 // SPDX-License-Identifier: BUSL-1.1
 // CONTRACTS UNAUDITED: USE AT YOUR OWN RISK
-pragma solidity >=0.8.33 <0.9.0;
+pragma solidity ^0.8.28;
 
-import {ArbiterationOperatorAccess} from "../operator/ArbiterationOperatorAccess.sol";
-import {ArbiterationOperator} from "../operator/ArbiterationOperator.sol";
+import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
+import {ArbitrationOperator} from "../operator/ArbitrationOperator.sol";
 
 /**
  * @title RefundRequestAccess
- * @notice Access control for RefundRequest
- * @dev Provides access control implementation that delegates to ArbiterationOperator
+ * @notice Access control for RefundRequest that delegates to ArbitrationOperator
+ * @dev All access checks query OPERATOR for state
  */
-abstract contract RefundRequestAccess is ArbiterationOperatorAccess {
-    // Reference to the operator contract (must be set by child contract)
-    ArbiterationOperator public immutable OPERATOR;
-    
-    /**
-     * @notice Constructor
-     * @param _operator Address of the ArbiterationOperator contract
-     */
+abstract contract RefundRequestAccess {
+    ArbitrationOperator public immutable OPERATOR;
+
+    // Custom errors
+    error ZeroOperator();
+    error NotReceiver();
+    error NotPayer();
+    error NotReceiverOrArbiter();
+    error PaymentDoesNotExist();
+    error InvalidOperator();
+    error NotInEscrow();
+    error NotCaptured();
+
     constructor(address _operator) {
-        require(_operator != address(0), "Zero operator");
-        OPERATOR = ArbiterationOperator(_operator);
+        if (_operator == address(0)) revert ZeroOperator();
+        OPERATOR = ArbitrationOperator(_operator);
     }
-    
-    // Implementation of ArbiterationOperatorAccess abstract functions
-    
-    /**
-     * @notice Get arbiter for a merchant (delegates to operator)
-     * @param merchant The merchant address
-     * @return The arbiter address
-     */
-    function getArbiter(address merchant) public view override returns (address) {
-        return OPERATOR.getArbiter(merchant);
-    }
-    
-    /**
-     * @notice Check if merchant is registered (delegates to operator)
-     * @param merchant The merchant address
-     * @return Whether the merchant is registered
-     */
-    function isMerchantRegistered(address merchant) public view override returns (bool) {
-        return OPERATOR.isMerchantRegistered(merchant);
-    }
-    
-    /**
-     * @notice Get merchant for an authorization (delegates to operator)
-     * @param authorizationId The authorization ID
-     * @return The merchant address
-     */
-    function _getMerchantForAuthorization(bytes32 authorizationId) 
-        internal 
-        view 
-        override 
-        returns (address) 
-    {
-        return OPERATOR.getMerchantForAuthorization(authorizationId);
-    }
-    
-    // Escrow status modifiers
-    
-    /**
-     * @notice Internal function to check if authorization is in escrow (not captured)
-     * @param authorizationId The authorization ID
-     */
-    function _onlyInEscrow(bytes32 authorizationId) internal view {
-        bool captured = OPERATOR.isCaptured(authorizationId);
-        require(!captured, "Authorization already captured, use updateStatusPostEscrow");
-    }
-    
-    /**
-     * @notice Modifier to check if authorization is in escrow (not captured)
-     * @param authorizationId The authorization ID
-     */
-    modifier onlyInEscrow(bytes32 authorizationId) {
-        _onlyInEscrow(authorizationId);
+
+    // ============ Receiver (Merchant) Modifiers ============
+
+    modifier onlyReceiverByHash(bytes32 paymentInfoHash) {
+        if (msg.sender != OPERATOR.getPaymentInfo(paymentInfoHash).receiver) revert NotReceiver();
         _;
     }
-    
-    /**
-     * @notice Internal function to check if authorization is post escrow (captured)
-     * @param authorizationId The authorization ID
-     */
-    function _onlyPostEscrow(bytes32 authorizationId) internal view {
-        bool captured = OPERATOR.isCaptured(authorizationId);
-        require(captured, "Authorization not captured, use updateStatusInEscrow");
+
+    // ============ Payer Modifiers ============
+
+    modifier onlyPayerByHash(bytes32 paymentInfoHash) {
+        if (msg.sender != OPERATOR.getPaymentInfo(paymentInfoHash).payer) revert NotPayer();
+        _;
     }
-    
-    /**
-     * @notice Modifier to check if authorization is post escrow (captured)
-     * @param authorizationId The authorization ID
-     */
-    modifier onlyPostEscrow(bytes32 authorizationId) {
-        _onlyPostEscrow(authorizationId);
+
+    // ============ Combined Modifiers ============
+
+    modifier onlyReceiverOrArbiterByHash(bytes32 paymentInfoHash) {
+        if (msg.sender != OPERATOR.getPaymentInfo(paymentInfoHash).receiver && msg.sender != OPERATOR.ARBITER()) {
+            revert NotReceiverOrArbiter();
+        }
+        _;
+    }
+
+    modifier onlyAuthorizedForRefundStatus(bytes32 paymentInfoHash) {
+        address receiver = OPERATOR.getPaymentInfo(paymentInfoHash).receiver;
+        (, uint120 capturableAmount,) = OPERATOR.ESCROW().paymentState(paymentInfoHash);
+
+        if (capturableAmount > 0) {
+            if (msg.sender != receiver && msg.sender != OPERATOR.ARBITER()) {
+                revert NotReceiverOrArbiter();
+            }
+        } else {
+            if (msg.sender != receiver) {
+                revert NotReceiver();
+            }
+        }
+        _;
+    }
+
+    // ============ Operator Validation ============
+
+    modifier validOperatorByHash(bytes32 paymentInfoHash) {
+        if (OPERATOR.getPaymentInfo(paymentInfoHash).operator != address(OPERATOR)) revert InvalidOperator();
+        _;
+    }
+
+    // ============ Payment Existence ============
+
+    modifier paymentMustExist(bytes32 paymentInfoHash) {
+        if (!OPERATOR.paymentExists(paymentInfoHash)) revert PaymentDoesNotExist();
+        _;
+    }
+
+    // ============ Escrow State Helpers ============
+
+    function isInEscrow(bytes32 paymentInfoHash) public view returns (bool) {
+        (, uint120 capturableAmount,) = OPERATOR.ESCROW().paymentState(paymentInfoHash);
+        return capturableAmount > 0;
+    }
+
+    modifier onlyInEscrow(bytes32 paymentInfoHash) {
+        if (!isInEscrow(paymentInfoHash)) revert NotInEscrow();
+        _;
+    }
+
+    modifier onlyPostEscrow(bytes32 paymentInfoHash) {
+        (,, uint120 refundableAmount) = OPERATOR.ESCROW().paymentState(paymentInfoHash);
+        if (refundableAmount == 0) revert NotCaptured();
         _;
     }
 }
-

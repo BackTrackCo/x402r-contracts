@@ -15,7 +15,7 @@ This repository contains contracts for the x402r refund extension system.
 
 The commerce-payments contracts provide refund functionality for Base Commerce Payments authorizations:
 
-- **ArbiterationOperator**: `src/commerce-payments/operator/ArbiterationOperator.sol`
+- **ArbitrationOperator**: `src/commerce-payments/operator/ArbitrationOperator.sol`
   - Operator contract that wraps Base Commerce Payments and enforces refund delay for uncaptured funds, arbiter refund restrictions, and fee distribution.
 
 - **RefundRequest**: `src/commerce-payments/requests/RefundRequest.sol`
