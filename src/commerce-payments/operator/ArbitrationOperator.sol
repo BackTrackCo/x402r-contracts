@@ -15,7 +15,7 @@ import {ArbitrationOperatorAccess} from "./ArbitrationOperatorAccess.sol";
  *
  * @dev Key features:
  *      - Immutable arbiter config baked in at deployment
- *      - Merchant can only capture after refundExpiry timestamp (set per-payment by payer)
+ *      - Immutable refund period baked in at deployment (merchant can only capture after this period)
  *      - Arbiter OR merchant can trigger partial pre-capture refunds via partialVoid
  *      - Uses PaymentInfo struct from Base Commerce Payments for full x402-escrow compatibility
  */
@@ -27,6 +27,12 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
     uint256 public immutable MAX_TOTAL_FEE_RATE;
     uint256 public immutable PROTOCOL_FEE_PERCENTAGE;
     uint256 public immutable MAX_ARBITER_FEE_RATE;
+
+    // Refund period configuration (set at deployment)
+    uint48 public immutable REFUND_PERIOD;
+
+    // Track when each payment was authorized (for refund period calculation)
+    mapping(bytes32 => uint48) public authorizationTimestamps;
 
     address public protocolFeeRecipient;
     bool public feesEnabled;
@@ -76,7 +82,7 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
     // Custom errors
     error ZeroAddress();
     error ZeroAmount();
-    error RefundExpiryNotPassed();
+    error RefundPeriodNotPassed();
     error TotalFeeRateExceedsMax();
 
     constructor(
@@ -85,12 +91,14 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
         uint256 _maxTotalFeeRate,
         uint256 _protocolFeePercentage,
         address _arbiter,
-        address _owner
+        address _owner,
+        uint48 _refundPeriod
     ) Ownable(_owner) ArbitrationOperatorAccess(_escrow, _arbiter) {
         if (_protocolFeeRecipient == address(0)) revert ZeroAddress();
         if (_owner == address(0)) revert ZeroAddress();
         if (_maxTotalFeeRate == 0) revert ZeroAmount();
         if (_protocolFeePercentage > 100) revert TotalFeeRateExceedsMax();
+        if (_refundPeriod == 0) revert ZeroAmount();
 
         protocolFeeRecipient = _protocolFeeRecipient;
         feesEnabled = false;
@@ -98,6 +106,7 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
         MAX_TOTAL_FEE_RATE = _maxTotalFeeRate;
         PROTOCOL_FEE_PERCENTAGE = _protocolFeePercentage;
         MAX_ARBITER_FEE_RATE = (_maxTotalFeeRate * (100 - _protocolFeePercentage)) / 100;
+        REFUND_PERIOD = _refundPeriod;
     }
 
     // ============ Owner Functions ============
@@ -115,7 +124,7 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
     /**
      * @notice Authorize payment via Base Commerce Payments escrow
      * @dev Uses exact same interface as AuthCaptureEscrow.authorize()
-     *      The payer sets refundExpiry in PaymentInfo to determine the escrow period.
+     *      The refund period is set at operator deployment, not per-payment.
      * @param paymentInfo PaymentInfo struct (must have operator == address(this))
      * @param amount Amount to authorize
      * @param tokenCollector Address of the token collector
@@ -130,7 +139,7 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
         // Enforce specific parameters for arbitration model
         AuthCaptureEscrow.PaymentInfo memory enforcedPaymentInfo = paymentInfo;
         enforcedPaymentInfo.authorizationExpiry = type(uint48).max;
-        // refundExpiry is NOT overridden - payer controls the escrow period
+        enforcedPaymentInfo.refundExpiry = type(uint48).max; // Satisfies base escrow validation
 
         // Always use MAX_TOTAL_FEE_RATE
         enforcedPaymentInfo.minFeeBps = uint16(MAX_TOTAL_FEE_RATE);
@@ -144,6 +153,9 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
         bytes32 paymentInfoHash = ESCROW.getHash(enforcedPaymentInfo);
         paymentInfos[paymentInfoHash] = enforcedPaymentInfo;
 
+        // Store authorization timestamp for refund period calculation
+        authorizationTimestamps[paymentInfoHash] = uint48(block.timestamp);
+
         emit AuthorizationCreated(
             paymentInfoHash,
             enforcedPaymentInfo.payer,
@@ -154,8 +166,8 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
     }
 
     /**
-     * @notice Capture authorized funds after refund expiry
-     * @dev Only receiver can capture, and only after refundExpiry has passed
+     * @notice Capture authorized funds after refund period
+     * @dev Only receiver can capture, and only after REFUND_PERIOD has passed since authorization
      * @param paymentInfoHash Hash of the PaymentInfo struct
      * @param amount Amount to capture
      */
@@ -165,8 +177,9 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
     ) external paymentMustExist(paymentInfoHash) onlyReceiverByHash(paymentInfoHash) validOperatorByHash(paymentInfoHash) {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = paymentInfos[paymentInfoHash];
 
-        // Enforce refund expiry
-        if (block.timestamp < paymentInfo.refundExpiry) revert RefundExpiryNotPassed();
+        // Enforce refund period from authorization time
+        uint48 authTime = authorizationTimestamps[paymentInfoHash];
+        if (block.timestamp < authTime + REFUND_PERIOD) revert RefundPeriodNotPassed();
 
         uint16 feeBps = uint16(MAX_TOTAL_FEE_RATE);
         address feeReceiver = address(this);
@@ -178,8 +191,8 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
     }
 
     /**
-     * @notice Payer releases funds to receiver early (bypassing refund expiry)
-     * @dev Only payer can call. Bypasses refundExpiry check.
+     * @notice Payer releases funds to receiver early (bypassing refund period)
+     * @dev Only payer can call. Bypasses REFUND_PERIOD check.
      * @param paymentInfoHash Hash of the PaymentInfo struct
      * @param amount Amount to release
      */
@@ -189,7 +202,7 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
     ) external paymentMustExist(paymentInfoHash) onlyPayerByHash(paymentInfoHash) validOperatorByHash(paymentInfoHash) {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = paymentInfos[paymentInfoHash];
 
-        // No refundExpiry check for payer early release
+        // No refund period check for payer early release
 
         uint16 feeBps = uint16(MAX_TOTAL_FEE_RATE);
         address feeReceiver = address(this);

@@ -25,7 +25,7 @@ contract RefundRequestTest is Test {
 
     uint256 public constant MAX_TOTAL_FEE_RATE = 50;
     uint256 public constant PROTOCOL_FEE_PERCENTAGE = 25;
-    uint256 public constant REFUND_EXPIRY_DELAY = 7 days;
+    uint48 public constant REFUND_PERIOD = 7 days;
     uint256 public constant INITIAL_BALANCE = 1000000 * 10**18;
     uint256 public constant PAYMENT_AMOUNT = 1000 * 10**18;
 
@@ -67,9 +67,10 @@ contract RefundRequestTest is Test {
             address(escrow),
             protocolFeeRecipient,
             MAX_TOTAL_FEE_RATE,
-            PROTOCOL_FEE_PERCENTAGE
+            PROTOCOL_FEE_PERCENTAGE,
+            owner
         );
-        operator = ArbitrationOperator(factory.deployOperator(arbiter, owner));
+        operator = ArbitrationOperator(factory.deployOperator(arbiter, REFUND_PERIOD));
 
         // Deploy RefundRequest
         refundRequest = new RefundRequest(address(operator));
@@ -95,7 +96,7 @@ contract RefundRequestTest is Test {
             maxAmount: uint120(PAYMENT_AMOUNT),
             preApprovalExpiry: uint48(block.timestamp + 1 days),
             authorizationExpiry: uint48(block.timestamp + 30 days),
-            refundExpiry: uint48(block.timestamp + REFUND_EXPIRY_DELAY), // Payer sets escrow period
+            refundExpiry: uint48(block.timestamp + 60 days), // Will be overridden by operator
             minFeeBps: 0,
             maxFeeBps: uint16(MAX_TOTAL_FEE_RATE),
             feeReceiver: address(0),
@@ -132,7 +133,7 @@ contract RefundRequestTest is Test {
     {
         MockEscrow.PaymentInfo memory enforced = original;
         enforced.authorizationExpiry = type(uint48).max;
-        // refundExpiry is NOT overridden - payer controls escrow period
+        enforced.refundExpiry = type(uint48).max; // Operator overrides to satisfy base escrow validation
         enforced.feeReceiver = address(operator);
 
         // Always expect MAX_TOTAL_FEE_RATE
@@ -290,7 +291,7 @@ contract RefundRequestTest is Test {
         bytes32 paymentInfoHash = _authorizeAndRequest();
 
         // Capture first
-        vm.warp(block.timestamp + REFUND_EXPIRY_DELAY + 1);
+        vm.warp(block.timestamp + REFUND_PERIOD + 1);
         vm.prank(receiver);
         operator.release(paymentInfoHash, PAYMENT_AMOUNT);
 
@@ -311,7 +312,7 @@ contract RefundRequestTest is Test {
         bytes32 paymentInfoHash = _authorizeAndRequest();
 
         // Capture first
-        vm.warp(block.timestamp + REFUND_EXPIRY_DELAY + 1);
+        vm.warp(block.timestamp + REFUND_PERIOD + 1);
         vm.prank(receiver);
         operator.release(paymentInfoHash, PAYMENT_AMOUNT);
 
@@ -399,7 +400,7 @@ contract RefundRequestTest is Test {
         assertEq(requests.length, 1);
 
         // Capture
-        vm.warp(block.timestamp + REFUND_EXPIRY_DELAY + 1);
+        vm.warp(block.timestamp + REFUND_PERIOD + 1);
         vm.prank(receiver);
         operator.release(paymentInfoHash, PAYMENT_AMOUNT);
 
