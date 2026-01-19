@@ -5,6 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {ArbitrationOperator} from "../src/commerce-payments/operator/ArbitrationOperator.sol";
 import {ArbitrationOperatorAccess} from "../src/commerce-payments/operator/ArbitrationOperatorAccess.sol";
 import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
+import {InvalidOperator, NotReceiver, NotPayer, NotReceiverOrArbiter, RefundPeriodNotPassed} from "../src/commerce-payments/Errors.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockEscrow} from "./mocks/MockEscrow.sol";
@@ -134,7 +135,7 @@ contract ArbitrationOperatorTest is Test {
         // Get the enforced info which matches what the operator actually used
         MockEscrow.PaymentInfo memory enforcedInfo = _getEnforcedPaymentInfo(paymentInfo);
         bytes32 paymentInfoHash = escrow.getHash(enforcedInfo);
-        
+
         return (paymentInfoHash, enforcedInfo);
     }
 
@@ -234,7 +235,7 @@ contract ArbitrationOperatorTest is Test {
         MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
         paymentInfo.operator = address(0x1234); // Wrong operator
 
-        vm.expectRevert(ArbitrationOperatorAccess.InvalidOperator.selector);
+        vm.expectRevert(InvalidOperator.selector);
         operator.authorize(
             _toAuthCapturePaymentInfo(paymentInfo),
             PAYMENT_AMOUNT,
@@ -276,7 +277,7 @@ contract ArbitrationOperatorTest is Test {
         (bytes32 paymentInfoHash, MockEscrow.PaymentInfo memory paymentInfo) = _authorize();
         vm.warp(block.timestamp + REFUND_PERIOD + 1);
 
-        vm.expectRevert(ArbitrationOperatorAccess.NotReceiver.selector);
+        vm.expectRevert(NotReceiver.selector);
         operator.release(
             paymentInfoHash,
             PAYMENT_AMOUNT
@@ -287,7 +288,7 @@ contract ArbitrationOperatorTest is Test {
         (bytes32 paymentInfoHash, MockEscrow.PaymentInfo memory paymentInfo) = _authorize();
 
         vm.prank(receiver);
-        vm.expectRevert(ArbitrationOperator.RefundPeriodNotPassed.selector);
+        vm.expectRevert(RefundPeriodNotPassed.selector);
         operator.release(
             paymentInfoHash,
             PAYMENT_AMOUNT
@@ -323,7 +324,7 @@ contract ArbitrationOperatorTest is Test {
         (bytes32 paymentInfoHash, MockEscrow.PaymentInfo memory paymentInfo) = _authorize();
 
         vm.prank(receiver);
-        vm.expectRevert(ArbitrationOperatorAccess.NotPayer.selector);
+        vm.expectRevert(NotPayer.selector);
         operator.earlyRelease(
             paymentInfoHash,
             PAYMENT_AMOUNT
@@ -374,7 +375,7 @@ contract ArbitrationOperatorTest is Test {
         (bytes32 paymentInfoHash, MockEscrow.PaymentInfo memory paymentInfo) = _authorize();
 
         vm.prank(payer);
-        vm.expectRevert(ArbitrationOperatorAccess.NotReceiverOrArbiter.selector);
+        vm.expectRevert(NotReceiverOrArbiter.selector);
         operator.refund(
             paymentInfoHash,
             uint120(PAYMENT_AMOUNT / 2)
@@ -417,10 +418,10 @@ contract ArbitrationOperatorTest is Test {
         // Setup tokens in operator
         uint256 feeAmount = 1000 * 10**18;
         token.mint(address(operator), feeAmount);
-        
+
         // Protocol fees are disabled by default
         assertFalse(operator.feesEnabled());
-        
+
         uint256 operatorBalanceBefore = token.balanceOf(address(operator));
         uint256 arbiterBalanceBefore = token.balanceOf(arbiter);
         uint256 protocolBalanceBefore = token.balanceOf(protocolFeeRecipient);

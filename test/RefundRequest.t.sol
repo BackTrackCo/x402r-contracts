@@ -6,6 +6,8 @@ import {ArbitrationOperator} from "../src/commerce-payments/operator/Arbitration
 import {ArbitrationOperatorAccess} from "../src/commerce-payments/operator/ArbitrationOperatorAccess.sol";
 import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
 import {RefundRequest} from "../src/commerce-payments/requests/RefundRequest.sol";
+import {RequestStatus} from "../src/commerce-payments/Types.sol";
+import {NotPayer, NotReceiver, NotReceiverOrArbiter, EmptyIpfsLink, RequestAlreadyExists, RequestNotPending} from "../src/commerce-payments/Errors.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockEscrow} from "./mocks/MockEscrow.sol";
@@ -41,8 +43,8 @@ contract RefundRequestTest is Test {
 
     event RefundRequestStatusUpdated(
         bytes32 indexed paymentInfoHash,
-        RefundRequest.RequestStatus oldStatus,
-        RefundRequest.RequestStatus newStatus,
+        RequestStatus oldStatus,
+        RequestStatus newStatus,
         address indexed updatedBy
     );
 
@@ -180,19 +182,16 @@ contract RefundRequestTest is Test {
         refundRequest.requestRefund(paymentInfoHash, IPFS_LINK);
 
         RefundRequest.RefundRequestData memory request = refundRequest.getRefundRequest(paymentInfoHash);
-        assertEq(request.payer, payer);
         assertEq(request.paymentInfoHash, paymentInfoHash);
-        assertEq(request.receiver, receiver);
         assertEq(request.ipfsLink, IPFS_LINK);
-        assertEq(uint8(request.status), uint8(RefundRequest.RequestStatus.Pending));
-        assertEq(request.originalAmount, PAYMENT_AMOUNT);
+        assertEq(uint8(request.status), uint8(RequestStatus.Pending));
     }
 
     function test_RequestRefund_RevertsOnNotPayer() public {
         bytes32 paymentInfoHash = _authorize();
 
         vm.prank(receiver);
-        vm.expectRevert(ArbitrationOperatorAccess.NotPayer.selector);
+        vm.expectRevert(NotPayer.selector);
         refundRequest.requestRefund(paymentInfoHash, IPFS_LINK);
     }
 
@@ -200,7 +199,7 @@ contract RefundRequestTest is Test {
         bytes32 paymentInfoHash = _authorize();
 
         vm.prank(payer);
-        vm.expectRevert(RefundRequest.EmptyIpfsLink.selector);
+        vm.expectRevert(EmptyIpfsLink.selector);
         refundRequest.requestRefund(paymentInfoHash, "");
     }
 
@@ -208,7 +207,7 @@ contract RefundRequestTest is Test {
         bytes32 paymentInfoHash = _authorizeAndRequest();
 
         vm.prank(payer);
-        vm.expectRevert(RefundRequest.RequestAlreadyExists.selector);
+        vm.expectRevert(RequestAlreadyExists.selector);
         refundRequest.requestRefund(paymentInfoHash, "ipfs://another");
     }
 
@@ -226,7 +225,7 @@ contract RefundRequestTest is Test {
 
         RefundRequest.RefundRequestData memory request = refundRequest.getRefundRequest(paymentInfoHash);
         assertEq(request.ipfsLink, newLink);
-        assertEq(uint8(request.status), uint8(RefundRequest.RequestStatus.Pending));
+        assertEq(uint8(request.status), uint8(RequestStatus.Pending));
     }
 
     // ============ Update Status Tests ============
@@ -237,12 +236,12 @@ contract RefundRequestTest is Test {
         vm.prank(receiver);
         refundRequest.updateStatus(
             paymentInfoHash,
-            RefundRequest.RequestStatus.Approved
+            RequestStatus.Approved
         );
 
         assertEq(
             uint8(refundRequest.getRefundRequestStatus(paymentInfoHash)),
-            uint8(RefundRequest.RequestStatus.Approved)
+            uint8(RequestStatus.Approved)
         );
     }
 
@@ -252,12 +251,12 @@ contract RefundRequestTest is Test {
         vm.prank(arbiter);
         refundRequest.updateStatus(
             paymentInfoHash,
-            RefundRequest.RequestStatus.Approved
+            RequestStatus.Approved
         );
 
         assertEq(
             uint8(refundRequest.getRefundRequestStatus(paymentInfoHash)),
-            uint8(RefundRequest.RequestStatus.Approved)
+            uint8(RequestStatus.Approved)
         );
     }
 
@@ -267,12 +266,12 @@ contract RefundRequestTest is Test {
         vm.prank(receiver);
         refundRequest.updateStatus(
             paymentInfoHash,
-            RefundRequest.RequestStatus.Denied
+            RequestStatus.Denied
         );
 
         assertEq(
             uint8(refundRequest.getRefundRequestStatus(paymentInfoHash)),
-            uint8(RefundRequest.RequestStatus.Denied)
+            uint8(RequestStatus.Denied)
         );
     }
 
@@ -280,10 +279,10 @@ contract RefundRequestTest is Test {
         bytes32 paymentInfoHash = _authorizeAndRequest();
 
         vm.prank(payer);
-        vm.expectRevert(ArbitrationOperatorAccess.NotReceiverOrArbiter.selector);
+        vm.expectRevert(NotReceiverOrArbiter.selector);
         refundRequest.updateStatus(
             paymentInfoHash,
-            RefundRequest.RequestStatus.Approved
+            RequestStatus.Approved
         );
     }
 
@@ -299,12 +298,12 @@ contract RefundRequestTest is Test {
         vm.prank(receiver);
         refundRequest.updateStatus(
             paymentInfoHash,
-            RefundRequest.RequestStatus.Approved
+            RequestStatus.Approved
         );
 
         assertEq(
             uint8(refundRequest.getRefundRequestStatus(paymentInfoHash)),
-            uint8(RefundRequest.RequestStatus.Approved)
+            uint8(RequestStatus.Approved)
         );
     }
 
@@ -318,10 +317,10 @@ contract RefundRequestTest is Test {
 
         // Arbiter should not be able to update post-escrow
         vm.prank(arbiter);
-        vm.expectRevert(ArbitrationOperatorAccess.NotReceiver.selector);
+        vm.expectRevert(NotReceiver.selector);
         refundRequest.updateStatus(
             paymentInfoHash,
-            RefundRequest.RequestStatus.Approved
+            RequestStatus.Approved
         );
     }
 
@@ -335,7 +334,7 @@ contract RefundRequestTest is Test {
 
         assertEq(
             uint8(refundRequest.getRefundRequestStatus(paymentInfoHash)),
-            uint8(RefundRequest.RequestStatus.Cancelled)
+            uint8(RequestStatus.Cancelled)
         );
     }
 
@@ -343,7 +342,7 @@ contract RefundRequestTest is Test {
         bytes32 paymentInfoHash = _authorizeAndRequest();
 
         vm.prank(receiver);
-        vm.expectRevert(ArbitrationOperatorAccess.NotPayer.selector);
+        vm.expectRevert(NotPayer.selector);
         refundRequest.cancelRefundRequest(paymentInfoHash);
     }
 
@@ -354,12 +353,12 @@ contract RefundRequestTest is Test {
         vm.prank(receiver);
         refundRequest.updateStatus(
             paymentInfoHash,
-            RefundRequest.RequestStatus.Approved
+            RequestStatus.Approved
         );
 
         // Try to cancel
         vm.prank(payer);
-        vm.expectRevert(RefundRequest.RequestNotPending.selector);
+        vm.expectRevert(RequestNotPending.selector);
         refundRequest.cancelRefundRequest(paymentInfoHash);
     }
 
@@ -381,7 +380,7 @@ contract RefundRequestTest is Test {
 
         RefundRequest.RefundRequestData[] memory requests = refundRequest.getPayerRefundRequests(payer);
         assertEq(requests.length, 1);
-        assertEq(requests[0].payer, payer);
+        assertEq(requests[0].ipfsLink, IPFS_LINK);
     }
 
     function test_GetReceiverRefundRequests() public {
@@ -389,7 +388,7 @@ contract RefundRequestTest is Test {
 
         RefundRequest.RefundRequestData[] memory requests = refundRequest.getReceiverRefundRequests(receiver);
         assertEq(requests.length, 1);
-        assertEq(requests[0].receiver, receiver);
+        assertEq(requests[0].ipfsLink, IPFS_LINK);
     }
 
     function test_GetArbiterRefundRequests_FiltersInEscrow() public {

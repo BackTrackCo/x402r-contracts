@@ -7,6 +7,20 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {ArbitrationOperatorAccess} from "./ArbitrationOperatorAccess.sol";
+import {
+    ZeroAddress,
+    ZeroAmount,
+    RefundPeriodNotPassed,
+    TotalFeeRateExceedsMax
+} from "../Errors.sol";
+import {
+    AuthorizationCreated,
+    ReleaseExecuted,
+    EarlyReleaseExecuted,
+    RefundExecuted,
+    ProtocolFeesEnabledUpdated,
+    FeesDistributed
+} from "../Events.sol";
 
 /**
  * @title ArbitrationOperator
@@ -36,54 +50,6 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
 
     address public protocolFeeRecipient;
     bool public feesEnabled;
-
-    // Events
-    event AuthorizationCreated(
-        bytes32 indexed paymentInfoHash,
-        address indexed payer,
-        address indexed receiver,
-        uint256 amount,
-        uint256 timestamp
-    );
-
-    event ReleaseExecuted(
-        bytes32 indexed paymentInfoHash,
-        uint256 amount,
-        uint256 timestamp
-    );
-
-    event EarlyReleaseExecuted(
-        bytes32 indexed paymentInfoHash,
-        address indexed receiver,
-        uint256 amount,
-        uint256 timestamp
-    );
-
-    event RefundExecuted(
-        bytes32 indexed paymentInfoHash,
-        address indexed payer,
-        uint256 amount
-    );
-
-    event RefundAfterEscrowExecuted(
-        bytes32 indexed paymentInfoHash,
-        address indexed payer,
-        uint256 amount
-    );
-
-    event ProtocolFeesEnabledUpdated(bool enabled);
-
-    event FeesDistributed(
-        address indexed token,
-        uint256 protocolAmount,
-        uint256 arbiterAmount
-    );
-
-    // Custom errors
-    error ZeroAddress();
-    error ZeroAmount();
-    error RefundPeriodNotPassed();
-    error TotalFeeRateExceedsMax();
 
     constructor(
         address _escrow,
@@ -211,9 +177,9 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
         ESCROW.capture(paymentInfo, amount, feeBps, feeReceiver);
 
         emit EarlyReleaseExecuted(
-            paymentInfoHash, 
-            paymentInfo.receiver, 
-            amount, 
+            paymentInfoHash,
+            paymentInfo.receiver,
+            amount,
             block.timestamp
         );
     }
@@ -257,7 +223,7 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
         if (protocolAmount > 0) {
             IERC20(token).safeTransfer(protocolFeeRecipient, protocolAmount);
         }
-        
+
         if (arbiterAmount > 0) {
             IERC20(token).safeTransfer(ARBITER, arbiterAmount);
         }

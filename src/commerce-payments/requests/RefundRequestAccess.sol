@@ -4,6 +4,16 @@ pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {ArbitrationOperator} from "../operator/ArbitrationOperator.sol";
+import {
+    ZeroOperator,
+    NotReceiver,
+    NotPayer,
+    NotReceiverOrArbiter,
+    PaymentDoesNotExist,
+    InvalidOperator,
+    NotInEscrow,
+    NotCaptured
+} from "../Errors.sol";
 
 /**
  * @title RefundRequestAccess
@@ -12,16 +22,6 @@ import {ArbitrationOperator} from "../operator/ArbitrationOperator.sol";
  */
 abstract contract RefundRequestAccess {
     ArbitrationOperator public immutable OPERATOR;
-
-    // Custom errors
-    error ZeroOperator();
-    error NotReceiver();
-    error NotPayer();
-    error NotReceiverOrArbiter();
-    error PaymentDoesNotExist();
-    error InvalidOperator();
-    error NotInEscrow();
-    error NotCaptured();
 
     constructor(address _operator) {
         if (_operator == address(0)) revert ZeroOperator();

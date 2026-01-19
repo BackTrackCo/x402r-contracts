@@ -4,6 +4,8 @@ pragma solidity ^0.8.28;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ArbitrationOperator} from "./ArbitrationOperator.sol";
+import {ZeroAddress, ZeroAmount, ZeroRefundPeriod} from "../Errors.sol";
+import {OperatorDeployed} from "../Events.sol";
 
 /**
  * @title ArbitrationOperatorFactory
@@ -27,18 +29,6 @@ contract ArbitrationOperatorFactory is Ownable {
 
     // keccak256(arbiter, refundPeriod) => operator address
     mapping(bytes32 => address) public operators;
-
-    // Events
-    event OperatorDeployed(
-        address indexed operator,
-        address indexed arbiter,
-        uint48 refundPeriod
-    );
-
-    // Custom errors
-    error ZeroAddress();
-    error ZeroAmount();
-    error ZeroRefundPeriod();
 
     constructor(
         address _escrow,
