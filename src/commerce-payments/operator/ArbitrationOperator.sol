@@ -12,7 +12,7 @@ import {
     ZeroAmount,
     RefundPeriodNotPassed,
     TotalFeeRateExceedsMax
-} from "../Errors.sol";
+} from "./Errors.sol";
 import {
     AuthorizationCreated,
     ReleaseExecuted,
@@ -20,7 +20,7 @@ import {
     RefundExecuted,
     ProtocolFeesEnabledUpdated,
     FeesDistributed
-} from "../Events.sol";
+} from "./Events.sol";
 
 /**
  * @title ArbitrationOperator

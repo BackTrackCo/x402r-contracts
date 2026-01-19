@@ -4,8 +4,8 @@ pragma solidity ^0.8.28;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ArbitrationOperator} from "./ArbitrationOperator.sol";
-import {ZeroAddress, ZeroAmount, ZeroRefundPeriod} from "../Errors.sol";
-import {OperatorDeployed} from "../Events.sol";
+import {ZeroAddress, ZeroAmount, ZeroRefundPeriod} from "./Errors.sol";
+import {OperatorDeployed} from "./Events.sol";
 
 /**
  * @title ArbitrationOperatorFactory

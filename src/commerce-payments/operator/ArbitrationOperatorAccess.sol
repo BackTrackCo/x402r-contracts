@@ -13,7 +13,7 @@ import {
     NotCaptured,
     ZeroEscrow,
     ZeroArbiter
-} from "../Errors.sol";
+} from "./Errors.sol";
 
 /**
  * @title ArbitrationOperatorAccess

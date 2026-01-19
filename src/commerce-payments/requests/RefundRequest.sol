@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {RefundRequestAccess} from "./RefundRequestAccess.sol";
-import {RequestStatus} from "../Types.sol";
+import {RequestStatus} from "./Types.sol";
 import {
     EmptyIpfsLink,
     RequestAlreadyExists,
@@ -12,12 +12,12 @@ import {
     RequestNotPending,
     InvalidStatus,
     FullyRefunded
-} from "../Errors.sol";
+} from "./Errors.sol";
 import {
     RefundRequested,
     RefundRequestStatusUpdated,
     RefundRequestCancelled
-} from "../Events.sol";
+} from "./Events.sol";
 
 /**
  * @title RefundRequest

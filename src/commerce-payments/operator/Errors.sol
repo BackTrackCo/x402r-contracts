@@ -17,16 +17,7 @@ error InvalidOperator();
 error NotInEscrow();
 error NotCaptured();
 
-// ============ Refund Request Errors ============
-error EmptyIpfsLink();
-error RequestAlreadyExists();
-error RequestDoesNotExist();
-error RequestNotPending();
-error InvalidStatus();
-error FullyRefunded();
-
 // ============ Operator Errors ============
-error ZeroOperator();
 error ZeroEscrow();
 error ZeroArbiter();
 error RefundPeriodNotPassed();

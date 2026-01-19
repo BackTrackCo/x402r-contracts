@@ -13,7 +13,7 @@ import {
     InvalidOperator,
     NotInEscrow,
     NotCaptured
-} from "../Errors.sol";
+} from "./Errors.sol";
 
 /**
  * @title RefundRequestAccess

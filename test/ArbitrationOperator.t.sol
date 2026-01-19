@@ -5,7 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {ArbitrationOperator} from "../src/commerce-payments/operator/ArbitrationOperator.sol";
 import {ArbitrationOperatorAccess} from "../src/commerce-payments/operator/ArbitrationOperatorAccess.sol";
 import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
-import {InvalidOperator, NotReceiver, NotPayer, NotReceiverOrArbiter, RefundPeriodNotPassed} from "../src/commerce-payments/Errors.sol";
+import {InvalidOperator, NotReceiver, NotPayer, NotReceiverOrArbiter, RefundPeriodNotPassed} from "../src/commerce-payments/operator/Errors.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockEscrow} from "./mocks/MockEscrow.sol";
