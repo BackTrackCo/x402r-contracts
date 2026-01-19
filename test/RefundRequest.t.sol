@@ -27,7 +27,7 @@ contract RefundRequestTest is Test {
 
     uint256 public constant MAX_TOTAL_FEE_RATE = 50;
     uint256 public constant PROTOCOL_FEE_PERCENTAGE = 25;
-    uint48 public constant REFUND_PERIOD = 7 days;
+    uint48 public constant ESCROW_PERIOD = 7 days;
     uint256 public constant INITIAL_BALANCE = 1000000 * 10**18;
     uint256 public constant PAYMENT_AMOUNT = 1000 * 10**18;
 
@@ -72,7 +72,7 @@ contract RefundRequestTest is Test {
             PROTOCOL_FEE_PERCENTAGE,
             owner
         );
-        operator = ArbitrationOperator(factory.deployOperator(arbiter, REFUND_PERIOD));
+        operator = ArbitrationOperator(factory.deployOperator(arbiter, ESCROW_PERIOD));
 
         // Deploy RefundRequest
         refundRequest = new RefundRequest(address(operator));
@@ -290,7 +290,7 @@ contract RefundRequestTest is Test {
         bytes32 paymentInfoHash = _authorizeAndRequest();
 
         // Capture first
-        vm.warp(block.timestamp + REFUND_PERIOD + 1);
+        vm.warp(block.timestamp + ESCROW_PERIOD + 1);
         vm.prank(receiver);
         operator.release(paymentInfoHash, PAYMENT_AMOUNT);
 
@@ -311,7 +311,7 @@ contract RefundRequestTest is Test {
         bytes32 paymentInfoHash = _authorizeAndRequest();
 
         // Capture first
-        vm.warp(block.timestamp + REFUND_PERIOD + 1);
+        vm.warp(block.timestamp + ESCROW_PERIOD + 1);
         vm.prank(receiver);
         operator.release(paymentInfoHash, PAYMENT_AMOUNT);
 
@@ -399,7 +399,7 @@ contract RefundRequestTest is Test {
         assertEq(requests.length, 1);
 
         // Capture
-        vm.warp(block.timestamp + REFUND_PERIOD + 1);
+        vm.warp(block.timestamp + ESCROW_PERIOD + 1);
         vm.prank(receiver);
         operator.release(paymentInfoHash, PAYMENT_AMOUNT);
 

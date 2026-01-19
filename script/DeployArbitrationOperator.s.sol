@@ -9,7 +9,7 @@ import {ArbitrationOperator} from "../src/commerce-payments/operator/Arbitration
  * @notice Deploys the ArbitrationOperator contract
  * @dev This script deploys the ArbitrationOperator contract that wraps Base Commerce Payments
  *      and enforces arbiter-based refund restrictions and fee distribution.
- *      Refund period is set at deployment (immutable per operator).
+ *      Escrow period is set at deployment (immutable per operator).
  *
  *      Environment variables:
  *      - ESCROW_ADDRESS: Base Commerce Payments escrow contract address (required)
@@ -18,7 +18,7 @@ import {ArbitrationOperator} from "../src/commerce-payments/operator/Arbitration
  *      - PROTOCOL_FEE_PERCENTAGE: Protocol fee percentage 0-100 (default: 25 = 25%)
  *      - ARBITER_ADDRESS: Address of the arbiter for dispute resolution (required)
  *      - OWNER_ADDRESS: Owner of the operator contract (required)
- *      - REFUND_PERIOD: Refund period in seconds (default: 7 days)
+ *      - ESCROW_PERIOD: Escrow period in seconds (default: 7 days)
  */
 contract DeployArbitrationOperator is Script {
     function run() public {
@@ -33,8 +33,8 @@ contract DeployArbitrationOperator is Script {
         uint256 maxTotalFeeRate = vm.envOr("MAX_TOTAL_FEE_RATE", uint256(5));
         // Default: 25% protocol fee (arbiter gets 75%)
         uint256 protocolFeePercentage = vm.envOr("PROTOCOL_FEE_PERCENTAGE", uint256(25));
-        // Default: 7 days refund period
-        uint48 refundPeriod = uint48(vm.envOr("REFUND_PERIOD", uint256(7 days)));
+        // Default: 7 days escrow period
+        uint48 escrowPeriod = uint48(vm.envOr("ESCROW_PERIOD", uint256(7 days)));
 
         vm.startBroadcast();
 
@@ -45,7 +45,7 @@ contract DeployArbitrationOperator is Script {
         console.log("Protocol fee percentage:", protocolFeePercentage);
         console.log("Arbiter:", arbiter);
         console.log("Owner:", owner);
-        console.log("Refund period (seconds):", refundPeriod);
+        console.log("Escrow period (seconds):", escrowPeriod);
 
         // Deploy ArbitrationOperator
         ArbitrationOperator operator = new ArbitrationOperator(
@@ -55,7 +55,7 @@ contract DeployArbitrationOperator is Script {
             protocolFeePercentage,
             arbiter,
             owner,
-            refundPeriod
+            escrowPeriod
         );
 
         console.log("\n=== Deployment Summary ===");
@@ -67,7 +67,7 @@ contract DeployArbitrationOperator is Script {
         console.log("Max total fee rate:", operator.MAX_TOTAL_FEE_RATE());
         console.log("Protocol fee percentage:", operator.PROTOCOL_FEE_PERCENTAGE());
         console.log("Max arbiter fee rate:", operator.MAX_ARBITER_FEE_RATE());
-        console.log("Refund period:", operator.REFUND_PERIOD());
+        console.log("Escrow period:", operator.ESCROW_PERIOD());
         console.log("Fees enabled:", operator.feesEnabled());
         console.log("\n=== Configuration ===");
         console.log("OPERATOR_ADDRESS=", address(operator));

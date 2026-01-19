@@ -5,7 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {ArbitrationOperator} from "../src/commerce-payments/operator/ArbitrationOperator.sol";
 import {ArbitrationOperatorAccess} from "../src/commerce-payments/operator/ArbitrationOperatorAccess.sol";
 import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
-import {InvalidOperator, NotReceiver, NotPayer, NotReceiverOrArbiter, RefundPeriodNotPassed} from "../src/commerce-payments/operator/Errors.sol";
+import {InvalidOperator, NotReceiver, NotPayer, NotReceiverOrArbiter, EscrowPeriodNotPassed} from "../src/commerce-payments/operator/Errors.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockEscrow} from "./mocks/MockEscrow.sol";
@@ -27,7 +27,7 @@ contract ArbitrationOperatorTest is Test {
     uint256 public constant PROTOCOL_FEE_PERCENTAGE = 25; // 25%
     uint256 public constant INITIAL_BALANCE = 1000000 * 10**18;
     uint256 public constant PAYMENT_AMOUNT = 1000 * 10**18;
-    uint48 public constant REFUND_PERIOD = 7 days; // Set at operator deployment
+    uint48 public constant ESCROW_PERIOD = 7 days; // Set at operator deployment
 
     // Events from operator
     event AuthorizationCreated(
@@ -71,7 +71,7 @@ contract ArbitrationOperatorTest is Test {
         );
 
         // Deploy operator via factory (factory owner becomes operator owner)
-        operator = ArbitrationOperator(factory.deployOperator(arbiter, REFUND_PERIOD));
+        operator = ArbitrationOperator(factory.deployOperator(arbiter, ESCROW_PERIOD));
 
         // Setup balances
         token.mint(payer, INITIAL_BALANCE);
@@ -168,7 +168,7 @@ contract ArbitrationOperatorTest is Test {
         assertEq(operator.ARBITER(), arbiter);
         assertEq(operator.MAX_TOTAL_FEE_RATE(), MAX_TOTAL_FEE_RATE);
         assertEq(operator.PROTOCOL_FEE_PERCENTAGE(), PROTOCOL_FEE_PERCENTAGE);
-        assertEq(operator.REFUND_PERIOD(), REFUND_PERIOD);
+        assertEq(operator.ESCROW_PERIOD(), ESCROW_PERIOD);
         assertEq(operator.feesEnabled(), false);
         assertEq(operator.owner(), owner);
     }
@@ -176,32 +176,32 @@ contract ArbitrationOperatorTest is Test {
     // ============ Factory Tests ============
 
     function test_Factory_DeploysOperator() public view {
-        address deployedOperator = factory.getOperator(arbiter, REFUND_PERIOD);
+        address deployedOperator = factory.getOperator(arbiter, ESCROW_PERIOD);
         assertEq(deployedOperator, address(operator));
     }
 
     function test_Factory_IdempotentDeploy() public {
-        address first = factory.deployOperator(arbiter, REFUND_PERIOD);
-        address second = factory.deployOperator(arbiter, REFUND_PERIOD);
+        address first = factory.deployOperator(arbiter, ESCROW_PERIOD);
+        address second = factory.deployOperator(arbiter, ESCROW_PERIOD);
         assertEq(first, second);
     }
 
     function test_Factory_DifferentArbitersDifferentOperators() public {
         address arbiter2 = makeAddr("arbiter2");
-        address op1 = factory.deployOperator(arbiter, REFUND_PERIOD);
-        address op2 = factory.deployOperator(arbiter2, REFUND_PERIOD);
+        address op1 = factory.deployOperator(arbiter, ESCROW_PERIOD);
+        address op2 = factory.deployOperator(arbiter2, ESCROW_PERIOD);
         assertTrue(op1 != op2);
     }
 
-    function test_Factory_DifferentRefundPeriodsDifferentOperators() public {
-        uint48 refundPeriod2 = 14 days;
-        address op1 = factory.deployOperator(arbiter, REFUND_PERIOD);
-        address op2 = factory.deployOperator(arbiter, refundPeriod2);
+    function test_Factory_DifferentEscrowPeriodsDifferentOperators() public {
+        uint48 escrowPeriod2 = 14 days;
+        address op1 = factory.deployOperator(arbiter, ESCROW_PERIOD);
+        address op2 = factory.deployOperator(arbiter, escrowPeriod2);
         assertTrue(op1 != op2);
     }
 
     function test_Factory_OperatorOwnerIsFactoryOwner() public {
-        address newOperator = factory.deployOperator(makeAddr("newArbiter"), REFUND_PERIOD);
+        address newOperator = factory.deployOperator(makeAddr("newArbiter"), ESCROW_PERIOD);
         assertEq(ArbitrationOperator(newOperator).owner(), owner);
     }
 
@@ -249,8 +249,8 @@ contract ArbitrationOperatorTest is Test {
     function test_Release_Success() public {
         (bytes32 paymentInfoHash, MockEscrow.PaymentInfo memory paymentInfo) = _authorize();
 
-        // Fast forward past refund period
-        vm.warp(block.timestamp + REFUND_PERIOD + 1);
+        // Fast forward past escrow period
+        vm.warp(block.timestamp + ESCROW_PERIOD + 1);
 
         uint256 receiverBalanceBefore = token.balanceOf(receiver);
 
@@ -275,7 +275,7 @@ contract ArbitrationOperatorTest is Test {
 
     function test_Release_RevertsOnNotReceiver() public {
         (bytes32 paymentInfoHash, MockEscrow.PaymentInfo memory paymentInfo) = _authorize();
-        vm.warp(block.timestamp + REFUND_PERIOD + 1);
+        vm.warp(block.timestamp + ESCROW_PERIOD + 1);
 
         vm.expectRevert(NotReceiver.selector);
         operator.release(
@@ -284,11 +284,11 @@ contract ArbitrationOperatorTest is Test {
         );
     }
 
-    function test_Release_RevertsOnRefundPeriodNotPassed() public {
+    function test_Release_RevertsOnEscrowPeriodNotPassed() public {
         (bytes32 paymentInfoHash, MockEscrow.PaymentInfo memory paymentInfo) = _authorize();
 
         vm.prank(receiver);
-        vm.expectRevert(RefundPeriodNotPassed.selector);
+        vm.expectRevert(EscrowPeriodNotPassed.selector);
         operator.release(
             paymentInfoHash,
             PAYMENT_AMOUNT
@@ -300,7 +300,7 @@ contract ArbitrationOperatorTest is Test {
     function test_EarlyRelease_Success() public {
         (bytes32 paymentInfoHash, MockEscrow.PaymentInfo memory paymentInfo) = _authorize();
 
-        // Do NOT fast forward (time is still before refund period ends)
+        // Do NOT fast forward (time is still before escrow period ends)
 
         uint256 receiverBalanceBefore = token.balanceOf(receiver);
 
@@ -340,7 +340,7 @@ contract ArbitrationOperatorTest is Test {
         uint120 refundAmount = uint120(PAYMENT_AMOUNT / 2);
 
         vm.prank(receiver);
-        operator.refund(
+        operator.escrowRefund(
             paymentInfoHash,
             refundAmount
         );
@@ -360,7 +360,7 @@ contract ArbitrationOperatorTest is Test {
         uint120 refundAmount = uint120(PAYMENT_AMOUNT / 2);
 
         vm.prank(arbiter);
-        operator.refund(
+        operator.escrowRefund(
             paymentInfoHash,
             refundAmount
         );
@@ -376,7 +376,7 @@ contract ArbitrationOperatorTest is Test {
 
         vm.prank(payer);
         vm.expectRevert(NotReceiverOrArbiter.selector);
-        operator.refund(
+        operator.escrowRefund(
             paymentInfoHash,
             uint120(PAYMENT_AMOUNT / 2)
         );
@@ -389,10 +389,10 @@ contract ArbitrationOperatorTest is Test {
         uint120 secondRefund = uint120(PAYMENT_AMOUNT / 3);
 
         vm.prank(receiver);
-        operator.refund(paymentInfoHash, firstRefund);
+        operator.escrowRefund(paymentInfoHash, firstRefund);
 
         vm.prank(arbiter);
-        operator.refund(paymentInfoHash, secondRefund);
+        operator.escrowRefund(paymentInfoHash, secondRefund);
 
         (, uint120 capturable,) = escrow.paymentState(paymentInfoHash);
         assertEq(capturable, PAYMENT_AMOUNT - firstRefund - secondRefund);

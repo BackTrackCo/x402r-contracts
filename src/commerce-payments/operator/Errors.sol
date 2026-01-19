@@ -20,8 +20,8 @@ error NotCaptured();
 // ============ Operator Errors ============
 error ZeroEscrow();
 error ZeroArbiter();
-error RefundPeriodNotPassed();
+error EscrowPeriodNotPassed();
 error TotalFeeRateExceedsMax();
 
 // ============ Factory Errors ============
-error ZeroRefundPeriod();
+error ZeroEscrowPeriod();

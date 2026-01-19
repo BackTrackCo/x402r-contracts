@@ -48,5 +48,5 @@ event FeesDistributed(
 event OperatorDeployed(
     address indexed operator,
     address indexed arbiter,
-    uint48 refundPeriod
+    uint48 escrowPeriod
 );
