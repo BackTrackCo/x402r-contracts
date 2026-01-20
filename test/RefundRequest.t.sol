@@ -2,12 +2,13 @@
 pragma solidity ^0.8.28;
 
 import {Test, console} from "forge-std/Test.sol";
-import {ArbitrationOperator} from "../src/commerce-payments/operator/ArbitrationOperator.sol";
-import {ArbitrationOperatorAccess} from "../src/commerce-payments/operator/ArbitrationOperatorAccess.sol";
+import {ArbitrationOperator} from "../src/commerce-payments/operator/arbitration/ArbitrationOperator.sol";
+import {ArbitrationOperatorAccess} from "../src/commerce-payments/operator/arbitration/ArbitrationOperatorAccess.sol";
 import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
-import {RefundRequest} from "../src/commerce-payments/requests/RefundRequest.sol";
-import {RequestStatus} from "../src/commerce-payments/requests/Types.sol";
-import {NotPayer, NotReceiver, NotReceiverOrArbiter, EmptyIpfsLink, RequestAlreadyExists, RequestNotPending} from "../src/commerce-payments/requests/Errors.sol";
+import {RefundRequest} from "../src/commerce-payments/requests/refund/RefundRequest.sol";
+import {RequestStatus} from "../src/commerce-payments/requests/types/Types.sol";
+import {NotPayer, NotReceiver, NotReceiverOrArbiter} from "../src/commerce-payments/types/Errors.sol";
+import {RequestAlreadyExists, RequestNotPending} from "../src/commerce-payments/requests/types/Errors.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockEscrow} from "./mocks/MockEscrow.sol";
@@ -31,14 +32,13 @@ contract RefundRequestTest is Test {
     uint256 public constant INITIAL_BALANCE = 1000000 * 10**18;
     uint256 public constant PAYMENT_AMOUNT = 1000 * 10**18;
 
-    string public constant IPFS_LINK = "ipfs://QmTest123";
+
 
     // Events
     event RefundRequested(
         bytes32 indexed paymentInfoHash,
         address indexed payer,
-        address indexed receiver,
-        string ipfsLink
+        address indexed receiver
     );
 
     event RefundRequestStatusUpdated(
@@ -162,7 +162,7 @@ contract RefundRequestTest is Test {
         bytes32 paymentInfoHash = _authorize();
 
         vm.prank(payer);
-        refundRequest.requestRefund(paymentInfoHash, IPFS_LINK);
+        refundRequest.requestRefund(paymentInfoHash);
 
         return paymentInfoHash;
     }
@@ -179,11 +179,10 @@ contract RefundRequestTest is Test {
         bytes32 paymentInfoHash = _authorize();
 
         vm.prank(payer);
-        refundRequest.requestRefund(paymentInfoHash, IPFS_LINK);
+        refundRequest.requestRefund(paymentInfoHash);
 
         RefundRequest.RefundRequestData memory request = refundRequest.getRefundRequest(paymentInfoHash);
         assertEq(request.paymentInfoHash, paymentInfoHash);
-        assertEq(request.ipfsLink, IPFS_LINK);
         assertEq(uint8(request.status), uint8(RequestStatus.Pending));
     }
 
@@ -192,23 +191,17 @@ contract RefundRequestTest is Test {
 
         vm.prank(receiver);
         vm.expectRevert(NotPayer.selector);
-        refundRequest.requestRefund(paymentInfoHash, IPFS_LINK);
+        refundRequest.requestRefund(paymentInfoHash);
     }
 
-    function test_RequestRefund_RevertsOnEmptyIpfsLink() public {
-        bytes32 paymentInfoHash = _authorize();
 
-        vm.prank(payer);
-        vm.expectRevert(EmptyIpfsLink.selector);
-        refundRequest.requestRefund(paymentInfoHash, "");
-    }
 
     function test_RequestRefund_RevertsOnDuplicate() public {
         bytes32 paymentInfoHash = _authorizeAndRequest();
 
         vm.prank(payer);
         vm.expectRevert(RequestAlreadyExists.selector);
-        refundRequest.requestRefund(paymentInfoHash, "ipfs://another");
+        refundRequest.requestRefund(paymentInfoHash);
     }
 
     function test_RequestRefund_AllowsAfterCancel() public {
@@ -219,12 +212,10 @@ contract RefundRequestTest is Test {
         refundRequest.cancelRefundRequest(paymentInfoHash);
 
         // Request again
-        string memory newLink = "ipfs://new";
         vm.prank(payer);
-        refundRequest.requestRefund(paymentInfoHash, newLink);
+        refundRequest.requestRefund(paymentInfoHash);
 
         RefundRequest.RefundRequestData memory request = refundRequest.getRefundRequest(paymentInfoHash);
-        assertEq(request.ipfsLink, newLink);
         assertEq(uint8(request.status), uint8(RequestStatus.Pending));
     }
 
@@ -370,25 +361,25 @@ contract RefundRequestTest is Test {
         assertFalse(refundRequest.hasRefundRequest(paymentInfoHash));
 
         vm.prank(payer);
-        refundRequest.requestRefund(paymentInfoHash, IPFS_LINK);
+        refundRequest.requestRefund(paymentInfoHash);
 
         assertTrue(refundRequest.hasRefundRequest(paymentInfoHash));
     }
 
     function test_GetPayerRefundRequests() public {
-        _authorizeAndRequest();
+        bytes32 paymentInfoHash = _authorizeAndRequest();
 
         RefundRequest.RefundRequestData[] memory requests = refundRequest.getPayerRefundRequests(payer);
         assertEq(requests.length, 1);
-        assertEq(requests[0].ipfsLink, IPFS_LINK);
+        assertEq(requests[0].paymentInfoHash, paymentInfoHash);
     }
 
     function test_GetReceiverRefundRequests() public {
-        _authorizeAndRequest();
+        bytes32 paymentInfoHash = _authorizeAndRequest();
 
         RefundRequest.RefundRequestData[] memory requests = refundRequest.getReceiverRefundRequests(receiver);
         assertEq(requests.length, 1);
-        assertEq(requests[0].ipfsLink, IPFS_LINK);
+        assertEq(requests[0].paymentInfoHash, paymentInfoHash);
     }
 
     function test_GetArbiterRefundRequests_FiltersInEscrow() public {

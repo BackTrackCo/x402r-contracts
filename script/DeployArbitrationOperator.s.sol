@@ -2,7 +2,7 @@
 pragma solidity ^0.8.23;
 
 import {Script, console} from "forge-std/Script.sol";
-import {ArbitrationOperator} from "../src/commerce-payments/operator/ArbitrationOperator.sol";
+import {ArbitrationOperator} from "../src/commerce-payments/operator/arbitration/ArbitrationOperator.sol";
 
 /**
  * @title DeployArbitrationOperator

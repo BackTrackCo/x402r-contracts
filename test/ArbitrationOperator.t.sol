@@ -2,10 +2,11 @@
 pragma solidity ^0.8.28;
 
 import {Test, console} from "forge-std/Test.sol";
-import {ArbitrationOperator} from "../src/commerce-payments/operator/ArbitrationOperator.sol";
-import {ArbitrationOperatorAccess} from "../src/commerce-payments/operator/ArbitrationOperatorAccess.sol";
+import {ArbitrationOperator} from "../src/commerce-payments/operator/arbitration/ArbitrationOperator.sol";
+import {ArbitrationOperatorAccess} from "../src/commerce-payments/operator/arbitration/ArbitrationOperatorAccess.sol";
 import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
-import {InvalidOperator, NotReceiver, NotPayer, NotReceiverOrArbiter, EscrowPeriodNotPassed} from "../src/commerce-payments/operator/Errors.sol";
+import {InvalidOperator, NotReceiver, NotPayer, NotReceiverOrArbiter} from "../src/commerce-payments/types/Errors.sol";
+import {EscrowPeriodNotPassed} from "../src/commerce-payments/operator/types/Errors.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockEscrow} from "./mocks/MockEscrow.sol";

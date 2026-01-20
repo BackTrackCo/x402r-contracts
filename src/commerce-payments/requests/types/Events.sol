@@ -8,8 +8,7 @@ import {RequestStatus} from "./Types.sol";
 event RefundRequested(
     bytes32 indexed paymentInfoHash,
     address indexed payer,
-    address indexed receiver,
-    string ipfsLink
+    address indexed receiver
 );
 
 event RefundRequestStatusUpdated(
@@ -22,4 +21,10 @@ event RefundRequestStatusUpdated(
 event RefundRequestCancelled(
     bytes32 indexed paymentInfoHash,
     address indexed payer
+);
+
+// ============ Factory Events ============
+event RefundRequestDeployed(
+    address indexed refundRequest,
+    address indexed operator
 );

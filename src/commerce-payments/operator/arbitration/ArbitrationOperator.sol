@@ -2,17 +2,12 @@
 // CONTRACTS UNAUDITED: USE AT YOUR OWN RISK
 pragma solidity ^0.8.28;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable} from "solady/auth/Ownable.sol";
+import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {ArbitrationOperatorAccess} from "./ArbitrationOperatorAccess.sol";
-import {
-    ZeroAddress,
-    ZeroAmount,
-    EscrowPeriodNotPassed,
-    TotalFeeRateExceedsMax
-} from "./Errors.sol";
+import {ZeroAddress, ZeroAmount} from "../../types/Errors.sol";
+import {EscrowPeriodNotPassed, TotalFeeRateExceedsMax} from "../types/Errors.sol";
 import {
     AuthorizationCreated,
     ReleaseExecuted,
@@ -20,7 +15,7 @@ import {
     RefundExecuted,
     ProtocolFeesEnabledUpdated,
     FeesDistributed
-} from "./Events.sol";
+} from "../types/Events.sol";
 
 /**
  * @title ArbitrationOperator
@@ -34,7 +29,6 @@ import {
  *      - Uses PaymentInfo struct from Base Commerce Payments for full x402-escrow compatibility
  */
 contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
-    using SafeERC20 for IERC20;
 
     // Fee configuration
     uint256 public constant BASIS_POINTS = 10000;
@@ -59,9 +53,10 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
         address _arbiter,
         address _owner,
         uint48 _escrowPeriod
-    ) Ownable(_owner) ArbitrationOperatorAccess(_escrow, _arbiter) {
+    ) ArbitrationOperatorAccess(_escrow, _arbiter) {
         if (_protocolFeeRecipient == address(0)) revert ZeroAddress();
         if (_owner == address(0)) revert ZeroAddress();
+        _initializeOwner(_owner);
         if (_maxTotalFeeRate == 0) revert ZeroAmount();
         if (_protocolFeePercentage > 100) revert TotalFeeRateExceedsMax();
         if (_escrowPeriod == 0) revert ZeroAmount();
@@ -121,6 +116,10 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
 
         // Store authorization timestamp for escrow period calculation
         authorizationTimestamps[paymentInfoHash] = uint48(block.timestamp);
+
+        // Index by payer and receiver for discoverability
+        _addPayerPayment(enforcedPaymentInfo.payer, paymentInfoHash);
+        _addReceiverPayment(enforcedPaymentInfo.receiver, paymentInfoHash);
 
         emit AuthorizationCreated(
             paymentInfoHash,
@@ -207,7 +206,8 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
      * @param token The token address to distribute fees for
      */
     function distributeFees(address token) external {
-        uint256 balance = IERC20(token).balanceOf(address(this));
+        if (token == address(0)) revert ZeroAddress();
+        uint256 balance = SafeTransferLib.balanceOf(token, address(this));
         if (balance == 0) return;
 
         uint256 protocolAmount = 0;
@@ -221,15 +221,13 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
         }
 
         if (protocolAmount > 0) {
-            IERC20(token).safeTransfer(protocolFeeRecipient, protocolAmount);
+            SafeTransferLib.safeTransfer(token, protocolFeeRecipient, protocolAmount);
         }
 
         if (arbiterAmount > 0) {
-            IERC20(token).safeTransfer(ARBITER, arbiterAmount);
+            SafeTransferLib.safeTransfer(token, ARBITER, arbiterAmount);
         }
 
         emit FeesDistributed(token, protocolAmount, arbiterAmount);
     }
-
-
 }

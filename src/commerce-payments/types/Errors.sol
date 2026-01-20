@@ -16,12 +16,3 @@ error PaymentDoesNotExist();
 error InvalidOperator();
 error NotInEscrow();
 error NotCaptured();
-
-// ============ Operator Errors ============
-error ZeroEscrow();
-error ZeroArbiter();
-error EscrowPeriodNotPassed();
-error TotalFeeRateExceedsMax();
-
-// ============ Factory Errors ============
-error ZeroEscrowPeriod();

@@ -2,10 +2,11 @@
 // CONTRACTS UNAUDITED: USE AT YOUR OWN RISK
 pragma solidity ^0.8.28;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {ArbitrationOperator} from "./ArbitrationOperator.sol";
-import {ZeroAddress, ZeroAmount, ZeroEscrowPeriod} from "./Errors.sol";
-import {OperatorDeployed} from "./Events.sol";
+import {Ownable} from "solady/auth/Ownable.sol";
+import {ArbitrationOperator} from "./arbitration/ArbitrationOperator.sol";
+import {ZeroAddress, ZeroAmount} from "../types/Errors.sol";
+import {ZeroEscrowPeriod} from "./types/Errors.sol";
+import {OperatorDeployed} from "./types/Events.sol";
 
 /**
  * @title ArbitrationOperatorFactory
@@ -36,11 +37,12 @@ contract ArbitrationOperatorFactory is Ownable {
         uint256 _maxTotalFeeRate,
         uint256 _protocolFeePercentage,
         address _owner
-    ) Ownable(_owner) {
+    ) {
         if (_escrow == address(0)) revert ZeroAddress();
         if (_protocolFeeRecipient == address(0)) revert ZeroAddress();
         if (_owner == address(0)) revert ZeroAddress();
         if (_maxTotalFeeRate == 0) revert ZeroAmount();
+        _initializeOwner(_owner);
 
         ESCROW = _escrow;
         PROTOCOL_FEE_RECIPIENT = _protocolFeeRecipient;

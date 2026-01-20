@@ -4,20 +4,19 @@ pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {RefundRequestAccess} from "./RefundRequestAccess.sol";
-import {RequestStatus} from "./Types.sol";
+import {RequestStatus} from "../types/Types.sol";
 import {
-    EmptyIpfsLink,
     RequestAlreadyExists,
     RequestDoesNotExist,
     RequestNotPending,
     InvalidStatus,
     FullyRefunded
-} from "./Errors.sol";
+} from "../types/Errors.sol";
 import {
     RefundRequested,
     RefundRequestStatusUpdated,
     RefundRequestCancelled
-} from "./Events.sol";
+} from "../types/Events.sol";
 
 /**
  * @title RefundRequest
@@ -30,7 +29,6 @@ import {
 contract RefundRequest is RefundRequestAccess {
     struct RefundRequestData {
         bytes32 paymentInfoHash;    // Hash of PaymentInfo from operator contract
-        string ipfsLink;            // IPFS link to refund request details/evidence
         RequestStatus status;       // Current status of the request
     }
 
@@ -40,6 +38,9 @@ contract RefundRequest is RefundRequestAccess {
     mapping(address => bytes32[]) private payerRefundRequests;
     // receiver => array of paymentInfoHashes (for iteration)
     mapping(address => bytes32[]) private receiverRefundRequests;
+    // O(1) existence checks for array deduplication
+    mapping(address => mapping(bytes32 => bool)) private payerRefundRequestExists;
+    mapping(address => mapping(bytes32 => bool)) private receiverRefundRequestExists;
 
     /// @notice Constructor
     /// @param _operator Address of the ArbitrationOperator contract
@@ -47,35 +48,30 @@ contract RefundRequest is RefundRequestAccess {
 
     /// @notice Request a refund for an authorization
     /// @param paymentInfoHash The hash of the PaymentInfo struct
-    /// @param ipfsLink IPFS link to refund request details/evidence
     /// @dev Only the payer can request a refund
     ///      The authorization must exist in the operator contract
     function requestRefund(
-        bytes32 paymentInfoHash,
-        string calldata ipfsLink
+        bytes32 paymentInfoHash
     ) external paymentMustExist(paymentInfoHash) validOperatorByHash(paymentInfoHash) onlyPayerByHash(paymentInfoHash) {
-        if (bytes(ipfsLink).length == 0) revert EmptyIpfsLink();
-
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = OPERATOR.getPaymentInfo(paymentInfoHash);
 
         // Check if request already exists (allow re-requesting if cancelled)
         RefundRequestData storage existingRequest = refundRequests[paymentInfoHash];
-        if (bytes(existingRequest.ipfsLink).length != 0 && existingRequest.status != RequestStatus.Cancelled) {
+        if (existingRequest.paymentInfoHash != bytes32(0) && existingRequest.status != RequestStatus.Cancelled) {
             revert RequestAlreadyExists();
         }
 
         // Create or update refund request
         refundRequests[paymentInfoHash] = RefundRequestData({
             paymentInfoHash: paymentInfoHash,
-            ipfsLink: ipfsLink,
             status: RequestStatus.Pending
         });
 
         // Update indexing arrays (only add if not already in arrays)
-        _addToArrayIfNotExists(payerRefundRequests[paymentInfo.payer], paymentInfoHash);
-        _addToArrayIfNotExists(receiverRefundRequests[paymentInfo.receiver], paymentInfoHash);
+        _addPayerRequest(paymentInfo.payer, paymentInfoHash);
+        _addReceiverRequest(paymentInfo.receiver, paymentInfoHash);
 
-        emit RefundRequested(paymentInfoHash, paymentInfo.payer, paymentInfo.receiver, ipfsLink);
+        emit RefundRequested(paymentInfoHash, paymentInfo.payer, paymentInfo.receiver);
     }
 
     /// @notice Update the status of a refund request
@@ -99,7 +95,7 @@ contract RefundRequest is RefundRequestAccess {
         bytes32 paymentInfoHash
     ) external paymentMustExist(paymentInfoHash) validOperatorByHash(paymentInfoHash) onlyPayerByHash(paymentInfoHash) {
         RefundRequestData storage request = refundRequests[paymentInfoHash];
-        if (bytes(request.ipfsLink).length == 0) revert RequestDoesNotExist();
+        if (request.paymentInfoHash == bytes32(0)) revert RequestDoesNotExist();
         if (request.status != RequestStatus.Pending) revert RequestNotPending();
 
         request.status = RequestStatus.Cancelled;
@@ -116,7 +112,7 @@ contract RefundRequest is RefundRequestAccess {
         }
 
         RefundRequestData storage request = refundRequests[paymentInfoHash];
-        if (bytes(request.ipfsLink).length == 0) revert RequestDoesNotExist();
+        if (request.paymentInfoHash == bytes32(0)) revert RequestDoesNotExist();
         if (request.status != RequestStatus.Pending) revert RequestNotPending();
 
         // If denying, verify not already fully refunded/voided
@@ -131,12 +127,18 @@ contract RefundRequest is RefundRequestAccess {
         emit RefundRequestStatusUpdated(paymentInfoHash, oldStatus, newStatus, msg.sender);
     }
 
-    /// @notice Add hash to array if not already present
-    function _addToArrayIfNotExists(bytes32[] storage arr, bytes32 hash) internal {
-        for (uint256 i = 0; i < arr.length; i++) {
-            if (arr[i] == hash) return;
-        }
-        arr.push(hash);
+    /// @notice Add hash to payer's request array if not already present (O(1) check)
+    function _addPayerRequest(address payer, bytes32 hash) internal {
+        if (payerRefundRequestExists[payer][hash]) return;
+        payerRefundRequestExists[payer][hash] = true;
+        payerRefundRequests[payer].push(hash);
+    }
+
+    /// @notice Add hash to receiver's request array if not already present (O(1) check)
+    function _addReceiverRequest(address receiver, bytes32 hash) internal {
+        if (receiverRefundRequestExists[receiver][hash]) return;
+        receiverRefundRequestExists[receiver][hash] = true;
+        receiverRefundRequests[receiver].push(hash);
     }
 
     // ============ View Functions ============
@@ -150,7 +152,7 @@ contract RefundRequest is RefundRequestAccess {
         returns (RefundRequestData memory)
     {
         RefundRequestData memory request = refundRequests[paymentInfoHash];
-        if (bytes(request.ipfsLink).length == 0) revert RequestDoesNotExist();
+        if (request.paymentInfoHash == bytes32(0)) revert RequestDoesNotExist();
         return request;
     }
 
@@ -158,7 +160,7 @@ contract RefundRequest is RefundRequestAccess {
     /// @param paymentInfoHash The payment info hash
     /// @return True if request exists, false otherwise
     function hasRefundRequest(bytes32 paymentInfoHash) external view returns (bool) {
-        return bytes(refundRequests[paymentInfoHash].ipfsLink).length != 0;
+        return refundRequests[paymentInfoHash].paymentInfoHash != bytes32(0);
     }
 
     /// @notice Get the status of a refund request

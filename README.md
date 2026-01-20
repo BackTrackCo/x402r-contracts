@@ -18,8 +18,8 @@ The commerce-payments contracts provide refund functionality for Base Commerce P
 - **ArbitrationOperator**: `src/commerce-payments/operator/ArbitrationOperator.sol`
   - Operator contract that wraps Base Commerce Payments and enforces refund delay for uncaptured funds, arbiter refund restrictions, and fee distribution.
 
-- **RefundRequest**: `src/commerce-payments/requests/RefundRequest.sol`
-  - Contract for managing refund requests for Base Commerce Payments authorizations. Users can create refund requests with IPFS links, cancel their own pending requests, and merchants or arbiters can approve or deny them based on capture status.
+- **RefundRequest**: `src/commerce-payments/requests/refund/RefundRequest.sol`
+  - Contract for managing refund requests for Base Commerce Payments authorizations. Users can create refund requests, cancel their own pending requests, and merchants or arbiters can approve or deny them based on capture status.
 
 ## Foundry
 
