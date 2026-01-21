@@ -30,8 +30,33 @@ contract EscrowPeriodConditionFactory {
     }
 
     /**
+     * @notice Calculate the deterministic address for an escrow condition
+     * @dev Uses CREATE2 formula: keccak256(0xff ++ address(this) ++ salt ++ keccak256(bytecode))
+     * @param escrowPeriod Duration of the escrow period in seconds
+     * @return condition The predicted condition address
+     */
+    function computeAddress(uint256 escrowPeriod) external view returns (address condition) {
+        bytes32 salt = bytes32(escrowPeriod);
+        
+        bytes memory bytecode = abi.encodePacked(
+            type(EscrowPeriodCondition).creationCode,
+            abi.encode(escrowPeriod)
+        );
+        
+        bytes32 bytecodeHash = keccak256(bytecode);
+        
+        return address(uint160(uint256(keccak256(abi.encodePacked(
+            bytes1(0xff),
+            address(this),
+            salt,
+            bytecodeHash
+        )))));
+    }
+
+    /**
      * @notice Deploy an escrow period condition for a given period
      * @dev Idempotent - returns existing condition if already deployed.
+     *      Uses CREATE2 for deterministic addresses.
      * @param escrowPeriod Duration of the escrow period in seconds
      * @return condition The condition address
      */
@@ -43,8 +68,11 @@ contract EscrowPeriodConditionFactory {
             return conditions[escrowPeriod];
         }
 
-        // Deploy new condition
-        condition = address(new EscrowPeriodCondition(escrowPeriod));
+        // Deploy new condition using CREATE2
+        // Salt is simply the escrowPeriod directly (as bytes32)
+        bytes32 salt = bytes32(escrowPeriod);
+        
+        condition = address(new EscrowPeriodCondition{salt: salt}(escrowPeriod));
 
         conditions[escrowPeriod] = condition;
 

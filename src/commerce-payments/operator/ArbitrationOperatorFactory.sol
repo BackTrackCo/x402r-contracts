@@ -60,9 +60,43 @@ contract ArbitrationOperatorFactory is Ownable {
     }
 
     /**
+     * @notice Calculate the deterministic address for an operator
+     * @dev Uses CREATE2 formula: keccak256(0xff ++ address(this) ++ salt ++ keccak256(bytecode))
+     * @param arbiter The arbiter address
+     * @param releaseCondition The release condition contract address
+     * @return operator The predicted operator address
+     */
+    function computeAddress(address arbiter, address releaseCondition) external view returns (address operator) {
+        bytes32 key = keccak256(abi.encodePacked(arbiter, releaseCondition));
+        
+        bytes memory bytecode = abi.encodePacked(
+            type(ArbitrationOperator).creationCode,
+            abi.encode(
+                ESCROW,
+                PROTOCOL_FEE_RECIPIENT,
+                MAX_TOTAL_FEE_RATE,
+                PROTOCOL_FEE_PERCENTAGE,
+                arbiter,
+                owner(),
+                releaseCondition
+            )
+        );
+        
+        bytes32 bytecodeHash = keccak256(bytecode);
+        
+        return address(uint160(uint256(keccak256(abi.encodePacked(
+            bytes1(0xff),
+            address(this),
+            key,
+            bytecodeHash
+        )))));
+    }
+
+    /**
      * @notice Deploy an operator for a given arbiter and release condition
      * @dev Idempotent - returns existing operator if already deployed.
      *      Factory owner becomes the operator owner (controls fee settings).
+     *      Uses CREATE2 for deterministic addresses.
      * @param arbiter The arbiter address for dispute resolution
      * @param releaseCondition The release condition contract address (verification logic, required)
      * @return operator The operator address
@@ -80,7 +114,8 @@ contract ArbitrationOperatorFactory is Ownable {
 
         // Deploy new operator with arbiter and release condition baked in
         // Factory owner becomes operator owner (controls fee settings)
-        operator = address(new ArbitrationOperator(
+        // Uses CREATE2 (salt: key) for deterministic address
+        operator = address(new ArbitrationOperator{salt: key}(
             ESCROW,
             PROTOCOL_FEE_RECIPIENT,
             MAX_TOTAL_FEE_RATE,

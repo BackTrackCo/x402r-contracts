@@ -182,6 +182,23 @@ contract EscrowPeriodConditionTest is Test {
         conditionFactory.deployCondition(0);
     }
 
+    function test_ComputeAddressMatchesDeploy() public {
+        uint256 period = 20 days;
+        
+        // 1. Compute expected address
+        address predicted = conditionFactory.computeAddress(period);
+
+        // 2. Deploy
+        address actual = conditionFactory.deployCondition(period);
+
+        // 3. Verify match
+        assertEq(predicted, actual, "Computed address should match deployed address");
+        assertNotEq(actual, address(0), "Address should not be zero");
+        
+        // 4. Verify code is laid down
+        assertTrue(actual.code.length > 0, "Contract should have code");
+    }
+
     // ============ Authorize Tests ============
 
     function test_Authorize_TracksAuthorizationTime() public {
