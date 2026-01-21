@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 
 /**
  * @title MockEscrow
@@ -10,7 +9,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
  * @dev Simplified version that mimics the PaymentInfo-based interface
  */
 contract MockEscrow {
-    using SafeERC20 for IERC20;
+    using SafeTransferLib for address;
 
     /// @notice Payment info struct (matches Base Commerce Payments)
     struct PaymentInfo {
@@ -70,7 +69,7 @@ contract MockEscrow {
         if (paymentState[paymentInfoHash].hasCollectedPayment) revert PaymentAlreadyCollected(paymentInfoHash);
 
         // Transfer tokens from payer to this contract (mock escrow)
-        IERC20(paymentInfo.token).safeTransferFrom(paymentInfo.payer, address(this), amount);
+        paymentInfo.token.safeTransferFrom(paymentInfo.payer, address(this), amount);
 
         paymentState[paymentInfoHash] = PaymentState({
             hasCollectedPayment: true,
@@ -106,10 +105,10 @@ contract MockEscrow {
         uint256 receiverAmount = amount - feeAmount;
 
         if (feeAmount > 0 && feeReceiver != address(0)) {
-            IERC20(paymentInfo.token).safeTransfer(feeReceiver, feeAmount);
+            paymentInfo.token.safeTransfer(feeReceiver, feeAmount);
         }
         if (receiverAmount > 0) {
-            IERC20(paymentInfo.token).safeTransfer(paymentInfo.receiver, receiverAmount);
+            paymentInfo.token.safeTransfer(paymentInfo.receiver, receiverAmount);
         }
 
         emit PaymentCaptured(paymentInfoHash, amount, feeBps, feeReceiver);
@@ -125,7 +124,7 @@ contract MockEscrow {
         paymentState[paymentInfoHash].capturableAmount = 0;
 
         // Return tokens to payer
-        IERC20(paymentInfo.token).safeTransfer(paymentInfo.payer, authorizedAmount);
+        paymentInfo.token.safeTransfer(paymentInfo.payer, authorizedAmount);
 
         emit PaymentVoided(paymentInfoHash, authorizedAmount);
     }
@@ -142,7 +141,7 @@ contract MockEscrow {
         paymentState[paymentInfoHash].capturableAmount = capturableAmount - amount;
 
         // Return tokens to payer
-        IERC20(paymentInfo.token).safeTransfer(paymentInfo.payer, amount);
+        paymentInfo.token.safeTransfer(paymentInfo.payer, amount);
 
         emit PaymentPartiallyVoided(paymentInfoHash, amount, capturableAmount - amount);
     }
@@ -163,7 +162,7 @@ contract MockEscrow {
         paymentState[paymentInfoHash].refundableAmount = captured - uint120(amount);
 
         // Transfer tokens from receiver back to payer (mock - assumes receiver approved)
-        IERC20(paymentInfo.token).safeTransferFrom(paymentInfo.receiver, paymentInfo.payer, amount);
+        paymentInfo.token.safeTransferFrom(paymentInfo.receiver, paymentInfo.payer, amount);
 
         emit PaymentRefunded(paymentInfoHash, amount, tokenCollector);
     }

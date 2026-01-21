@@ -9,6 +9,8 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {NotPayer} from "./types/Errors.sol";
 import {PayerBypassTriggered, PaymentAuthorized} from "./types/Events.sol";
 
+import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
+
 /**
  * @title EscrowPeriodCondition
  * @notice Release condition that enforces a time-based escrow period before funds can be released.
@@ -20,7 +22,7 @@ import {PayerBypassTriggered, PaymentAuthorized} from "./types/Events.sol";
  *      - Payer can call payerBypass() to waive the wait and allow immediate release
  *      - Users call authorize() on this contract, which forwards to operator and tracks time
  */
-contract EscrowPeriodCondition is IReleaseCondition, IAuthorizable {
+contract EscrowPeriodCondition is IReleaseCondition, IAuthorizable, ERC165 {
     /// @notice Duration of the escrow period in seconds
     uint256 public immutable ESCROW_PERIOD;
 
@@ -127,5 +129,17 @@ contract EscrowPeriodCondition is IReleaseCondition, IAuthorizable {
      */
     function _getHash(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) internal view returns (bytes32) {
         return ArbitrationOperator(paymentInfo.operator).ESCROW().getHash(paymentInfo);
+    }
+
+    /**
+     * @notice Checks if the contract supports an interface
+     * @param interfaceId The interface ID to check
+     * @return True if the interface is supported
+     */
+    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+        return
+            interfaceId == type(IReleaseCondition).interfaceId ||
+            interfaceId == type(IAuthorizable).interfaceId ||
+            super.supportsInterface(interfaceId);
     }
 }

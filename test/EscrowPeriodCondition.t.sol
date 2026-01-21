@@ -13,6 +13,7 @@ import {
     NotPayer,
     InvalidEscrowPeriod
 } from "../src/commerce-payments/release-conditions/escrow-period/types/Errors.sol";
+import {UnauthorizedCaller} from "../src/commerce-payments/operator/types/Errors.sol";
 
 contract EscrowPeriodConditionTest is Test {
     EscrowPeriodCondition public condition;
@@ -206,12 +207,16 @@ contract EscrowPeriodConditionTest is Test {
 
     // ============ canRelease Tests ============
 
-    function test_CanRelease_FalseIfNotAuthorizedViaCondition() public {
-        // Authorize directly through operator (not through condition)
-        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorizeDirectly();
+    function test_AuthorizeDirectly_Reverts() public {
+        MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
 
-        // Should return false because authorizationTimes[hash] == 0
-        assertFalse(condition.canRelease(paymentInfo, PAYMENT_AMOUNT));
+        vm.expectRevert(UnauthorizedCaller.selector);
+        operator.authorize(
+            _toAuthCapturePaymentInfo(paymentInfo),
+            PAYMENT_AMOUNT,
+            address(0),
+            ""
+        );
     }
 
     function test_CanRelease_FalseBeforeEscrowPeriod() public {
@@ -259,16 +264,16 @@ contract EscrowPeriodConditionTest is Test {
         assertTrue(condition.isPayerBypassed(paymentInfo));
     }
 
-    function test_PayerBypass_WorksEvenIfNotAuthorizedViaCondition() public {
-        // Authorize directly through operator
-        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorizeDirectly();
+    function test_PayerBypass_WorksIndependently() public {
+        // Just verify that we can bypass any payment info, even if not authorized yet
+        MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+        AuthCaptureEscrow.PaymentInfo memory authInfo = _toAuthCapturePaymentInfo(paymentInfo);
 
-        // Bypass should still work
         vm.prank(payer);
-        condition.payerBypass(paymentInfo);
+        condition.payerBypass(authInfo);
 
-        // Now canRelease should return true
-        assertTrue(condition.canRelease(paymentInfo, PAYMENT_AMOUNT));
+        assertTrue(condition.isPayerBypassed(authInfo));
+        assertTrue(condition.canRelease(authInfo, PAYMENT_AMOUNT));
     }
 
     function test_PayerBypass_RevertsIfNotPayer() public {
@@ -285,10 +290,12 @@ contract EscrowPeriodConditionTest is Test {
 
     // ============ View Functions Tests ============
 
-    function test_GetAuthorizationTime_ZeroIfNotAuthorizedViaCondition() public {
-        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorizeDirectly();
+    function test_GetAuthorizationTime_ZeroIfNotAuthorized() public {
+        MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+        AuthCaptureEscrow.PaymentInfo memory authInfo = _toAuthCapturePaymentInfo(paymentInfo);
 
-        assertEq(condition.getAuthorizationTime(paymentInfo), 0);
+        // Not authorized yet
+        assertEq(condition.getAuthorizationTime(authInfo), 0);
     }
 
     function test_IsPayerBypassed_FalseByDefault() public {

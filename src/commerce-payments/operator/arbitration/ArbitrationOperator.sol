@@ -13,9 +13,14 @@ import {
     InvalidAuthorizationExpiry,
     InvalidRefundExpiry,
     InvalidFeeBps,
-    InvalidFeeReceiver
+    InvalidRefundExpiry,
+    InvalidFeeBps,
+    InvalidFeeReceiver,
+    UnauthorizedCaller
 } from "../types/Errors.sol";
 import {IReleaseCondition} from "../types/IReleaseCondition.sol";
+import {IAuthorizable} from "../types/IAuthorizable.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {
     AuthorizationCreated,
     ReleaseExecuted,
@@ -50,6 +55,7 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
 
     address public immutable protocolFeeRecipient;
     bool public feesEnabled;
+    bool public immutable AUTHORIZATION_RESTRICTED;
 
     constructor(
         address _escrow,
@@ -74,6 +80,16 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
         PROTOCOL_FEE_PERCENTAGE = _protocolFeePercentage;
         MAX_ARBITER_FEE_RATE = (_maxTotalFeeRate * (100 - _protocolFeePercentage)) / 100;
         RELEASE_CONDITION = IReleaseCondition(_releaseCondition);
+
+        // Check if condition supports IAuthorizable to see if we should restrict authorization
+        bool restricted = false;
+        try IERC165(_releaseCondition).supportsInterface(type(IAuthorizable).interfaceId) returns (bool supported) {
+            restricted = supported;
+        } catch {
+            // If it doesn't support ERC165, assume not restricted
+            restricted = false;
+        }
+        AUTHORIZATION_RESTRICTED = restricted;
     }
 
     // ============ Owner Functions ============
@@ -108,6 +124,11 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
         address tokenCollector,
         bytes calldata collectorData
     ) external validOperator(paymentInfo) {
+        // Enforce restriction if applicable
+        if (AUTHORIZATION_RESTRICTED && msg.sender != address(RELEASE_CONDITION)) {
+            revert UnauthorizedCaller();
+        }
+
         // Validate required paymentInfo fields
         if (paymentInfo.authorizationExpiry != type(uint48).max) revert InvalidAuthorizationExpiry();
         if (paymentInfo.refundExpiry != type(uint48).max) revert InvalidRefundExpiry();

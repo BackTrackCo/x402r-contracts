@@ -21,7 +21,7 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockEscrow} from "./mocks/MockEscrow.sol";
 import {MockReleaseCondition} from "./mocks/MockReleaseCondition.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
 
 contract RefundRequestTest is Test {
     RefundRequest public refundRequest;
