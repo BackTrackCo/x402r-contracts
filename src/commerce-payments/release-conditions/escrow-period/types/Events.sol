@@ -2,15 +2,17 @@
 // CONTRACTS UNAUDITED: USE AT YOUR OWN RISK
 pragma solidity ^0.8.28;
 
+import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
+
 /// @notice Emitted when a payment is authorized through the escrow period condition
-/// @param paymentInfoHash Hash of the PaymentInfo struct
+/// @param paymentInfo The PaymentInfo struct
 /// @param authorizationTime Timestamp when the payment was authorized
-event PaymentAuthorized(bytes32 indexed paymentInfoHash, uint256 authorizationTime);
+event PaymentAuthorized(AuthCaptureEscrow.PaymentInfo paymentInfo, uint256 authorizationTime);
 
 /// @notice Emitted when the payer bypasses the escrow period
-/// @param paymentInfoHash Hash of the PaymentInfo struct
+/// @param paymentInfo The PaymentInfo struct
 /// @param payer Address of the payer who triggered the bypass
-event PayerBypassTriggered(bytes32 indexed paymentInfoHash, address indexed payer);
+event PayerBypassTriggered(AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed payer);
 
 /// @notice Emitted when escrow period condition is deployed via factory
 /// @param condition Address of the deployed condition contract

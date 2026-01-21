@@ -68,7 +68,7 @@ contract RefundRequest is RefundRequestAccess {
         _addPayerRequest(paymentInfo.payer, paymentInfoHash);
         _addReceiverRequest(paymentInfo.receiver, paymentInfoHash);
 
-        emit RefundRequested(paymentInfoHash, paymentInfo.payer, paymentInfo.receiver);
+        emit RefundRequested(paymentInfo, paymentInfo.payer, paymentInfo.receiver);
     }
 
     /// @notice Update the status of a refund request
@@ -100,7 +100,7 @@ contract RefundRequest is RefundRequestAccess {
 
         request.status = RequestStatus.Cancelled;
 
-        emit RefundRequestCancelled(paymentInfoHash, msg.sender);
+        emit RefundRequestCancelled(paymentInfo, msg.sender);
     }
 
     // ============ Internal Functions ============
@@ -127,7 +127,7 @@ contract RefundRequest is RefundRequestAccess {
         RequestStatus oldStatus = request.status;
         request.status = newStatus;
 
-        emit RefundRequestStatusUpdated(paymentInfoHash, oldStatus, newStatus, msg.sender);
+        emit RefundRequestStatusUpdated(paymentInfo, oldStatus, newStatus, msg.sender);
     }
 
     /// @notice Add hash to payer's request array if not already present (O(1) check)

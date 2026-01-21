@@ -36,8 +36,8 @@ contract EscrowPeriodConditionTest is Test {
     uint256 public constant ESCROW_PERIOD = 7 days;
 
     // Events
-    event PaymentAuthorized(bytes32 indexed paymentInfoHash, uint256 authorizationTime);
-    event PayerBypassTriggered(bytes32 indexed paymentInfoHash, address indexed payer);
+    event PaymentAuthorized(AuthCaptureEscrow.PaymentInfo paymentInfo, uint256 authorizationTime);
+    event PayerBypassTriggered(AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed payer);
     event EscrowPeriodConditionDeployed(address indexed condition, uint256 escrowPeriod);
 
     function setUp() public {
@@ -211,8 +211,8 @@ contract EscrowPeriodConditionTest is Test {
         MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
         bytes32 expectedHash = escrow.getHash(paymentInfo);
 
-        vm.expectEmit(true, false, false, true);
-        emit PaymentAuthorized(expectedHash, block.timestamp);
+        vm.expectEmit(false, false, false, true);
+        emit PaymentAuthorized(_toAuthCapturePaymentInfo(paymentInfo), block.timestamp);
 
         condition.authorize(
             _toAuthCapturePaymentInfo(paymentInfo),
@@ -271,8 +271,8 @@ contract EscrowPeriodConditionTest is Test {
         // Still within escrow period
         assertFalse(condition.canRelease(paymentInfo, PAYMENT_AMOUNT));
 
-        vm.expectEmit(true, true, false, true);
-        emit PayerBypassTriggered(paymentInfoHash, payer);
+        vm.expectEmit(true, false, false, true);
+        emit PayerBypassTriggered(paymentInfo, payer);
 
         vm.prank(payer);
         condition.payerBypass(paymentInfo);

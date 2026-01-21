@@ -39,14 +39,14 @@ contract ArbitrationOperatorTest is Test {
         uint256 timestamp
     );
 
-    event CaptureExecuted(
-        bytes32 indexed paymentInfoHash,
+    event ReleaseExecuted(
+        AuthCaptureEscrow.PaymentInfo paymentInfo,
         uint256 amount,
         uint256 timestamp
     );
 
-    event PartialVoidExecuted(
-        bytes32 indexed paymentInfoHash,
+    event RefundExecuted(
+        AuthCaptureEscrow.PaymentInfo paymentInfo,
         address indexed payer,
         uint256 amount
     );
@@ -236,6 +236,8 @@ contract ArbitrationOperatorTest is Test {
         uint256 receiverBalanceBefore = token.balanceOf(receiver);
 
         vm.prank(receiver);
+        vm.expectEmit(false, false, false, true, address(operator));
+        emit ReleaseExecuted(paymentInfo, PAYMENT_AMOUNT, block.timestamp);
         operator.release(paymentInfo, PAYMENT_AMOUNT);
 
         // Check receiver got the tokens MINUS fees
@@ -297,6 +299,8 @@ contract ArbitrationOperatorTest is Test {
         uint120 refundAmount = uint120(PAYMENT_AMOUNT / 2);
 
         vm.prank(receiver);
+        vm.expectEmit(true, false, false, true, address(operator));
+        emit RefundExecuted(paymentInfo, paymentInfo.payer, refundAmount);
         operator.escrowRefund(paymentInfo, refundAmount);
 
         // Check payer got refund

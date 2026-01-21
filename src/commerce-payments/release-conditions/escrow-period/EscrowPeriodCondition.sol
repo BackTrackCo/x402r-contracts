@@ -61,7 +61,7 @@ contract EscrowPeriodCondition is IReleaseCondition, IAuthorizable, ERC165 {
         bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
         authorizationTimes[paymentInfoHash] = block.timestamp;
 
-        emit PaymentAuthorized(paymentInfoHash, block.timestamp);
+        emit PaymentAuthorized(paymentInfo, block.timestamp);
     }
 
     /**
@@ -75,7 +75,7 @@ contract EscrowPeriodCondition is IReleaseCondition, IAuthorizable, ERC165 {
         bytes32 paymentInfoHash = _getHash(paymentInfo);
         payerBypassed[paymentInfoHash] = true;
 
-        emit PayerBypassTriggered(paymentInfoHash, msg.sender);
+        emit PayerBypassTriggered(paymentInfo, msg.sender);
     }
 
     /**

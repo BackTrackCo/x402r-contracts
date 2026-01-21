@@ -43,9 +43,9 @@ contract RefundRequestTest is Test {
     uint256 public constant PAYMENT_AMOUNT = 1000 * 10**18;
 
     // Events
-    event RefundRequested(bytes32 indexed paymentInfoHash, address indexed payer, address indexed receiver);
-    event RefundRequestStatusUpdated(bytes32 indexed paymentInfoHash, RequestStatus oldStatus, RequestStatus newStatus, address updatedBy);
-    event RefundRequestCancelled(bytes32 indexed paymentInfoHash, address indexed payer);
+    event RefundRequested(AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed payer, address indexed receiver);
+    event RefundRequestStatusUpdated(AuthCaptureEscrow.PaymentInfo paymentInfo, RequestStatus oldStatus, RequestStatus newStatus, address indexed updatedBy);
+    event RefundRequestCancelled(AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed payer);
 
     function setUp() public {
         owner = address(this);
@@ -145,8 +145,8 @@ contract RefundRequestTest is Test {
     function test_RequestRefund_Success() public {
         (bytes32 paymentInfoHash, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
 
-        vm.expectEmit(true, true, true, true);
-        emit RefundRequested(paymentInfoHash, payer, receiver);
+        vm.expectEmit(true, true, false, true);
+        emit RefundRequested(paymentInfo, payer, receiver);
 
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo);
@@ -282,8 +282,8 @@ contract RefundRequestTest is Test {
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo);
 
-        vm.expectEmit(true, true, false, true);
-        emit RefundRequestCancelled(paymentInfoHash, payer);
+        vm.expectEmit(true, false, false, true);
+        emit RefundRequestCancelled(paymentInfo, payer);
 
         vm.prank(payer);
         refundRequest.cancelRefundRequest(paymentInfo);

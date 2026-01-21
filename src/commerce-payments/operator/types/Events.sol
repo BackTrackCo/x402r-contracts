@@ -2,6 +2,8 @@
 // CONTRACTS UNAUDITED: USE AT YOUR OWN RISK
 pragma solidity ^0.8.28;
 
+import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
+
 // ============ Arbitration Operator Events ============
 event AuthorizationCreated(
     bytes32 indexed paymentInfoHash,
@@ -12,19 +14,19 @@ event AuthorizationCreated(
 );
 
 event ReleaseExecuted(
-    bytes32 indexed paymentInfoHash,
+    AuthCaptureEscrow.PaymentInfo paymentInfo,
     uint256 amount,
     uint256 timestamp
 );
 
 event RefundExecuted(
-    bytes32 indexed paymentInfoHash,
+    AuthCaptureEscrow.PaymentInfo paymentInfo,
     address indexed payer,
     uint256 amount
 );
 
 event RefundAfterEscrowExecuted(
-    bytes32 indexed paymentInfoHash,
+    AuthCaptureEscrow.PaymentInfo paymentInfo,
     address indexed payer,
     uint256 amount
 );

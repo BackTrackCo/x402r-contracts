@@ -180,8 +180,7 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
         // Forward to escrow - escrow validates payment exists
         ESCROW.capture(paymentInfo, amount, feeBps, feeReceiver);
 
-        bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
-        emit ReleaseExecuted(paymentInfoHash, amount, block.timestamp);
+        emit ReleaseExecuted(paymentInfo, amount, block.timestamp);
     }
 
     /**
@@ -198,8 +197,7 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
         ESCROW.partialVoid(paymentInfo, amount);
 
         // Compute hash only for event
-        bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
-        emit RefundExecuted(paymentInfoHash, paymentInfo.payer, amount);
+        emit RefundExecuted(paymentInfo, paymentInfo.payer, amount);
     }
 
     /**

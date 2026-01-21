@@ -3,23 +3,24 @@
 pragma solidity ^0.8.28;
 
 import {RequestStatus} from "./Types.sol";
+import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
 // ============ Refund Request Events ============
 event RefundRequested(
-    bytes32 indexed paymentInfoHash,
+    AuthCaptureEscrow.PaymentInfo paymentInfo,
     address indexed payer,
     address indexed receiver
 );
 
 event RefundRequestStatusUpdated(
-    bytes32 indexed paymentInfoHash,
+    AuthCaptureEscrow.PaymentInfo paymentInfo,
     RequestStatus oldStatus,
     RequestStatus newStatus,
     address indexed updatedBy
 );
 
 event RefundRequestCancelled(
-    bytes32 indexed paymentInfoHash,
+    AuthCaptureEscrow.PaymentInfo paymentInfo,
     address indexed payer
 );
 
