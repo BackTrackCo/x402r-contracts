@@ -9,10 +9,8 @@ import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/Arbi
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockEscrow} from "./mocks/MockEscrow.sol";
-import {
-    NotPayer,
-    InvalidEscrowPeriod
-} from "../src/commerce-payments/release-conditions/escrow-period/types/Errors.sol";
+import {InvalidEscrowPeriod} from "../src/commerce-payments/release-conditions/escrow-period/types/Errors.sol";
+import {NotPayer} from "../src/commerce-payments/release-conditions/shared/types/Errors.sol";
 import {UnauthorizedCaller} from "../src/commerce-payments/operator/types/Errors.sol";
 
 contract EscrowPeriodConditionTest is Test {

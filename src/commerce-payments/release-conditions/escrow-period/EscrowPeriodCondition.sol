@@ -6,10 +6,16 @@ import {IReleaseCondition} from "../../operator/types/IReleaseCondition.sol";
 import {IAuthorizable} from "../../operator/types/IAuthorizable.sol";
 import {ArbitrationOperator} from "../../operator/arbitration/ArbitrationOperator.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {NotPayer} from "./types/Errors.sol";
-import {PayerBypassTriggered, PaymentAuthorized} from "./types/Events.sol";
-
+import {PayerBypassCondition} from "../shared/PayerBypassCondition.sol";
+import {InvalidEscrowPeriod} from "./types/Errors.sol";
+import {PaymentAuthorized} from "./types/Events.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
+
+// Note: Removing explicit NotPayer import as it is used by base, but if used here, valid. But logic removed so mostly likely unused here.
+// Actually, check if used? payerBypass removed.
+// We still need to import ERC165 if we use it explicitly?
+// Base inherits ERC165. We inherit Base.
+// But we still use `block.timestamp` etc.
 
 /**
  * @title EscrowPeriodCondition
@@ -22,7 +28,7 @@ import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
  *      - Payer can call payerBypass() to waive the wait and allow immediate release
  *      - Users call authorize() on this contract, which forwards to operator and tracks time
  */
-contract EscrowPeriodCondition is IReleaseCondition, IAuthorizable, ERC165 {
+contract EscrowPeriodCondition is IReleaseCondition, IAuthorizable, PayerBypassCondition {
     /// @notice Duration of the escrow period in seconds
     uint256 public immutable ESCROW_PERIOD;
 
@@ -30,11 +36,8 @@ contract EscrowPeriodCondition is IReleaseCondition, IAuthorizable, ERC165 {
     /// @dev Key: paymentInfoHash
     mapping(bytes32 => uint256) public authorizationTimes;
 
-    /// @notice Tracks which payments have been bypassed by the payer
-    /// @dev Key: paymentInfoHash
-    mapping(bytes32 => bool) public payerBypassed;
-
     constructor(uint256 _escrowPeriod) {
+        if (_escrowPeriod == 0) revert InvalidEscrowPeriod();
         ESCROW_PERIOD = _escrowPeriod;
     }
 
@@ -58,24 +61,10 @@ contract EscrowPeriodCondition is IReleaseCondition, IAuthorizable, ERC165 {
         operator.authorize(paymentInfo, amount, tokenCollector, collectorData);
 
         // Compute hash and track authorization time
-        bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
+        bytes32 paymentInfoHash = _getHash(paymentInfo);
         authorizationTimes[paymentInfoHash] = block.timestamp;
 
         emit PaymentAuthorized(paymentInfo, block.timestamp);
-    }
-
-    /**
-     * @notice Payer bypasses the escrow period to allow immediate release
-     * @param paymentInfo PaymentInfo struct from the operator
-     * @dev Only the payer of the payment can call this
-     */
-    function payerBypass(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external {
-        if (msg.sender != paymentInfo.payer) revert NotPayer();
-
-        bytes32 paymentInfoHash = _getHash(paymentInfo);
-        payerBypassed[paymentInfoHash] = true;
-
-        emit PayerBypassTriggered(paymentInfo, msg.sender);
     }
 
     /**
@@ -87,13 +76,13 @@ contract EscrowPeriodCondition is IReleaseCondition, IAuthorizable, ERC165 {
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint256 /* amount */
     ) external view override returns (bool) {
-
-        bytes32 paymentInfoHash = _getHash(paymentInfo);
-
+        
         // If payer has bypassed, allow release immediately
-        if (payerBypassed[paymentInfoHash]) {
+        if (isPayerBypassed(paymentInfo)) {
             return true;
         }
+
+        bytes32 paymentInfoHash = _getHash(paymentInfo);
 
         // Check if payment was authorized through this contract
         uint256 authTime = authorizationTimes[paymentInfoHash];
@@ -115,28 +104,11 @@ contract EscrowPeriodCondition is IReleaseCondition, IAuthorizable, ERC165 {
     }
 
     /**
-     * @notice Check if a payment has been bypassed by the payer
-     * @param paymentInfo PaymentInfo struct
-     * @return True if the payer has bypassed the escrow period
-     */
-    function isPayerBypassed(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external view returns (bool) {
-        return payerBypassed[_getHash(paymentInfo)];
-    }
-
-    /**
-     * @notice Internal helper to compute hash from PaymentInfo
-     * @dev Uses the operator's escrow to compute the canonical hash
-     */
-    function _getHash(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) internal view returns (bytes32) {
-        return ArbitrationOperator(paymentInfo.operator).ESCROW().getHash(paymentInfo);
-    }
-
-    /**
      * @notice Checks if the contract supports an interface
      * @param interfaceId The interface ID to check
      * @return True if the interface is supported
      */
-    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public view virtual override(PayerBypassCondition) returns (bool) {
         return
             interfaceId == type(IReleaseCondition).interfaceId ||
             interfaceId == type(IAuthorizable).interfaceId ||

@@ -2,7 +2,5 @@
 // CONTRACTS UNAUDITED: USE AT YOUR OWN RISK
 pragma solidity ^0.8.28;
 
-
-
-/// @notice Invalid escrow period (zero)
-error InvalidEscrowPeriod();
+/// @notice Caller is not the payer
+error NotPayer();

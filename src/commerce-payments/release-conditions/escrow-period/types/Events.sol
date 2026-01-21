@@ -9,10 +9,7 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 /// @param authorizationTime Timestamp when the payment was authorized
 event PaymentAuthorized(AuthCaptureEscrow.PaymentInfo paymentInfo, uint256 authorizationTime);
 
-/// @notice Emitted when the payer bypasses the escrow period
-/// @param paymentInfo The PaymentInfo struct
-/// @param payer Address of the payer who triggered the bypass
-event PayerBypassTriggered(AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed payer);
+
 
 /// @notice Emitted when escrow period condition is deployed via factory
 /// @param condition Address of the deployed condition contract
