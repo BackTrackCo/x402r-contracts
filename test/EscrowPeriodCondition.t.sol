@@ -9,9 +9,7 @@ import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/Arbi
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockEscrow} from "./mocks/MockEscrow.sol";
-import {MockReleaseCondition} from "./mocks/MockReleaseCondition.sol";
 import {
-    PaymentAlreadyRegistered,
     NotPayer,
     InvalidEscrowPeriod
 } from "../src/commerce-payments/release-conditions/escrow-period/types/Errors.sol";
@@ -23,7 +21,6 @@ contract EscrowPeriodConditionTest is Test {
     ArbitrationOperatorFactory public operatorFactory;
     MockERC20 public token;
     MockEscrow public escrow;
-    MockReleaseCondition public mockCondition; // Used for operator deployment
 
     address public owner;
     address public protocolFeeRecipient;
@@ -38,7 +35,7 @@ contract EscrowPeriodConditionTest is Test {
     uint256 public constant ESCROW_PERIOD = 7 days;
 
     // Events
-    event PaymentRegistered(bytes32 indexed paymentInfoHash, uint256 endTime);
+    event PaymentAuthorized(bytes32 indexed paymentInfoHash, uint256 authorizationTime);
     event PayerBypassTriggered(bytes32 indexed paymentInfoHash, address indexed payer);
     event EscrowPeriodConditionDeployed(address indexed condition, uint256 escrowPeriod);
 
@@ -52,7 +49,10 @@ contract EscrowPeriodConditionTest is Test {
         // Deploy mock contracts
         token = new MockERC20("Test Token", "TEST");
         escrow = new MockEscrow();
-        mockCondition = new MockReleaseCondition();
+
+        // Deploy condition factory and condition first
+        conditionFactory = new EscrowPeriodConditionFactory();
+        condition = EscrowPeriodCondition(conditionFactory.deployCondition(ESCROW_PERIOD));
 
         // Deploy operator factory
         operatorFactory = new ArbitrationOperatorFactory(
@@ -63,14 +63,8 @@ contract EscrowPeriodConditionTest is Test {
             owner
         );
 
-        // Deploy operator via factory (using mock condition initially)
-        operator = ArbitrationOperator(operatorFactory.deployOperator(arbiter, address(mockCondition)));
-
-        // Deploy condition factory
-        conditionFactory = new EscrowPeriodConditionFactory();
-
-        // Deploy condition (keyed only by escrowPeriod)
-        condition = EscrowPeriodCondition(conditionFactory.deployCondition(ESCROW_PERIOD));
+        // Deploy operator via factory with the escrow period condition
+        operator = ArbitrationOperator(operatorFactory.deployOperator(arbiter, address(condition)));
 
         // Setup balances
         token.mint(payer, INITIAL_BALANCE);
@@ -93,27 +87,13 @@ contract EscrowPeriodConditionTest is Test {
             token: address(token),
             maxAmount: uint120(PAYMENT_AMOUNT),
             preApprovalExpiry: uint48(block.timestamp + 1 days),
-            authorizationExpiry: uint48(block.timestamp + 30 days),
-            refundExpiry: uint48(block.timestamp + 60 days),
-            minFeeBps: 0,
+            authorizationExpiry: type(uint48).max,
+            refundExpiry: type(uint48).max,
+            minFeeBps: uint16(MAX_TOTAL_FEE_RATE),
             maxFeeBps: uint16(MAX_TOTAL_FEE_RATE),
-            feeReceiver: address(0),
+            feeReceiver: address(operator),
             salt: 12345
         });
-    }
-
-    function _getEnforcedPaymentInfo(MockEscrow.PaymentInfo memory original)
-        internal
-        view
-        returns (MockEscrow.PaymentInfo memory)
-    {
-        MockEscrow.PaymentInfo memory enforced = original;
-        enforced.authorizationExpiry = type(uint48).max;
-        enforced.refundExpiry = type(uint48).max;
-        enforced.feeReceiver = address(operator);
-        enforced.minFeeBps = uint16(MAX_TOTAL_FEE_RATE);
-        enforced.maxFeeBps = uint16(MAX_TOTAL_FEE_RATE);
-        return enforced;
     }
 
     function _toAuthCapturePaymentInfo(MockEscrow.PaymentInfo memory mockInfo)
@@ -137,9 +117,29 @@ contract EscrowPeriodConditionTest is Test {
         });
     }
 
-    function _authorize() internal returns (bytes32, AuthCaptureEscrow.PaymentInfo memory) {
+    function _authorizeViaCondition() internal returns (bytes32, AuthCaptureEscrow.PaymentInfo memory, uint256) {
         MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
 
+        uint256 authTime = block.timestamp;
+
+        // Authorize through the condition contract
+        condition.authorize(
+            operator,
+            _toAuthCapturePaymentInfo(paymentInfo),
+            PAYMENT_AMOUNT,
+            address(0),
+            ""
+        );
+
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+
+        return (paymentInfoHash, _toAuthCapturePaymentInfo(paymentInfo), authTime);
+    }
+
+    function _authorizeDirectly() internal returns (bytes32, AuthCaptureEscrow.PaymentInfo memory) {
+        MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+
+        // Authorize directly through the operator (bypassing condition)
         operator.authorize(
             _toAuthCapturePaymentInfo(paymentInfo),
             PAYMENT_AMOUNT,
@@ -147,10 +147,9 @@ contract EscrowPeriodConditionTest is Test {
             ""
         );
 
-        MockEscrow.PaymentInfo memory enforcedInfo = _getEnforcedPaymentInfo(paymentInfo);
-        bytes32 paymentInfoHash = escrow.getHash(enforcedInfo);
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
 
-        return (paymentInfoHash, _toAuthCapturePaymentInfo(enforcedInfo));
+        return (paymentInfoHash, _toAuthCapturePaymentInfo(paymentInfo));
     }
 
     // ============ Constructor Tests ============
@@ -183,66 +182,63 @@ contract EscrowPeriodConditionTest is Test {
         conditionFactory.deployCondition(0);
     }
 
-    // ============ Register Payment Tests ============
+    // ============ Authorize Tests ============
 
-    function test_RegisterPayment_Success() public {
-        (bytes32 paymentInfoHash, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
+    function test_Authorize_TracksAuthorizationTime() public {
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo, uint256 authTime) = _authorizeViaCondition();
 
-        uint256 expectedEndTime = block.timestamp + ESCROW_PERIOD;
-
-        vm.expectEmit(true, false, false, true);
-        emit PaymentRegistered(paymentInfoHash, expectedEndTime);
-
-        condition.registerPayment(paymentInfo);
-
-        assertEq(condition.getEscrowEndTime(paymentInfo), expectedEndTime);
+        assertEq(condition.getAuthorizationTime(paymentInfo), authTime);
     }
 
-    function test_RegisterPayment_RevertsIfAlreadyRegistered() public {
-        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
+    function test_Authorize_EmitsEvent() public {
+        MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+        bytes32 expectedHash = escrow.getHash(paymentInfo);
 
-        condition.registerPayment(paymentInfo);
+        vm.expectEmit(true, false, false, true);
+        emit PaymentAuthorized(expectedHash, block.timestamp);
 
-        vm.expectRevert(PaymentAlreadyRegistered.selector);
-        condition.registerPayment(paymentInfo);
+        condition.authorize(
+            operator,
+            _toAuthCapturePaymentInfo(paymentInfo),
+            PAYMENT_AMOUNT,
+            address(0),
+            ""
+        );
     }
 
     // ============ canRelease Tests ============
 
-    function test_CanRelease_FalseBeforeRegistration() public {
-        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
+    function test_CanRelease_FalseIfNotAuthorizedViaCondition() public {
+        // Authorize directly through operator (not through condition)
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorizeDirectly();
 
+        // Should return false because authorizationTimes[hash] == 0
         assertFalse(condition.canRelease(paymentInfo, PAYMENT_AMOUNT));
     }
 
     function test_CanRelease_FalseBeforeEscrowPeriod() public {
-        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
-        condition.registerPayment(paymentInfo);
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo, uint256 authTime) = _authorizeViaCondition();
 
         // Still within escrow period
-        vm.warp(block.timestamp + ESCROW_PERIOD - 1);
+        vm.warp(authTime + ESCROW_PERIOD - 1);
 
         assertFalse(condition.canRelease(paymentInfo, PAYMENT_AMOUNT));
     }
 
     function test_CanRelease_TrueAfterEscrowPeriod() public {
-        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
-        condition.registerPayment(paymentInfo);
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo, uint256 authTime) = _authorizeViaCondition();
 
         // Warp past escrow period
-        vm.warp(block.timestamp + ESCROW_PERIOD);
+        vm.warp(authTime + ESCROW_PERIOD);
 
         assertTrue(condition.canRelease(paymentInfo, PAYMENT_AMOUNT));
     }
 
     function test_CanRelease_TrueAfterEscrowPeriodExact() public {
-        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
-        condition.registerPayment(paymentInfo);
-
-        uint256 endTime = condition.getEscrowEndTime(paymentInfo);
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo, uint256 authTime) = _authorizeViaCondition();
 
         // Warp to exactly the end time
-        vm.warp(endTime);
+        vm.warp(authTime + ESCROW_PERIOD);
 
         assertTrue(condition.canRelease(paymentInfo, PAYMENT_AMOUNT));
     }
@@ -250,8 +246,7 @@ contract EscrowPeriodConditionTest is Test {
     // ============ Payer Bypass Tests ============
 
     function test_PayerBypass_AllowsImmediateRelease() public {
-        (bytes32 paymentInfoHash, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
-        condition.registerPayment(paymentInfo);
+        (bytes32 paymentInfoHash, AuthCaptureEscrow.PaymentInfo memory paymentInfo,) = _authorizeViaCondition();
 
         // Still within escrow period
         assertFalse(condition.canRelease(paymentInfo, PAYMENT_AMOUNT));
@@ -266,18 +261,20 @@ contract EscrowPeriodConditionTest is Test {
         assertTrue(condition.isPayerBypassed(paymentInfo));
     }
 
-    function test_PayerBypass_WorksWithoutRegistration() public {
-        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
+    function test_PayerBypass_WorksEvenIfNotAuthorizedViaCondition() public {
+        // Authorize directly through operator
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorizeDirectly();
 
-        // Don't register, just bypass
+        // Bypass should still work
         vm.prank(payer);
         condition.payerBypass(paymentInfo);
 
+        // Now canRelease should return true
         assertTrue(condition.canRelease(paymentInfo, PAYMENT_AMOUNT));
     }
 
     function test_PayerBypass_RevertsIfNotPayer() public {
-        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo,) = _authorizeViaCondition();
 
         vm.prank(receiver);
         vm.expectRevert(NotPayer.selector);
@@ -290,14 +287,14 @@ contract EscrowPeriodConditionTest is Test {
 
     // ============ View Functions Tests ============
 
-    function test_GetEscrowEndTime_ZeroIfNotRegistered() public {
-        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
+    function test_GetAuthorizationTime_ZeroIfNotAuthorizedViaCondition() public {
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorizeDirectly();
 
-        assertEq(condition.getEscrowEndTime(paymentInfo), 0);
+        assertEq(condition.getAuthorizationTime(paymentInfo), 0);
     }
 
     function test_IsPayerBypassed_FalseByDefault() public {
-        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo,) = _authorizeViaCondition();
 
         assertFalse(condition.isPayerBypassed(paymentInfo));
     }

@@ -7,7 +7,14 @@ import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {ArbitrationOperatorAccess} from "./ArbitrationOperatorAccess.sol";
 import {ZeroAddress, ZeroAmount} from "../../types/Errors.sol";
-import {TotalFeeRateExceedsMax, ReleaseLocked} from "../types/Errors.sol";
+import {
+    TotalFeeRateExceedsMax,
+    ReleaseLocked,
+    InvalidAuthorizationExpiry,
+    InvalidRefundExpiry,
+    InvalidFeeBps,
+    InvalidFeeReceiver
+} from "../types/Errors.sol";
 import {IReleaseCondition} from "../types/IReleaseCondition.sol";
 import {
     AuthorizationCreated,
@@ -85,7 +92,12 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
      * @notice Authorize payment via Base Commerce Payments escrow
      * @dev Uses exact same interface as AuthCaptureEscrow.authorize()
      *      Funds held in escrow until RELEASE_CONDITION.canRelease() returns true.
-     * @param paymentInfo PaymentInfo struct (must have operator == address(this))
+     * @param paymentInfo PaymentInfo struct with required values:
+     *        - operator == address(this)
+     *        - authorizationExpiry == type(uint48).max
+     *        - refundExpiry == type(uint48).max
+     *        - minFeeBps == maxFeeBps == MAX_TOTAL_FEE_RATE
+     *        - feeReceiver == address(this)
      * @param amount Amount to authorize
      * @param tokenCollector Address of the token collector
      * @param collectorData Data to pass to the token collector
@@ -96,33 +108,31 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
         address tokenCollector,
         bytes calldata collectorData
     ) external validOperator(paymentInfo) {
-        // Enforce specific parameters for condition-based model
-        AuthCaptureEscrow.PaymentInfo memory enforcedPaymentInfo = paymentInfo;
-        enforcedPaymentInfo.authorizationExpiry = type(uint48).max;
-        enforcedPaymentInfo.refundExpiry = type(uint48).max; // Satisfies base escrow validation
+        // Validate required paymentInfo fields
+        if (paymentInfo.authorizationExpiry != type(uint48).max) revert InvalidAuthorizationExpiry();
+        if (paymentInfo.refundExpiry != type(uint48).max) revert InvalidRefundExpiry();
+        if (paymentInfo.minFeeBps != MAX_TOTAL_FEE_RATE || paymentInfo.maxFeeBps != MAX_TOTAL_FEE_RATE) {
+            revert InvalidFeeBps();
+        }
+        if (paymentInfo.feeReceiver != address(this)) revert InvalidFeeReceiver();
 
-        // Always use MAX_TOTAL_FEE_RATE
-        enforcedPaymentInfo.minFeeBps = uint16(MAX_TOTAL_FEE_RATE);
-        enforcedPaymentInfo.maxFeeBps = uint16(MAX_TOTAL_FEE_RATE);
-        enforcedPaymentInfo.feeReceiver = address(this);
-
-        // Forward to escrow with enforced parameters
-        ESCROW.authorize(enforcedPaymentInfo, amount, tokenCollector, collectorData);
+        // Forward to escrow
+        ESCROW.authorize(paymentInfo, amount, tokenCollector, collectorData);
 
         // Compute hash once for indexing
-        bytes32 paymentInfoHash = ESCROW.getHash(enforcedPaymentInfo);
+        bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
 
         // Store PaymentInfo for indexing (not for validation)
-        paymentInfos[paymentInfoHash] = enforcedPaymentInfo;
+        paymentInfos[paymentInfoHash] = paymentInfo;
 
         // Index by payer and receiver for discoverability
-        _addPayerPayment(enforcedPaymentInfo.payer, paymentInfoHash);
-        _addReceiverPayment(enforcedPaymentInfo.receiver, paymentInfoHash);
+        _addPayerPayment(paymentInfo.payer, paymentInfoHash);
+        _addReceiverPayment(paymentInfo.receiver, paymentInfoHash);
 
         emit AuthorizationCreated(
             paymentInfoHash,
-            enforcedPaymentInfo.payer,
-            enforcedPaymentInfo.receiver,
+            paymentInfo.payer,
+            paymentInfo.receiver,
             amount,
             block.timestamp
         );
@@ -138,7 +148,7 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint256 amount
     ) external validOperator(paymentInfo) onlyReceiver(paymentInfo) {
-        // Check release condition (verification logic) - passes PaymentInfo and amount
+        // Check release condition (verification logic)
         if (!RELEASE_CONDITION.canRelease(paymentInfo, amount)) {
             revert ReleaseLocked();
         }
@@ -149,7 +159,6 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
         // Forward to escrow - escrow validates payment exists
         ESCROW.capture(paymentInfo, amount, feeBps, feeReceiver);
 
-        // Compute hash only for event
         bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
         emit ReleaseExecuted(paymentInfoHash, amount, block.timestamp);
     }

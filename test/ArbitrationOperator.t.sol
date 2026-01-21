@@ -98,30 +98,13 @@ contract ArbitrationOperatorTest is Test {
             token: address(token),
             maxAmount: uint120(PAYMENT_AMOUNT),
             preApprovalExpiry: uint48(block.timestamp + 1 days),
-            authorizationExpiry: uint48(block.timestamp + 30 days),
-            refundExpiry: uint48(block.timestamp + 60 days), // Will be overridden by operator
-            minFeeBps: 0,
+            authorizationExpiry: type(uint48).max,
+            refundExpiry: type(uint48).max,
+            minFeeBps: uint16(MAX_TOTAL_FEE_RATE),
             maxFeeBps: uint16(MAX_TOTAL_FEE_RATE),
-            feeReceiver: address(0),
+            feeReceiver: address(operator),
             salt: 12345
         });
-    }
-
-    // Helper to get the actual enforced PaymentInfo that the operator uses
-    function _getEnforcedPaymentInfo(MockEscrow.PaymentInfo memory original)
-        internal
-        view
-        returns (MockEscrow.PaymentInfo memory)
-    {
-        MockEscrow.PaymentInfo memory enforced = original;
-        enforced.authorizationExpiry = type(uint48).max;
-        enforced.refundExpiry = type(uint48).max; // Operator overrides to satisfy base escrow validation
-        enforced.feeReceiver = address(operator);
-
-        // Always expect MAX_TOTAL_FEE_RATE
-        enforced.minFeeBps = uint16(MAX_TOTAL_FEE_RATE);
-        enforced.maxFeeBps = uint16(MAX_TOTAL_FEE_RATE);
-        return enforced;
     }
 
     function _authorize() internal returns (bytes32, MockEscrow.PaymentInfo memory) {
@@ -134,11 +117,9 @@ contract ArbitrationOperatorTest is Test {
             ""
         );
 
-        // Get the enforced info which matches what the operator actually used
-        MockEscrow.PaymentInfo memory enforcedInfo = _getEnforcedPaymentInfo(paymentInfo);
-        bytes32 paymentInfoHash = escrow.getHash(enforcedInfo);
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
 
-        return (paymentInfoHash, enforcedInfo);
+        return (paymentInfoHash, paymentInfo);
     }
 
     // Convert MockEscrow.PaymentInfo to AuthCaptureEscrow.PaymentInfo
@@ -220,9 +201,7 @@ contract ArbitrationOperatorTest is Test {
             ""
         );
 
-        // We expect the operator to have enforced specific params
-        MockEscrow.PaymentInfo memory enforcedInfo = _getEnforcedPaymentInfo(paymentInfo);
-        bytes32 paymentInfoHash = escrow.getHash(enforcedInfo);
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
 
         // Check escrow state
         (bool hasCollected, uint120 capturable, uint120 refundable) = escrow.paymentState(paymentInfoHash);

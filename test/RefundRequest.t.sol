@@ -95,27 +95,13 @@ contract RefundRequestTest is Test {
             token: address(token),
             maxAmount: uint120(PAYMENT_AMOUNT),
             preApprovalExpiry: uint48(block.timestamp + 1 days),
-            authorizationExpiry: uint48(block.timestamp + 30 days),
-            refundExpiry: uint48(block.timestamp + 60 days),
-            minFeeBps: 0,
+            authorizationExpiry: type(uint48).max,
+            refundExpiry: type(uint48).max,
+            minFeeBps: uint16(MAX_TOTAL_FEE_RATE),
             maxFeeBps: uint16(MAX_TOTAL_FEE_RATE),
-            feeReceiver: address(0),
+            feeReceiver: address(operator),
             salt: 12345
         });
-    }
-
-    function _getEnforcedPaymentInfo(MockEscrow.PaymentInfo memory original)
-        internal
-        view
-        returns (MockEscrow.PaymentInfo memory)
-    {
-        MockEscrow.PaymentInfo memory enforced = original;
-        enforced.authorizationExpiry = type(uint48).max;
-        enforced.refundExpiry = type(uint48).max;
-        enforced.feeReceiver = address(operator);
-        enforced.minFeeBps = uint16(MAX_TOTAL_FEE_RATE);
-        enforced.maxFeeBps = uint16(MAX_TOTAL_FEE_RATE);
-        return enforced;
     }
 
     function _toAuthCapturePaymentInfo(MockEscrow.PaymentInfo memory mockInfo)
@@ -149,10 +135,9 @@ contract RefundRequestTest is Test {
             ""
         );
 
-        MockEscrow.PaymentInfo memory enforcedInfo = _getEnforcedPaymentInfo(paymentInfo);
-        bytes32 paymentInfoHash = escrow.getHash(enforcedInfo);
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
 
-        return (paymentInfoHash, _toAuthCapturePaymentInfo(enforcedInfo));
+        return (paymentInfoHash, _toAuthCapturePaymentInfo(paymentInfo));
     }
 
     // ============ Request Refund Tests ============

@@ -7,3 +7,9 @@ error ZeroEscrow();
 error ZeroArbiter();
 error TotalFeeRateExceedsMax();
 error ReleaseLocked();
+
+// ============ PaymentInfo Validation Errors ============
+error InvalidAuthorizationExpiry();
+error InvalidRefundExpiry();
+error InvalidFeeBps();
+error InvalidFeeReceiver();

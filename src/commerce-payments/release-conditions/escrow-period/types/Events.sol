@@ -2,10 +2,10 @@
 // CONTRACTS UNAUDITED: USE AT YOUR OWN RISK
 pragma solidity ^0.8.28;
 
-/// @notice Emitted when a payment is registered with the escrow period condition
+/// @notice Emitted when a payment is authorized through the escrow period condition
 /// @param paymentInfoHash Hash of the PaymentInfo struct
-/// @param endTime Timestamp when the escrow period expires
-event PaymentRegistered(bytes32 indexed paymentInfoHash, uint256 endTime);
+/// @param authorizationTime Timestamp when the payment was authorized
+event PaymentAuthorized(bytes32 indexed paymentInfoHash, uint256 authorizationTime);
 
 /// @notice Emitted when the payer bypasses the escrow period
 /// @param paymentInfoHash Hash of the PaymentInfo struct

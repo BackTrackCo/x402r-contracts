@@ -34,7 +34,7 @@ contract MockReleaseCondition is IReleaseCondition {
      * @return True if approved, false otherwise
      */
     function canRelease(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount) external view override returns (bool) {
-        // Silence unused variable warnings
+        // Silence unused variable warning
         amount;
 
         // Use keccak256 of paymentInfo for backward compatibility with existing tests

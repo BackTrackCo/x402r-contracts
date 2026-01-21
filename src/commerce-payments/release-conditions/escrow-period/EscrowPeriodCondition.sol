@@ -5,11 +5,8 @@ pragma solidity ^0.8.28;
 import {IReleaseCondition} from "../../operator/types/IReleaseCondition.sol";
 import {ArbitrationOperator} from "../../operator/arbitration/ArbitrationOperator.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {
-    PaymentAlreadyRegistered,
-    NotPayer
-} from "./types/Errors.sol";
-import {PaymentRegistered, PayerBypassTriggered} from "./types/Events.sol";
+import {NotPayer} from "./types/Errors.sol";
+import {PayerBypassTriggered, PaymentAuthorized} from "./types/Events.sol";
 
 /**
  * @title EscrowPeriodCondition
@@ -18,17 +15,17 @@ import {PaymentRegistered, PayerBypassTriggered} from "./types/Events.sol";
  *
  * @dev Key features:
  *      - Operator-agnostic: works with any ArbitrationOperator
- *      - Funds locked for ESCROW_PERIOD seconds after registration
+ *      - Funds locked for ESCROW_PERIOD seconds after authorization
  *      - Payer can call payerBypass() to waive the wait and allow immediate release
- *      - Functions take PaymentInfo directly - escrow is source of truth
+ *      - Users call authorize() on this contract, which forwards to operator and tracks time
  */
 contract EscrowPeriodCondition is IReleaseCondition {
     /// @notice Duration of the escrow period in seconds
     uint256 public immutable ESCROW_PERIOD;
 
-    /// @notice Stores the end time for each payment
-    /// @dev Key: paymentInfoHash (derived from PaymentInfo)
-    mapping(bytes32 => uint256) public escrowEndTimes;
+    /// @notice Stores the authorization time for each payment
+    /// @dev Key: paymentInfoHash
+    mapping(bytes32 => uint256) public authorizationTimes;
 
     /// @notice Tracks which payments have been bypassed by the payer
     /// @dev Key: paymentInfoHash
@@ -39,20 +36,29 @@ contract EscrowPeriodCondition is IReleaseCondition {
     }
 
     /**
-     * @notice Register a payment to start its escrow period
-     * @param paymentInfo PaymentInfo struct from the operator
-     * @dev Can be called by anyone. Sets escrowEndTime = block.timestamp + ESCROW_PERIOD
+     * @notice Authorize payment through the operator, tracking authorization time
+     * @dev Forwards to operator.authorize() and records block.timestamp
+     * @param operator The ArbitrationOperator to authorize through
+     * @param paymentInfo PaymentInfo struct (must have correct required values for operator)
+     * @param amount Amount to authorize
+     * @param tokenCollector Address of the token collector
+     * @param collectorData Data to pass to the token collector
      */
-    function registerPayment(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external {
-        bytes32 paymentInfoHash = _getHash(paymentInfo);
+    function authorize(
+        ArbitrationOperator operator,
+        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
+        uint256 amount,
+        address tokenCollector,
+        bytes calldata collectorData
+    ) external {
+        // Forward to operator (operator validates paymentInfo)
+        operator.authorize(paymentInfo, amount, tokenCollector, collectorData);
 
-        // Prevent double registration
-        if (escrowEndTimes[paymentInfoHash] != 0) revert PaymentAlreadyRegistered();
+        // Compute hash and track authorization time
+        bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
+        authorizationTimes[paymentInfoHash] = block.timestamp;
 
-        uint256 endTime = block.timestamp + ESCROW_PERIOD;
-        escrowEndTimes[paymentInfoHash] = endTime;
-
-        emit PaymentRegistered(paymentInfoHash, endTime);
+        emit PaymentAuthorized(paymentInfoHash, block.timestamp);
     }
 
     /**
@@ -72,10 +78,13 @@ contract EscrowPeriodCondition is IReleaseCondition {
     /**
      * @notice Check if a payment can be released (called by ArbitrationOperator)
      * @param paymentInfo The PaymentInfo struct
-     * @param amount The amount being released (unused in this condition, for future extensibility)
+     * @param amount The amount being released (unused in this condition)
      * @return True if escrow period has passed OR payer has bypassed
      */
-    function canRelease(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount) external view override returns (bool) {
+    function canRelease(
+        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
+        uint256 amount
+    ) external view override returns (bool) {
         // Silence unused variable warning
         amount;
 
@@ -86,23 +95,23 @@ contract EscrowPeriodCondition is IReleaseCondition {
             return true;
         }
 
-        // Check if payment has been registered
-        uint256 endTime = escrowEndTimes[paymentInfoHash];
-        if (endTime == 0) {
-            return false; // Not registered yet
+        // Check if payment was authorized through this contract
+        uint256 authTime = authorizationTimes[paymentInfoHash];
+        if (authTime == 0) {
+            return false; // Not authorized through this contract
         }
 
-        // Check if escrow period has passed
-        return block.timestamp >= endTime;
+        // Check if escrow period has passed since authorization
+        return block.timestamp >= authTime + ESCROW_PERIOD;
     }
 
     /**
-     * @notice Get the escrow end time for a payment
+     * @notice Get the authorization time for a payment
      * @param paymentInfo PaymentInfo struct
-     * @return The timestamp when the escrow period expires (0 if not registered)
+     * @return The timestamp when the payment was authorized (0 if not authorized through this contract)
      */
-    function getEscrowEndTime(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external view returns (uint256) {
-        return escrowEndTimes[_getHash(paymentInfo)];
+    function getAuthorizationTime(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external view returns (uint256) {
+        return authorizationTimes[_getHash(paymentInfo)];
     }
 
     /**
