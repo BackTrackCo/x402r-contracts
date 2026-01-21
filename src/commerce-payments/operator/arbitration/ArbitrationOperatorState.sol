@@ -3,7 +3,6 @@
 pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {PaymentDoesNotExist} from "../../types/Errors.sol";
 import {ZeroEscrow, ZeroArbiter} from "../types/Errors.sol";
 
 /**
@@ -77,14 +76,6 @@ abstract contract ArbitrationOperatorState {
     }
 
     // ============ Internal Helpers ============
-
-    /**
-     * @notice Internal function to check payment exists
-     * @param paymentInfoHash The hash of the PaymentInfo
-     */
-    function _requirePaymentExists(bytes32 paymentInfoHash) internal view {
-        if (!paymentExists(paymentInfoHash)) revert PaymentDoesNotExist();
-    }
 
     /**
      * @notice Add payment hash to payer's list

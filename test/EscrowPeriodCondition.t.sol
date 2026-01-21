@@ -124,7 +124,6 @@ contract EscrowPeriodConditionTest is Test {
 
         // Authorize through the condition contract
         condition.authorize(
-            operator,
             _toAuthCapturePaymentInfo(paymentInfo),
             PAYMENT_AMOUNT,
             address(0),
@@ -198,7 +197,6 @@ contract EscrowPeriodConditionTest is Test {
         emit PaymentAuthorized(expectedHash, block.timestamp);
 
         condition.authorize(
-            operator,
             _toAuthCapturePaymentInfo(paymentInfo),
             PAYMENT_AMOUNT,
             address(0),

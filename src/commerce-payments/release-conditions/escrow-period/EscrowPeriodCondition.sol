@@ -3,6 +3,7 @@
 pragma solidity ^0.8.28;
 
 import {IReleaseCondition} from "../../operator/types/IReleaseCondition.sol";
+import {IAuthorizable} from "../../operator/types/IAuthorizable.sol";
 import {ArbitrationOperator} from "../../operator/arbitration/ArbitrationOperator.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {NotPayer} from "./types/Errors.sol";
@@ -19,7 +20,7 @@ import {PayerBypassTriggered, PaymentAuthorized} from "./types/Events.sol";
  *      - Payer can call payerBypass() to waive the wait and allow immediate release
  *      - Users call authorize() on this contract, which forwards to operator and tracks time
  */
-contract EscrowPeriodCondition is IReleaseCondition {
+contract EscrowPeriodCondition is IReleaseCondition, IAuthorizable {
     /// @notice Duration of the escrow period in seconds
     uint256 public immutable ESCROW_PERIOD;
 
@@ -37,20 +38,20 @@ contract EscrowPeriodCondition is IReleaseCondition {
 
     /**
      * @notice Authorize payment through the operator, tracking authorization time
-     * @dev Forwards to operator.authorize() and records block.timestamp
-     * @param operator The ArbitrationOperator to authorize through
+     * @dev Forwards to paymentInfo.operator.authorize() and records block.timestamp
      * @param paymentInfo PaymentInfo struct (must have correct required values for operator)
      * @param amount Amount to authorize
      * @param tokenCollector Address of the token collector
      * @param collectorData Data to pass to the token collector
      */
     function authorize(
-        ArbitrationOperator operator,
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint256 amount,
         address tokenCollector,
         bytes calldata collectorData
-    ) external {
+    ) external override {
+        ArbitrationOperator operator = ArbitrationOperator(paymentInfo.operator);
+
         // Forward to operator (operator validates paymentInfo)
         operator.authorize(paymentInfo, amount, tokenCollector, collectorData);
 
@@ -78,15 +79,12 @@ contract EscrowPeriodCondition is IReleaseCondition {
     /**
      * @notice Check if a payment can be released (called by ArbitrationOperator)
      * @param paymentInfo The PaymentInfo struct
-     * @param amount The amount being released (unused in this condition)
      * @return True if escrow period has passed OR payer has bypassed
      */
     function canRelease(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
-        uint256 amount
+        uint256 /* amount */
     ) external view override returns (bool) {
-        // Silence unused variable warning
-        amount;
 
         bytes32 paymentInfoHash = _getHash(paymentInfo);
 

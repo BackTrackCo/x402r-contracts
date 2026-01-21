@@ -48,7 +48,7 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
     // Release condition contract - controls when funds can be released (verification logic)
     IReleaseCondition public immutable RELEASE_CONDITION;
 
-    address public protocolFeeRecipient;
+    address public immutable protocolFeeRecipient;
     bool public feesEnabled;
 
     constructor(
