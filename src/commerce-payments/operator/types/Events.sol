@@ -17,13 +17,6 @@ event ReleaseExecuted(
     uint256 timestamp
 );
 
-event EarlyReleaseExecuted(
-    bytes32 indexed paymentInfoHash,
-    address indexed receiver,
-    uint256 amount,
-    uint256 timestamp
-);
-
 event RefundExecuted(
     bytes32 indexed paymentInfoHash,
     address indexed payer,
@@ -48,5 +41,5 @@ event FeesDistributed(
 event OperatorDeployed(
     address indexed operator,
     address indexed arbiter,
-    uint48 escrowPeriod
+    address indexed releaseCondition
 );

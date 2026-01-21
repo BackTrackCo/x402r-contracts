@@ -66,17 +66,17 @@ contract RefundRequestFactory {
      * @dev Convenience method that calls ArbitrationOperatorFactory.deployOperator()
      *      and then deploys a RefundRequest for the resulting operator.
      *      Both deployments are idempotent.
-     * @param arbiter The arbiter address
-     * @param escrowPeriod The escrow period in seconds
+     * @param arbiter The arbiter address for dispute resolution
+     * @param releaseCondition The release condition contract address (verification logic)
      * @return operator The operator address
      * @return refundRequest The refund request address
      */
     function deployOperatorAndRefundRequest(
         address arbiter,
-        uint48 escrowPeriod
+        address releaseCondition
     ) external returns (address operator, address refundRequest) {
         // Deploy operator (idempotent - returns existing if already deployed)
-        operator = OPERATOR_FACTORY.deployOperator(arbiter, escrowPeriod);
+        operator = OPERATOR_FACTORY.deployOperator(arbiter, releaseCondition);
 
         // Deploy refund request for the operator (idempotent)
         refundRequest = deployRefundRequest(operator);

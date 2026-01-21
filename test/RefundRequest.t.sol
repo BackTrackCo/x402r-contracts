@@ -12,6 +12,7 @@ import {RequestAlreadyExists, RequestNotPending} from "../src/commerce-payments/
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockEscrow} from "./mocks/MockEscrow.sol";
+import {MockReleaseCondition} from "./mocks/MockReleaseCondition.sol";
 
 contract RefundRequestTest is Test {
     ArbitrationOperator public operator;
@@ -19,6 +20,7 @@ contract RefundRequestTest is Test {
     RefundRequest public refundRequest;
     MockERC20 public token;
     MockEscrow public escrow;
+    MockReleaseCondition public releaseCondition;
 
     address public owner;
     address public protocolFeeRecipient;
@@ -28,7 +30,6 @@ contract RefundRequestTest is Test {
 
     uint256 public constant MAX_TOTAL_FEE_RATE = 50;
     uint256 public constant PROTOCOL_FEE_PERCENTAGE = 25;
-    uint48 public constant ESCROW_PERIOD = 7 days;
     uint256 public constant INITIAL_BALANCE = 1000000 * 10**18;
     uint256 public constant PAYMENT_AMOUNT = 1000 * 10**18;
 
@@ -63,6 +64,7 @@ contract RefundRequestTest is Test {
         // Deploy mock contracts
         token = new MockERC20("Test Token", "TEST");
         escrow = new MockEscrow();
+        releaseCondition = new MockReleaseCondition();
 
         // Deploy factory and operator
         factory = new ArbitrationOperatorFactory(
@@ -72,7 +74,7 @@ contract RefundRequestTest is Test {
             PROTOCOL_FEE_PERCENTAGE,
             owner
         );
-        operator = ArbitrationOperator(factory.deployOperator(arbiter, ESCROW_PERIOD));
+        operator = ArbitrationOperator(factory.deployOperator(arbiter, address(releaseCondition)));
 
         // Deploy RefundRequest
         refundRequest = new RefundRequest(address(operator));
@@ -277,15 +279,15 @@ contract RefundRequestTest is Test {
         );
     }
 
-    function test_UpdateStatus_ApproveByReceiverPostEscrow() public {
+    function test_UpdateStatus_ApproveByReceiverPostCapture() public {
         bytes32 paymentInfoHash = _authorizeAndRequest();
 
-        // Capture first
-        vm.warp(block.timestamp + ESCROW_PERIOD + 1);
+        // Approve release condition and capture
+        releaseCondition.approve(paymentInfoHash);
         vm.prank(receiver);
         operator.release(paymentInfoHash, PAYMENT_AMOUNT);
 
-        // Now update status post escrow
+        // Now update status post capture
         vm.prank(receiver);
         refundRequest.updateStatus(
             paymentInfoHash,
@@ -298,15 +300,15 @@ contract RefundRequestTest is Test {
         );
     }
 
-    function test_UpdateStatus_RevertsOnArbiterPostEscrow() public {
+    function test_UpdateStatus_RevertsOnArbiterPostCapture() public {
         bytes32 paymentInfoHash = _authorizeAndRequest();
 
-        // Capture first
-        vm.warp(block.timestamp + ESCROW_PERIOD + 1);
+        // Approve release condition and capture
+        releaseCondition.approve(paymentInfoHash);
         vm.prank(receiver);
         operator.release(paymentInfoHash, PAYMENT_AMOUNT);
 
-        // Arbiter should not be able to update post-escrow
+        // Arbiter should not be able to update post-capture
         vm.prank(arbiter);
         vm.expectRevert(NotReceiver.selector);
         refundRequest.updateStatus(
@@ -389,8 +391,8 @@ contract RefundRequestTest is Test {
         RefundRequest.RefundRequestData[] memory requests = refundRequest.getArbiterRefundRequests(receiver);
         assertEq(requests.length, 1);
 
-        // Capture
-        vm.warp(block.timestamp + ESCROW_PERIOD + 1);
+        // Approve and capture
+        releaseCondition.approve(paymentInfoHash);
         vm.prank(receiver);
         operator.release(paymentInfoHash, PAYMENT_AMOUNT);
 

@@ -7,11 +7,11 @@ import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {ArbitrationOperatorAccess} from "./ArbitrationOperatorAccess.sol";
 import {ZeroAddress, ZeroAmount} from "../../types/Errors.sol";
-import {EscrowPeriodNotPassed, TotalFeeRateExceedsMax} from "../types/Errors.sol";
+import {TotalFeeRateExceedsMax, ReleaseLocked} from "../types/Errors.sol";
+import {IReleaseCondition} from "../types/IReleaseCondition.sol";
 import {
     AuthorizationCreated,
     ReleaseExecuted,
-    EarlyReleaseExecuted,
     RefundExecuted,
     ProtocolFeesEnabledUpdated,
     FeesDistributed
@@ -19,14 +19,15 @@ import {
 
 /**
  * @title ArbitrationOperator
- * @notice Operator contract that wraps Base Commerce Payments escrow with arbiter-based dispute resolution.
- *         Uses the exact same PaymentInfo-based interface as AuthCaptureEscrow for x402-escrow compatibility.
+ * @notice Operator contract for x402r - condition-based escrow release for Chamba universal execution protocol.
+ *         Anyone (agents, robots, humans) can post jobs, anyone can execute them, payment held in escrow
+ *         until verification via release condition contract.
  *
  * @dev Key features:
- *      - Immutable arbiter config baked in at deployment
- *      - Immutable escrow period baked in at deployment (merchant can only capture after this period)
- *      - Arbiter OR merchant can trigger partial pre-capture refunds via partialVoid
- *      - Uses PaymentInfo struct from Base Commerce Payments for full x402-escrow compatibility
+ *      - Release controlled by external IReleaseCondition contract (verification logic)
+ *      - Immutable arbiter config for dispute resolution
+ *      - Arbiter OR receiver can trigger refunds via partialVoid
+ *      - Uses PaymentInfo struct from Base Commerce Payments for x402-escrow compatibility
  */
 contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
 
@@ -36,11 +37,8 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
     uint256 public immutable PROTOCOL_FEE_PERCENTAGE;
     uint256 public immutable MAX_ARBITER_FEE_RATE;
 
-    // Escrow period configuration (set at deployment)
-    uint48 public immutable ESCROW_PERIOD;
-
-    // Track when each payment was authorized (for escrow period calculation)
-    mapping(bytes32 => uint48) public authorizationTimestamps;
+    // Release condition contract - controls when funds can be released (verification logic)
+    IReleaseCondition public immutable RELEASE_CONDITION;
 
     address public protocolFeeRecipient;
     bool public feesEnabled;
@@ -52,14 +50,14 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
         uint256 _protocolFeePercentage,
         address _arbiter,
         address _owner,
-        uint48 _escrowPeriod
+        address _releaseCondition
     ) ArbitrationOperatorAccess(_escrow, _arbiter) {
         if (_protocolFeeRecipient == address(0)) revert ZeroAddress();
         if (_owner == address(0)) revert ZeroAddress();
+        if (_releaseCondition == address(0)) revert ZeroAddress();
         _initializeOwner(_owner);
         if (_maxTotalFeeRate == 0) revert ZeroAmount();
         if (_protocolFeePercentage > 100) revert TotalFeeRateExceedsMax();
-        if (_escrowPeriod == 0) revert ZeroAmount();
 
         protocolFeeRecipient = _protocolFeeRecipient;
         feesEnabled = false;
@@ -67,7 +65,7 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
         MAX_TOTAL_FEE_RATE = _maxTotalFeeRate;
         PROTOCOL_FEE_PERCENTAGE = _protocolFeePercentage;
         MAX_ARBITER_FEE_RATE = (_maxTotalFeeRate * (100 - _protocolFeePercentage)) / 100;
-        ESCROW_PERIOD = _escrowPeriod;
+        RELEASE_CONDITION = IReleaseCondition(_releaseCondition);
     }
 
     // ============ Owner Functions ============
@@ -85,7 +83,7 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
     /**
      * @notice Authorize payment via Base Commerce Payments escrow
      * @dev Uses exact same interface as AuthCaptureEscrow.authorize()
-     *      The escrow period is set at operator deployment, not per-payment.
+     *      Funds held in escrow until RELEASE_CONDITION.canRelease() returns true.
      * @param paymentInfo PaymentInfo struct (must have operator == address(this))
      * @param amount Amount to authorize
      * @param tokenCollector Address of the token collector
@@ -97,7 +95,7 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
         address tokenCollector,
         bytes calldata collectorData
     ) external validOperator(paymentInfo) {
-        // Enforce specific parameters for arbitration model
+        // Enforce specific parameters for condition-based model
         AuthCaptureEscrow.PaymentInfo memory enforcedPaymentInfo = paymentInfo;
         enforcedPaymentInfo.authorizationExpiry = type(uint48).max;
         enforcedPaymentInfo.refundExpiry = type(uint48).max; // Satisfies base escrow validation
@@ -114,9 +112,6 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
         bytes32 paymentInfoHash = ESCROW.getHash(enforcedPaymentInfo);
         paymentInfos[paymentInfoHash] = enforcedPaymentInfo;
 
-        // Store authorization timestamp for escrow period calculation
-        authorizationTimestamps[paymentInfoHash] = uint48(block.timestamp);
-
         // Index by payer and receiver for discoverability
         _addPayerPayment(enforcedPaymentInfo.payer, paymentInfoHash);
         _addReceiverPayment(enforcedPaymentInfo.receiver, paymentInfoHash);
@@ -131,20 +126,21 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
     }
 
     /**
-     * @notice Capture authorized funds after escrow period
-     * @dev Only receiver can capture, and only after ESCROW_PERIOD has passed since authorization
+     * @notice Release funds to receiver when condition is met
+     * @dev Only receiver can call. Release only allowed when RELEASE_CONDITION.canRelease() returns true.
      * @param paymentInfoHash Hash of the PaymentInfo struct
-     * @param amount Amount to capture
+     * @param amount Amount to release
      */
     function release(
         bytes32 paymentInfoHash,
         uint256 amount
     ) external paymentMustExist(paymentInfoHash) onlyReceiverByHash(paymentInfoHash) validOperatorByHash(paymentInfoHash) {
-        AuthCaptureEscrow.PaymentInfo memory paymentInfo = paymentInfos[paymentInfoHash];
+        // Check release condition (verification logic)
+        if (!RELEASE_CONDITION.canRelease(paymentInfoHash)) {
+            revert ReleaseLocked();
+        }
 
-        // Enforce escrow period from authorization time
-        uint48 authTime = authorizationTimestamps[paymentInfoHash];
-        if (block.timestamp < authTime + ESCROW_PERIOD) revert EscrowPeriodNotPassed();
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = paymentInfos[paymentInfoHash];
 
         uint16 feeBps = uint16(MAX_TOTAL_FEE_RATE);
         address feeReceiver = address(this);
@@ -153,34 +149,6 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
         ESCROW.capture(paymentInfo, amount, feeBps, feeReceiver);
 
         emit ReleaseExecuted(paymentInfoHash, amount, block.timestamp);
-    }
-
-    /**
-     * @notice Payer releases funds to receiver early (bypassing escrow period)
-     * @dev Only payer can call. Bypasses ESCROW_PERIOD check.
-     * @param paymentInfoHash Hash of the PaymentInfo struct
-     * @param amount Amount to release
-     */
-    function earlyRelease(
-        bytes32 paymentInfoHash,
-        uint256 amount
-    ) external paymentMustExist(paymentInfoHash) onlyPayerByHash(paymentInfoHash) validOperatorByHash(paymentInfoHash) {
-        AuthCaptureEscrow.PaymentInfo memory paymentInfo = paymentInfos[paymentInfoHash];
-
-        // No escrow period check for payer early release
-
-        uint16 feeBps = uint16(MAX_TOTAL_FEE_RATE);
-        address feeReceiver = address(this);
-
-        // Forward to capture
-        ESCROW.capture(paymentInfo, amount, feeBps, feeReceiver);
-
-        emit EarlyReleaseExecuted(
-            paymentInfoHash,
-            paymentInfo.receiver,
-            amount,
-            block.timestamp
-        );
     }
 
     /**
