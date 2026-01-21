@@ -8,43 +8,35 @@ import {
     NotReceiver,
     NotPayer,
     NotReceiverOrArbiter,
-    PaymentDoesNotExist,
     InvalidOperator
 } from "../../types/Errors.sol";
-import {ZeroOperator} from "../types/Errors.sol";
 
 /**
  * @title RefundRequestAccess
- * @notice Access control for RefundRequest that delegates to ArbitrationOperator
- * @dev All access checks query OPERATOR for state
+ * @notice Access control for RefundRequest - reads directly from PaymentInfo
+ * @dev Escrow is source of truth - no stored state validation needed
  */
 abstract contract RefundRequestAccess {
-    ArbitrationOperator public immutable OPERATOR;
-
-    constructor(address _operator) {
-        if (_operator == address(0)) revert ZeroOperator();
-        OPERATOR = ArbitrationOperator(_operator);
-    }
 
     // ============ Payer Modifiers ============
 
-    modifier onlyPayerByHash(bytes32 paymentInfoHash) {
-        if (msg.sender != OPERATOR.getPaymentInfo(paymentInfoHash).payer) revert NotPayer();
+    modifier onlyPayer(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
+        if (msg.sender != paymentInfo.payer) revert NotPayer();
         _;
     }
 
     // ============ Combined Modifiers ============
 
-    modifier onlyAuthorizedForRefundStatus(bytes32 paymentInfoHash) {
-        address receiver = OPERATOR.getPaymentInfo(paymentInfoHash).receiver;
-        (, uint120 capturableAmount,) = OPERATOR.ESCROW().paymentState(paymentInfoHash);
+    modifier onlyAuthorizedForRefundStatus(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
+        ArbitrationOperator operator = ArbitrationOperator(paymentInfo.operator);
+        (, uint120 capturableAmount,) = operator.ESCROW().paymentState(operator.ESCROW().getHash(paymentInfo));
 
         if (capturableAmount > 0) {
-            if (msg.sender != receiver && msg.sender != OPERATOR.ARBITER()) {
+            if (msg.sender != paymentInfo.receiver && msg.sender != operator.ARBITER()) {
                 revert NotReceiverOrArbiter();
             }
         } else {
-            if (msg.sender != receiver) {
+            if (msg.sender != paymentInfo.receiver) {
                 revert NotReceiver();
             }
         }
@@ -53,22 +45,17 @@ abstract contract RefundRequestAccess {
 
     // ============ Operator Validation ============
 
-    modifier validOperatorByHash(bytes32 paymentInfoHash) {
-        if (OPERATOR.getPaymentInfo(paymentInfoHash).operator != address(OPERATOR)) revert InvalidOperator();
-        _;
-    }
-
-    // ============ Payment Existence ============
-
-    modifier paymentMustExist(bytes32 paymentInfoHash) {
-        if (!OPERATOR.paymentExists(paymentInfoHash)) revert PaymentDoesNotExist();
+    modifier validOperator(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
+        if (paymentInfo.operator == address(0)) revert InvalidOperator();
         _;
     }
 
     // ============ Escrow State Helpers ============
 
-    function isInEscrow(bytes32 paymentInfoHash) public view returns (bool) {
-        (, uint120 capturableAmount,) = OPERATOR.ESCROW().paymentState(paymentInfoHash);
+    function isInEscrow(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) public view returns (bool) {
+        ArbitrationOperator operator = ArbitrationOperator(paymentInfo.operator);
+        bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
+        (, uint120 capturableAmount,) = operator.ESCROW().paymentState(paymentInfoHash);
         return capturableAmount > 0;
     }
 }

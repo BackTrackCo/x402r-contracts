@@ -3,7 +3,6 @@ pragma solidity ^0.8.28;
 
 import {Test, console} from "forge-std/Test.sol";
 import {ArbitrationOperator} from "../src/commerce-payments/operator/arbitration/ArbitrationOperator.sol";
-import {ArbitrationOperatorAccess} from "../src/commerce-payments/operator/arbitration/ArbitrationOperatorAccess.sol";
 import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
 import {InvalidOperator, NotReceiver, NotPayer, NotReceiverOrArbiter} from "../src/commerce-payments/types/Errors.sol";
 import {ReleaseLocked} from "../src/commerce-payments/operator/types/Errors.sol";
@@ -230,9 +229,6 @@ contract ArbitrationOperatorTest is Test {
         assertTrue(hasCollected);
         assertEq(capturable, PAYMENT_AMOUNT);
         assertEq(refundable, 0);
-
-        // Check operator tracked the payment
-        assertTrue(operator.paymentExists(paymentInfoHash));
     }
 
     function test_Authorize_RevertsOnInvalidOperator() public {
@@ -251,18 +247,17 @@ contract ArbitrationOperatorTest is Test {
     // ============ Release Tests ============
 
     function test_Release_Success() public {
-        (bytes32 paymentInfoHash, MockEscrow.PaymentInfo memory paymentInfo) = _authorize();
+        (, MockEscrow.PaymentInfo memory enforcedInfo) = _authorize();
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _toAuthCapturePaymentInfo(enforcedInfo);
+        bytes32 paymentInfoHash = escrow.getHash(enforcedInfo);
 
-        // Approve the release via condition contract
-        releaseCondition.approve(paymentInfoHash);
+        // Approve the release via condition contract (using PaymentInfo)
+        releaseCondition.approvePayment(paymentInfo);
 
         uint256 receiverBalanceBefore = token.balanceOf(receiver);
 
         vm.prank(receiver);
-        operator.release(
-            paymentInfoHash,
-            PAYMENT_AMOUNT
-        );
+        operator.release(paymentInfo, PAYMENT_AMOUNT);
 
         // Check receiver got the tokens MINUS fees
         // Always MAX_TOTAL_FEE_RATE (50 bps)
@@ -278,57 +273,52 @@ contract ArbitrationOperatorTest is Test {
     }
 
     function test_Release_RevertsOnNotReceiver() public {
-        (bytes32 paymentInfoHash, MockEscrow.PaymentInfo memory paymentInfo) = _authorize();
-        releaseCondition.approve(paymentInfoHash);
+        (, MockEscrow.PaymentInfo memory enforcedInfo) = _authorize();
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _toAuthCapturePaymentInfo(enforcedInfo);
+
+        releaseCondition.approvePayment(paymentInfo);
 
         vm.expectRevert(NotReceiver.selector);
-        operator.release(
-            paymentInfoHash,
-            PAYMENT_AMOUNT
-        );
+        operator.release(paymentInfo, PAYMENT_AMOUNT);
     }
 
     function test_Release_RevertsWhenConditionNotMet() public {
-        (bytes32 paymentInfoHash, MockEscrow.PaymentInfo memory paymentInfo) = _authorize();
+        (, MockEscrow.PaymentInfo memory enforcedInfo) = _authorize();
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _toAuthCapturePaymentInfo(enforcedInfo);
 
         // Do NOT approve - condition should block release
 
         vm.prank(receiver);
         vm.expectRevert(ReleaseLocked.selector);
-        operator.release(
-            paymentInfoHash,
-            PAYMENT_AMOUNT
-        );
+        operator.release(paymentInfo, PAYMENT_AMOUNT);
     }
 
     function test_Release_RevertsAfterConditionRevoked() public {
-        (bytes32 paymentInfoHash, MockEscrow.PaymentInfo memory paymentInfo) = _authorize();
+        (, MockEscrow.PaymentInfo memory enforcedInfo) = _authorize();
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _toAuthCapturePaymentInfo(enforcedInfo);
+        bytes32 paymentInfoHash = keccak256(abi.encode(paymentInfo));
 
         // Approve then revoke
-        releaseCondition.approve(paymentInfoHash);
+        releaseCondition.approvePayment(paymentInfo);
         releaseCondition.revoke(paymentInfoHash);
 
         vm.prank(receiver);
         vm.expectRevert(ReleaseLocked.selector);
-        operator.release(
-            paymentInfoHash,
-            PAYMENT_AMOUNT
-        );
+        operator.release(paymentInfo, PAYMENT_AMOUNT);
     }
 
     // ============ Refund (PartialVoid) Tests ============
 
     function test_Refund_ByReceiver() public {
-        (bytes32 paymentInfoHash, MockEscrow.PaymentInfo memory paymentInfo) = _authorize();
+        (, MockEscrow.PaymentInfo memory enforcedInfo) = _authorize();
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _toAuthCapturePaymentInfo(enforcedInfo);
+        bytes32 paymentInfoHash = escrow.getHash(enforcedInfo);
 
         uint256 payerBalanceBefore = token.balanceOf(payer);
         uint120 refundAmount = uint120(PAYMENT_AMOUNT / 2);
 
         vm.prank(receiver);
-        operator.escrowRefund(
-            paymentInfoHash,
-            refundAmount
-        );
+        operator.escrowRefund(paymentInfo, refundAmount);
 
         // Check payer got refund
         assertEq(token.balanceOf(payer), payerBalanceBefore + refundAmount);
@@ -339,16 +329,15 @@ contract ArbitrationOperatorTest is Test {
     }
 
     function test_Refund_ByArbiter() public {
-        (bytes32 paymentInfoHash, MockEscrow.PaymentInfo memory paymentInfo) = _authorize();
+        (, MockEscrow.PaymentInfo memory enforcedInfo) = _authorize();
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _toAuthCapturePaymentInfo(enforcedInfo);
+        bytes32 paymentInfoHash = escrow.getHash(enforcedInfo);
 
         uint256 payerBalanceBefore = token.balanceOf(payer);
         uint120 refundAmount = uint120(PAYMENT_AMOUNT / 2);
 
         vm.prank(arbiter);
-        operator.escrowRefund(
-            paymentInfoHash,
-            refundAmount
-        );
+        operator.escrowRefund(paymentInfo, refundAmount);
 
         assertEq(token.balanceOf(payer), payerBalanceBefore + refundAmount);
 
@@ -357,27 +346,27 @@ contract ArbitrationOperatorTest is Test {
     }
 
     function test_Refund_RevertsOnNotReceiverOrArbiter() public {
-        (bytes32 paymentInfoHash, MockEscrow.PaymentInfo memory paymentInfo) = _authorize();
+        (, MockEscrow.PaymentInfo memory enforcedInfo) = _authorize();
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _toAuthCapturePaymentInfo(enforcedInfo);
 
         vm.prank(payer);
         vm.expectRevert(NotReceiverOrArbiter.selector);
-        operator.escrowRefund(
-            paymentInfoHash,
-            uint120(PAYMENT_AMOUNT / 2)
-        );
+        operator.escrowRefund(paymentInfo, uint120(PAYMENT_AMOUNT / 2));
     }
 
     function test_Refund_MultiplePartial() public {
-        (bytes32 paymentInfoHash, MockEscrow.PaymentInfo memory paymentInfo) = _authorize();
+        (, MockEscrow.PaymentInfo memory enforcedInfo) = _authorize();
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _toAuthCapturePaymentInfo(enforcedInfo);
+        bytes32 paymentInfoHash = escrow.getHash(enforcedInfo);
 
         uint120 firstRefund = uint120(PAYMENT_AMOUNT / 3);
         uint120 secondRefund = uint120(PAYMENT_AMOUNT / 3);
 
         vm.prank(receiver);
-        operator.escrowRefund(paymentInfoHash, firstRefund);
+        operator.escrowRefund(paymentInfo, firstRefund);
 
         vm.prank(arbiter);
-        operator.escrowRefund(paymentInfoHash, secondRefund);
+        operator.escrowRefund(paymentInfo, secondRefund);
 
         (, uint120 capturable,) = escrow.paymentState(paymentInfoHash);
         assertEq(capturable, PAYMENT_AMOUNT - firstRefund - secondRefund);
@@ -407,7 +396,6 @@ contract ArbitrationOperatorTest is Test {
         // Protocol fees are disabled by default
         assertFalse(operator.feesEnabled());
 
-        uint256 operatorBalanceBefore = token.balanceOf(address(operator));
         uint256 arbiterBalanceBefore = token.balanceOf(arbiter);
         uint256 protocolBalanceBefore = token.balanceOf(protocolFeeRecipient);
 
@@ -426,7 +414,6 @@ contract ArbitrationOperatorTest is Test {
         uint256 feeAmount = 1000 * 10**18;
         token.mint(address(operator), feeAmount);
 
-        uint256 operatorBalanceBefore = token.balanceOf(address(operator));
         uint256 arbiterBalanceBefore = token.balanceOf(arbiter);
         uint256 protocolBalanceBefore = token.balanceOf(protocolFeeRecipient);
 

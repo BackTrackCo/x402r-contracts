@@ -2,6 +2,8 @@
 // CONTRACTS UNAUDITED: USE AT YOUR OWN RISK
 pragma solidity ^0.8.28;
 
+import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
+
 /**
  * @title IReleaseCondition
  * @notice Interface for external release condition contracts
@@ -12,8 +14,9 @@ pragma solidity ^0.8.28;
 interface IReleaseCondition {
     /**
      * @notice Check if a payment can be released
-     * @param paymentInfoHash Hash of the PaymentInfo struct
+     * @param paymentInfo The PaymentInfo struct
+     * @param amount The amount being released
      * @return True if release is allowed, false to block
      */
-    function canRelease(bytes32 paymentInfoHash) external view returns (bool);
+    function canRelease(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount) external view returns (bool);
 }

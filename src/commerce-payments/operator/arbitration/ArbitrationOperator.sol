@@ -28,6 +28,7 @@ import {
  *      - Immutable arbiter config for dispute resolution
  *      - Arbiter OR receiver can trigger refunds via partialVoid
  *      - Uses PaymentInfo struct from Base Commerce Payments for x402-escrow compatibility
+ *      - Escrow is source of truth; operator stores PaymentInfo for indexing only
  */
 contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
 
@@ -108,8 +109,10 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
         // Forward to escrow with enforced parameters
         ESCROW.authorize(enforcedPaymentInfo, amount, tokenCollector, collectorData);
 
-        // Store PaymentInfo for hash-based lookups
+        // Compute hash once for indexing
         bytes32 paymentInfoHash = ESCROW.getHash(enforcedPaymentInfo);
+
+        // Store PaymentInfo for indexing (not for validation)
         paymentInfos[paymentInfoHash] = enforcedPaymentInfo;
 
         // Index by payer and receiver for discoverability
@@ -128,44 +131,44 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
     /**
      * @notice Release funds to receiver when condition is met
      * @dev Only receiver can call. Release only allowed when RELEASE_CONDITION.canRelease() returns true.
-     * @param paymentInfoHash Hash of the PaymentInfo struct
+     * @param paymentInfo PaymentInfo struct
      * @param amount Amount to release
      */
     function release(
-        bytes32 paymentInfoHash,
+        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint256 amount
-    ) external paymentMustExist(paymentInfoHash) onlyReceiverByHash(paymentInfoHash) validOperatorByHash(paymentInfoHash) {
-        // Check release condition (verification logic)
-        if (!RELEASE_CONDITION.canRelease(paymentInfoHash)) {
+    ) external validOperator(paymentInfo) onlyReceiver(paymentInfo) {
+        // Check release condition (verification logic) - passes PaymentInfo and amount
+        if (!RELEASE_CONDITION.canRelease(paymentInfo, amount)) {
             revert ReleaseLocked();
         }
-
-        AuthCaptureEscrow.PaymentInfo memory paymentInfo = paymentInfos[paymentInfoHash];
 
         uint16 feeBps = uint16(MAX_TOTAL_FEE_RATE);
         address feeReceiver = address(this);
 
-        // Forward to escrow
+        // Forward to escrow - escrow validates payment exists
         ESCROW.capture(paymentInfo, amount, feeBps, feeReceiver);
 
+        // Compute hash only for event
+        bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
         emit ReleaseExecuted(paymentInfoHash, amount, block.timestamp);
     }
 
     /**
      * @notice Refund funds while still in escrow (before capture)
      * @dev Only arbiter OR receiver can call. Returns escrowed funds to payer.
-     * @param paymentInfoHash Hash of the PaymentInfo struct
+     * @param paymentInfo PaymentInfo struct
      * @param amount Amount to return to payer
      */
     function escrowRefund(
-        bytes32 paymentInfoHash,
+        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint120 amount
-    ) external paymentMustExist(paymentInfoHash) onlyReceiverOrArbiterByHash(paymentInfoHash) validOperatorByHash(paymentInfoHash) {
-        AuthCaptureEscrow.PaymentInfo memory paymentInfo = paymentInfos[paymentInfoHash];
-
-        // Forward to escrow's partialVoid
+    ) external validOperator(paymentInfo) onlyReceiverOrArbiter(paymentInfo) {
+        // Forward to escrow's partialVoid - escrow validates payment exists
         ESCROW.partialVoid(paymentInfo, amount);
 
+        // Compute hash only for event
+        bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
         emit RefundExecuted(paymentInfoHash, paymentInfo.payer, amount);
     }
 
