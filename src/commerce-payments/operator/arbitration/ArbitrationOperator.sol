@@ -11,9 +11,6 @@ import {
     TotalFeeRateExceedsMax,
     ReleaseLocked,
     InvalidAuthorizationExpiry,
-    InvalidRefundExpiry,
-    InvalidFeeBps,
-    InvalidRefundExpiry,
     InvalidFeeBps,
     InvalidFeeReceiver,
     UnauthorizedCaller
@@ -111,7 +108,6 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
      * @param paymentInfo PaymentInfo struct with required values:
      *        - operator == address(this)
      *        - authorizationExpiry == type(uint48).max
-     *        - refundExpiry == type(uint48).max
      *        - minFeeBps == maxFeeBps == MAX_TOTAL_FEE_RATE
      *        - feeReceiver == address(this)
      * @param amount Amount to authorize
@@ -131,7 +127,6 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
 
         // Validate required paymentInfo fields
         if (paymentInfo.authorizationExpiry != type(uint48).max) revert InvalidAuthorizationExpiry();
-        if (paymentInfo.refundExpiry != type(uint48).max) revert InvalidRefundExpiry();
         if (paymentInfo.minFeeBps != MAX_TOTAL_FEE_RATE || paymentInfo.maxFeeBps != MAX_TOTAL_FEE_RATE) {
             revert InvalidFeeBps();
         }
@@ -161,14 +156,15 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
 
     /**
      * @notice Release funds to receiver when condition is met
-     * @dev Only receiver can call. Release only allowed when RELEASE_CONDITION.canRelease() returns true.
+     * @dev Anyone can call. Release only allowed when RELEASE_CONDITION.canRelease() returns true.
+     *      Funds always go to paymentInfo.receiver.
      * @param paymentInfo PaymentInfo struct
      * @param amount Amount to release
      */
     function release(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint256 amount
-    ) external validOperator(paymentInfo) onlyReceiver(paymentInfo) {
+    ) external validOperator(paymentInfo) {
         // Check release condition (verification logic)
         if (!RELEASE_CONDITION.canRelease(paymentInfo, amount)) {
             revert ReleaseLocked();
@@ -189,7 +185,7 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
      * @param paymentInfo PaymentInfo struct
      * @param amount Amount to return to payer
      */
-    function escrowRefund(
+    function refundInEscrow(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint120 amount
     ) external validOperator(paymentInfo) onlyReceiverOrArbiter(paymentInfo) {
@@ -198,6 +194,28 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
 
         // Compute hash only for event
         emit RefundExecuted(paymentInfo, paymentInfo.payer, amount);
+    }
+
+    /**
+     * @notice Refund captured funds back to payer (after capture/release)
+     * @dev Permission is enforced by the token collector (e.g., receiver must have approved it,
+     *      or collectorData contains receiver's signature). Anyone can call, but refund only
+     *      succeeds if the token collector can source the funds.
+     * @param paymentInfo PaymentInfo struct
+     * @param amount Amount to refund to payer
+     * @param tokenCollector Address of the token collector that will source the refund
+     * @param collectorData Data to pass to the token collector (e.g., signatures)
+     */
+    function refundPostEscrow(
+        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
+        uint256 amount,
+        address tokenCollector,
+        bytes calldata collectorData
+    ) external validOperator(paymentInfo) {
+        // Forward to escrow's refund - token collector enforces permission
+        ESCROW.refund(paymentInfo, amount, tokenCollector, collectorData);
+
+        emit RefundExecuted(paymentInfo, paymentInfo.payer, uint120(amount));
     }
 
     /**

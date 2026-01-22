@@ -10,7 +10,6 @@ error ReleaseLocked();
 
 // ============ PaymentInfo Validation Errors ============
 error InvalidAuthorizationExpiry();
-error InvalidRefundExpiry();
 error InvalidFeeBps();
 error InvalidFeeReceiver();
 error UnauthorizedCaller();

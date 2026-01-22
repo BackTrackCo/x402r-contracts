@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 import {Test, console} from "forge-std/Test.sol";
 import {ArbitrationOperator} from "../src/commerce-payments/operator/arbitration/ArbitrationOperator.sol";
 import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
-import {InvalidOperator, NotReceiver, NotPayer, NotReceiverOrArbiter} from "../src/commerce-payments/types/Errors.sol";
+import {InvalidOperator, NotPayer, NotReceiverOrArbiter} from "../src/commerce-payments/types/Errors.sol";
 import {ReleaseLocked} from "../src/commerce-payments/operator/types/Errors.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
@@ -253,14 +253,21 @@ contract ArbitrationOperatorTest is Test {
         assertEq(refundable, PAYMENT_AMOUNT);
     }
 
-    function test_Release_RevertsOnNotReceiver() public {
+    function test_Release_ByAnyone() public {
         (, MockEscrow.PaymentInfo memory enforcedInfo) = _authorize();
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _toAuthCapturePaymentInfo(enforcedInfo);
 
         releaseCondition.approvePayment(paymentInfo);
 
-        vm.expectRevert(NotReceiver.selector);
+        uint256 receiverBalanceBefore = token.balanceOf(receiver);
+        uint256 fee = (PAYMENT_AMOUNT * MAX_TOTAL_FEE_RATE) / 10000;
+
+        // Anyone can call release - funds still go to receiver
+        address randomCaller = makeAddr("randomCaller");
+        vm.prank(randomCaller);
         operator.release(paymentInfo, PAYMENT_AMOUNT);
+
+        assertEq(token.balanceOf(receiver), receiverBalanceBefore + PAYMENT_AMOUNT - fee);
     }
 
     function test_Release_RevertsWhenConditionNotMet() public {
@@ -301,7 +308,7 @@ contract ArbitrationOperatorTest is Test {
         vm.prank(receiver);
         vm.expectEmit(true, false, false, true, address(operator));
         emit RefundExecuted(paymentInfo, paymentInfo.payer, refundAmount);
-        operator.escrowRefund(paymentInfo, refundAmount);
+        operator.refundInEscrow(paymentInfo, refundAmount);
 
         // Check payer got refund
         assertEq(token.balanceOf(payer), payerBalanceBefore + refundAmount);
@@ -320,7 +327,7 @@ contract ArbitrationOperatorTest is Test {
         uint120 refundAmount = uint120(PAYMENT_AMOUNT / 2);
 
         vm.prank(arbiter);
-        operator.escrowRefund(paymentInfo, refundAmount);
+        operator.refundInEscrow(paymentInfo, refundAmount);
 
         assertEq(token.balanceOf(payer), payerBalanceBefore + refundAmount);
 
@@ -334,7 +341,7 @@ contract ArbitrationOperatorTest is Test {
 
         vm.prank(payer);
         vm.expectRevert(NotReceiverOrArbiter.selector);
-        operator.escrowRefund(paymentInfo, uint120(PAYMENT_AMOUNT / 2));
+        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT / 2));
     }
 
     function test_Refund_MultiplePartial() public {
@@ -346,10 +353,10 @@ contract ArbitrationOperatorTest is Test {
         uint120 secondRefund = uint120(PAYMENT_AMOUNT / 3);
 
         vm.prank(receiver);
-        operator.escrowRefund(paymentInfo, firstRefund);
+        operator.refundInEscrow(paymentInfo, firstRefund);
 
         vm.prank(arbiter);
-        operator.escrowRefund(paymentInfo, secondRefund);
+        operator.refundInEscrow(paymentInfo, secondRefund);
 
         (, uint120 capturable,) = escrow.paymentState(paymentInfoHash);
         assertEq(capturable, PAYMENT_AMOUNT - firstRefund - secondRefund);

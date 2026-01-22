@@ -68,7 +68,7 @@ contract ArbitrationOperatorFactory is Ownable {
      */
     function computeAddress(address arbiter, address releaseCondition) external view returns (address operator) {
         bytes32 key = keccak256(abi.encodePacked(arbiter, releaseCondition));
-        
+
         bytes memory bytecode = abi.encodePacked(
             type(ArbitrationOperator).creationCode,
             abi.encode(
@@ -81,9 +81,9 @@ contract ArbitrationOperatorFactory is Ownable {
                 releaseCondition
             )
         );
-        
+
         bytes32 bytecodeHash = keccak256(bytecode);
-        
+
         return address(uint160(uint256(keccak256(abi.encodePacked(
             bytes1(0xff),
             address(this),

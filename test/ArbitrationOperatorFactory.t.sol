@@ -46,7 +46,7 @@ contract ArbitrationOperatorFactoryTest is Test {
         // 3. Verify match
         assertEq(predicted, actual, "Computed address should match deployed address");
         assertNotEq(actual, address(0), "Address should not be zero");
-        
+
         // 4. Verify code is laid down
         assertTrue(actual.code.length > 0, "Contract should have code");
     }
@@ -54,7 +54,7 @@ contract ArbitrationOperatorFactoryTest is Test {
     function test_IdempotentDeployment() public {
         // First deployment
         address op1 = factory.deployOperator(arbiter, address(releaseCondition));
-        
+
         // Second deployment (should return same address, no revert)
         address op2 = factory.deployOperator(arbiter, address(releaseCondition));
 
@@ -64,27 +64,21 @@ contract ArbitrationOperatorFactoryTest is Test {
     function test_GetOperator() public view {
         // Predict
         address predicted = factory.computeAddress(arbiter, address(releaseCondition));
-        
+
         // Since we haven't deployed yet, getOperator depends on internal mapping.
-        // The mapping is only updated AFTER deployment. 
+        // The mapping is only updated AFTER deployment.
         // This test mostly verifies the mapping logic in deployOperator vs storage.
     }
-    
+
     function test_GetOperator_ReturnsAddressIfDeployed() public {
         address op = factory.deployOperator(arbiter, address(releaseCondition));
-        // factory.getOperator is slightly redundant with computeAddress but relies on storage
-        // Currently getOperator reads from storage mapping
-        // In the modified contract, deployOperator updates mapping.
-        
-        // Wait, the current implementation still relies on mapping for getOperator?
-        // Yes, deployOperator updates the mapping.
-        
+
         assertEq(factory.getOperator(arbiter, address(releaseCondition)), op, "getOperator should return stored address");
     }
 
     function test_TwoDifferentConfigs_DifferentAddresses() public {
         address op1 = factory.deployOperator(arbiter, address(releaseCondition));
-        
+
         MockReleaseCondition condition2 = new MockReleaseCondition();
         address op2 = factory.deployOperator(arbiter, address(condition2));
 
