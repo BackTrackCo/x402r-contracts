@@ -9,7 +9,7 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockEscrow} from "./mocks/MockEscrow.sol";
 import {NotArbiter} from "../src/commerce-payments/release-conditions/arbiter-decision/types/Errors.sol";
-import {NotPayer} from "../src/commerce-payments/release-conditions/shared/types/Errors.sol";
+import {UnauthorizedCaller} from "../src/commerce-payments/operator/types/Errors.sol";
 
 contract ArbiterDecisionConditionTest is Test {
     ArbiterDecisionCondition public condition;
@@ -28,10 +28,6 @@ contract ArbiterDecisionConditionTest is Test {
     uint256 public constant PROTOCOL_FEE_PERCENTAGE = 25;
     uint256 public constant INITIAL_BALANCE = 1000000 * 10**18;
     uint256 public constant PAYMENT_AMOUNT = 1000 * 10**18;
-
-    // Events
-    event ArbiterApproved(AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed arbiter);
-    event PayerBypassTriggered(AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed payer);
 
     function setUp() public {
         owner = address(this);
@@ -126,70 +122,55 @@ contract ArbiterDecisionConditionTest is Test {
         return (paymentInfoHash, _toAuthCapturePaymentInfo(paymentInfo));
     }
 
-    // ============ canRelease Tests ============
+    // ============ Release Tests ============
 
-    function test_CanRelease_FalseInitially() public {
+    function test_Release_RevertsIfNotArbiter() public {
         (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorizeDirectly();
 
-        assertFalse(condition.canRelease(paymentInfo, PAYMENT_AMOUNT));
+        // Non-arbiter cannot release via condition
+        vm.prank(receiver);
+        vm.expectRevert(NotArbiter.selector);
+        condition.release(paymentInfo, PAYMENT_AMOUNT);
+
+        // Random address cannot release via condition
+        vm.prank(address(0x1234));
+        vm.expectRevert(NotArbiter.selector);
+        condition.release(paymentInfo, PAYMENT_AMOUNT);
     }
 
-    function test_CanRelease_TrueAfterArbiterApprove() public {
+    function test_Release_SucceedsForArbiter() public {
         (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorizeDirectly();
 
+        // Arbiter can release via condition
         vm.prank(arbiter);
-        condition.arbiterApprove(paymentInfo);
-
-        assertTrue(condition.canRelease(paymentInfo, PAYMENT_AMOUNT));
+        condition.release(paymentInfo, PAYMENT_AMOUNT);
     }
 
-    function test_ArbiterApprove_RevertsIfNotArbiter() public {
+    // ============ Payer Bypass Tests (via operator.release) ============
+
+    function test_PayerBypass_CanReleaseDirectlyViaOperator() public {
         (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorizeDirectly();
 
-        vm.prank(payer);
-        vm.expectRevert(NotArbiter.selector);
-        condition.arbiterApprove(paymentInfo);
-
+        // Non-arbiter cannot release via condition
         vm.prank(receiver);
         vm.expectRevert(NotArbiter.selector);
-        condition.arbiterApprove(paymentInfo);
-    }
+        condition.release(paymentInfo, PAYMENT_AMOUNT);
 
-    // ============ Payer Bypass Tests ============
-
-    function test_PayerBypass_AllowsRelease() public {
-        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorizeDirectly();
-
-        assertFalse(condition.canRelease(paymentInfo, PAYMENT_AMOUNT));
-
-        vm.expectEmit(true, false, false, true);
-        emit PayerBypassTriggered(paymentInfo, payer);
-
+        // But payer can bypass by calling operator.release() directly
         vm.prank(payer);
-        condition.payerBypass(paymentInfo);
-
-        assertTrue(condition.canRelease(paymentInfo, PAYMENT_AMOUNT));
-        assertTrue(condition.isPayerBypassed(paymentInfo));
+        operator.release(paymentInfo, PAYMENT_AMOUNT);
     }
 
-    function test_PayerBypass_WorksWithoutArbiterApproval() public {
+    function test_PayerBypass_NonPayerCannotBypass() public {
         (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorizeDirectly();
 
-        vm.prank(payer);
-        condition.payerBypass(paymentInfo);
-
-        // Even though arbiter hasn't approved
-        assertFalse(condition.isApproved(escrow.getHash(_createPaymentInfo()))); // Check directly
-        // Wait, Need hash
-        
-        assertTrue(condition.canRelease(paymentInfo, PAYMENT_AMOUNT));
-    }
-
-    function test_PayerBypass_RevertsIfNotPayer() public {
-        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorizeDirectly();
-
+        // Non-payer cannot call operator.release() directly (except via condition)
         vm.prank(receiver);
-        vm.expectRevert(NotPayer.selector);
-        condition.payerBypass(paymentInfo);
+        vm.expectRevert(UnauthorizedCaller.selector);
+        operator.release(paymentInfo, PAYMENT_AMOUNT);
+
+        vm.prank(address(0x1234));
+        vm.expectRevert(UnauthorizedCaller.selector);
+        operator.release(paymentInfo, PAYMENT_AMOUNT);
     }
 }

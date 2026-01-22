@@ -5,48 +5,30 @@ pragma solidity ^0.8.28;
 import {IReleaseCondition} from "../../operator/types/IReleaseCondition.sol";
 import {ArbitrationOperator} from "../../operator/arbitration/ArbitrationOperator.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {PayerBypassCondition} from "../shared/PayerBypassCondition.sol";
 import {NotArbiter} from "./types/Errors.sol";
-import {ArbiterApproved} from "./types/Events.sol";
+import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
 /**
  * @title ArbiterDecisionCondition
- * @notice Release condition that requires explicit approval from the arbiter.
- *         The payer can also bypass this condition to allow immediate release.
+ * @notice Release condition where only the arbiter can release funds via this contract.
+ *         Payer can bypass by calling operator.release() directly.
  */
-contract ArbiterDecisionCondition is IReleaseCondition, PayerBypassCondition {
-    /// @notice Tracks which payments have been approved by the arbiter
-    /// @dev Key: paymentInfoHash
-    mapping(bytes32 => bool) public isApproved;
-
-
+contract ArbiterDecisionCondition is IReleaseCondition, ERC165 {
     /**
-     * @notice Arbiter approves the release of funds
-     * @param paymentInfo The PaymentInfo struct
-     * @dev Only the arbiter of the payment can call this
+     * @notice Release funds by calling the operator
+     * @dev Only arbiter can call this. Payer can bypass by calling operator.release() directly.
+     * @param paymentInfo PaymentInfo struct
+     * @param amount Amount to release
      */
-    function arbiterApprove(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external {
-        if (msg.sender != ArbitrationOperator(paymentInfo.operator).ARBITER()) revert NotArbiter();
-
-        bytes32 paymentInfoHash = _getHash(paymentInfo);
-        isApproved[paymentInfoHash] = true;
-
-        emit ArbiterApproved(paymentInfo, msg.sender);
-    }
-
-    /**
-     * @notice Check if a payment can be released
-     * @param paymentInfo The PaymentInfo struct
-     * @return True if arbiter has approved OR payer has bypassed
-     */
-    function canRelease(
+    function release(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
-        uint256 /* amount */
-    ) external view override returns (bool) {
-        bytes32 paymentInfoHash = _getHash(paymentInfo);
-        
-        // Return true if authorized (approved) by arbiter OR bypassed by payer
-        return isApproved[paymentInfoHash] || isPayerBypassed(paymentInfo);
+        uint256 amount
+    ) external override {
+        if (msg.sender != ArbitrationOperator(paymentInfo.operator).ARBITER()) {
+            revert NotArbiter();
+        }
+
+        ArbitrationOperator(paymentInfo.operator).release(paymentInfo, amount);
     }
 
     /**
@@ -54,7 +36,7 @@ contract ArbiterDecisionCondition is IReleaseCondition, PayerBypassCondition {
      * @param interfaceId The interface ID to check
      * @return True if the interface is supported
      */
-    function supportsInterface(bytes4 interfaceId) public view virtual override(PayerBypassCondition) returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
         return
             interfaceId == type(IReleaseCondition).interfaceId ||
             super.supportsInterface(interfaceId);

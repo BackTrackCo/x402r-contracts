@@ -5,11 +5,11 @@ import {Test, console} from "forge-std/Test.sol";
 import {ArbitrationOperator} from "../src/commerce-payments/operator/arbitration/ArbitrationOperator.sol";
 import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
 import {InvalidOperator, NotPayer, NotReceiverOrArbiter} from "../src/commerce-payments/types/Errors.sol";
-import {ReleaseLocked} from "../src/commerce-payments/operator/types/Errors.sol";
+import {UnauthorizedCaller} from "../src/commerce-payments/operator/types/Errors.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockEscrow} from "./mocks/MockEscrow.sol";
-import {MockReleaseCondition} from "./mocks/MockReleaseCondition.sol";
+import {MockReleaseCondition, ReleaseLocked} from "./mocks/MockReleaseCondition.sol";
 
 
 contract ArbitrationOperatorTest is Test {
@@ -235,10 +235,11 @@ contract ArbitrationOperatorTest is Test {
 
         uint256 receiverBalanceBefore = token.balanceOf(receiver);
 
+        // Push model: call release on the condition contract, which calls operator
         vm.prank(receiver);
         vm.expectEmit(false, false, false, true, address(operator));
         emit ReleaseExecuted(paymentInfo, PAYMENT_AMOUNT, block.timestamp);
-        operator.release(paymentInfo, PAYMENT_AMOUNT);
+        releaseCondition.release(paymentInfo, PAYMENT_AMOUNT);
 
         // Check receiver got the tokens MINUS fees
         // Always MAX_TOTAL_FEE_RATE (50 bps)
@@ -262,10 +263,10 @@ contract ArbitrationOperatorTest is Test {
         uint256 receiverBalanceBefore = token.balanceOf(receiver);
         uint256 fee = (PAYMENT_AMOUNT * MAX_TOTAL_FEE_RATE) / 10000;
 
-        // Anyone can call release - funds still go to receiver
+        // Push model: anyone can call release on condition contract - funds still go to receiver
         address randomCaller = makeAddr("randomCaller");
         vm.prank(randomCaller);
-        operator.release(paymentInfo, PAYMENT_AMOUNT);
+        releaseCondition.release(paymentInfo, PAYMENT_AMOUNT);
 
         assertEq(token.balanceOf(receiver), receiverBalanceBefore + PAYMENT_AMOUNT - fee);
     }
@@ -278,7 +279,7 @@ contract ArbitrationOperatorTest is Test {
 
         vm.prank(receiver);
         vm.expectRevert(ReleaseLocked.selector);
-        operator.release(paymentInfo, PAYMENT_AMOUNT);
+        releaseCondition.release(paymentInfo, PAYMENT_AMOUNT);
     }
 
     function test_Release_RevertsAfterConditionRevoked() public {
@@ -292,6 +293,18 @@ contract ArbitrationOperatorTest is Test {
 
         vm.prank(receiver);
         vm.expectRevert(ReleaseLocked.selector);
+        releaseCondition.release(paymentInfo, PAYMENT_AMOUNT);
+    }
+
+    function test_Release_RevertsOnDirectOperatorCall() public {
+        (, MockEscrow.PaymentInfo memory enforcedInfo) = _authorize();
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _toAuthCapturePaymentInfo(enforcedInfo);
+
+        releaseCondition.approvePayment(paymentInfo);
+
+        // Direct calls to operator.release() should fail for non-payer (only condition or payer can call)
+        vm.prank(receiver);
+        vm.expectRevert(UnauthorizedCaller.selector);
         operator.release(paymentInfo, PAYMENT_AMOUNT);
     }
 

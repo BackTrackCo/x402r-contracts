@@ -9,7 +9,6 @@ import {ArbitrationOperatorAccess} from "./ArbitrationOperatorAccess.sol";
 import {ZeroAddress, ZeroAmount} from "../../types/Errors.sol";
 import {
     TotalFeeRateExceedsMax,
-    ReleaseLocked,
     InvalidAuthorizationExpiry,
     InvalidFeeBps,
     InvalidFeeReceiver,
@@ -155,9 +154,10 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
     }
 
     /**
-     * @notice Release funds to receiver when condition is met
-     * @dev Anyone can call. Release only allowed when RELEASE_CONDITION.canRelease() returns true.
-     *      Funds always go to paymentInfo.receiver.
+     * @notice Release funds to receiver
+     * @dev Can be called by:
+     *      1. RELEASE_CONDITION contract (validates conditions first)
+     *      2. Payer directly (bypasses release condition - payer waives protection)
      * @param paymentInfo PaymentInfo struct
      * @param amount Amount to release
      */
@@ -165,9 +165,9 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint256 amount
     ) external validOperator(paymentInfo) {
-        // Check release condition (verification logic)
-        if (!RELEASE_CONDITION.canRelease(paymentInfo, amount)) {
-            revert ReleaseLocked();
+        // Allow release condition OR payer to release
+        if (msg.sender != address(RELEASE_CONDITION) && msg.sender != paymentInfo.payer) {
+            revert UnauthorizedCaller();
         }
 
         uint16 feeBps = uint16(MAX_TOTAL_FEE_RATE);
@@ -246,5 +246,15 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
         }
 
         emit FeesDistributed(token, protocolAmount, arbiterAmount);
+    }
+
+    /// @notice Rescue any ETH accidentally sent to this contract
+    /// @dev Solady's Ownable has payable functions; this allows recovery of any stuck ETH
+    function rescueETH() external onlyOwner {
+        uint256 balance = address(this).balance;
+        if (balance > 0) {
+            (bool success,) = msg.sender.call{value: balance}("");
+            require(success);
+        }
     }
 }

@@ -1,8 +1,11 @@
-// SPDX-License-Identifier: BUSL-1.1
-// CONTRACTS UNAUDITED: USE AT YOUR OWN RISK
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-
-
-/// @notice Invalid escrow period (zero)
+/// @notice The escrow period must be greater than zero
 error InvalidEscrowPeriod();
+
+/// @notice Release conditions are not met
+error ReleaseLocked();
+
+/// @notice Funds are frozen (e.g., during arbitration)
+error FundsFrozen();

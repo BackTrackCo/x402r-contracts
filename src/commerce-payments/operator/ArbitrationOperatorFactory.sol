@@ -131,4 +131,14 @@ contract ArbitrationOperatorFactory is Ownable {
 
         return operator;
     }
+
+    /// @notice Rescue any ETH accidentally sent to this contract
+    /// @dev Solady's Ownable has payable functions; this allows recovery of any stuck ETH
+    function rescueETH() external onlyOwner {
+        uint256 balance = address(this).balance;
+        if (balance > 0) {
+            (bool success,) = msg.sender.call{value: balance}("");
+            require(success);
+        }
+    }
 }

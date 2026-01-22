@@ -2,7 +2,11 @@
 pragma solidity ^0.8.28;
 
 import {IReleaseCondition} from "../../src/commerce-payments/operator/types/IReleaseCondition.sol";
+import {ArbitrationOperator} from "../../src/commerce-payments/operator/arbitration/ArbitrationOperator.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
+
+/// @notice Release conditions are not met
+error ReleaseLocked();
 
 /**
  * @title MockReleaseCondition
@@ -28,18 +32,21 @@ contract MockReleaseCondition is IReleaseCondition {
     }
 
     /**
-     * @notice Check if a payment can be released
-     * @param paymentInfo The PaymentInfo struct
-     * @param amount The amount being released (unused in mock)
-     * @return True if approved, false otherwise
+     * @notice Release funds by calling the operator (push model)
+     * @param paymentInfo PaymentInfo struct
+     * @param amount Amount to release
      */
-    function canRelease(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount) external view override returns (bool) {
+    function release(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount) external override {
         // Silence unused variable warning
         amount;
 
         // Use keccak256 of paymentInfo for backward compatibility with existing tests
         bytes32 paymentInfoHash = keccak256(abi.encode(paymentInfo));
-        return approved[paymentInfoHash];
+        if (!approved[paymentInfoHash]) {
+            revert ReleaseLocked();
+        }
+
+        ArbitrationOperator(paymentInfo.operator).release(paymentInfo, amount);
     }
 
     /**

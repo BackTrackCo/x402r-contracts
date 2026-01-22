@@ -242,10 +242,10 @@ contract RefundRequestTest is Test {
     function test_UpdateStatus_ApproveByReceiverPostCapture() public {
         (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
 
-        // Capture to move out of escrow
+        // Capture to move out of escrow (push model: call release on condition contract)
         releaseCondition.approvePayment(paymentInfo);
         vm.prank(receiver);
-        operator.release(paymentInfo, PAYMENT_AMOUNT);
+        releaseCondition.release(paymentInfo, PAYMENT_AMOUNT);
 
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo);
@@ -260,10 +260,10 @@ contract RefundRequestTest is Test {
     function test_UpdateStatus_RevertsOnArbiterPostCapture() public {
         (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
 
-        // Capture to move out of escrow
+        // Capture to move out of escrow (push model: call release on condition contract)
         releaseCondition.approvePayment(paymentInfo);
         vm.prank(receiver);
-        operator.release(paymentInfo, PAYMENT_AMOUNT);
+        releaseCondition.release(paymentInfo, PAYMENT_AMOUNT);
 
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo);

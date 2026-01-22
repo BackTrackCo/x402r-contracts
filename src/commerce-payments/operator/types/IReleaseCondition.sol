@@ -6,17 +6,19 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
 /**
  * @title IReleaseCondition
- * @notice Interface for external release condition contracts
+ * @notice Interface for external release condition contracts (push model)
  * @dev Implement this interface to create custom release conditions.
- *      When set on an ArbitrationOperator, canRelease() is called during release()
- *      to determine if the receiver can capture funds.
+ *
+ *      PUSH MODEL: The release condition contract is the ONLY address that can call
+ *      operator.release(). Users call release() on the condition contract, which
+ *      validates conditions and then calls the operator.
  */
 interface IReleaseCondition {
     /**
-     * @notice Check if a payment can be released
+     * @notice Release funds by calling the operator (push model entry point)
+     * @dev Must validate conditions and call operator.release()
      * @param paymentInfo The PaymentInfo struct
-     * @param amount The amount being released
-     * @return True if release is allowed, false to block
+     * @param amount The amount to release
      */
-    function canRelease(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount) external view returns (bool);
+    function release(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount) external;
 }
