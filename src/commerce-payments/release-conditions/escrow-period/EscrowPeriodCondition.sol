@@ -6,21 +6,31 @@ import {IReleaseCondition} from "../../operator/types/IReleaseCondition.sol";
 import {IAuthorizable} from "../../operator/types/IAuthorizable.sol";
 import {ArbitrationOperator} from "../../operator/arbitration/ArbitrationOperator.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {InvalidEscrowPeriod, ReleaseLocked, FundsFrozen} from "./types/Errors.sol";
-import {IFreezeChecker} from "./types/IFreezeChecker.sol";
-import {PaymentAuthorized} from "./types/Events.sol";
+import {
+    InvalidEscrowPeriod,
+    ReleaseLocked,
+    FundsFrozen,
+    EscrowPeriodExpired,
+    UnauthorizedFreeze,
+    AlreadyFrozen,
+    NotFrozen,
+    NoFreezePolicy
+} from "./types/Errors.sol";
+import {IFreezePolicy} from "./types/IFreezePolicy.sol";
+import {PaymentAuthorized, PaymentFrozen, PaymentUnfrozen} from "./types/Events.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
 /**
  * @title EscrowPeriodCondition
  * @notice Release condition that enforces a time-based escrow period before funds can be released.
  *         Payer can bypass this by calling operator.release() directly.
- *         Optionally supports freeze checks for arbitration.
+ *         Supports freeze/unfreeze with optional policy-based authorization.
  *
  * @dev Key features:
  *      - Operator-agnostic: works with any ArbitrationOperator
  *      - Funds locked for ESCROW_PERIOD seconds after authorization
- *      - Optional freeze checker blocks release during arbitration
+ *      - Freeze state owned by this contract, policy determines who can freeze/unfreeze
+ *      - Freezing only allowed during escrow period, but frozen state persists
  *      - Payer can always bypass by calling operator.release() directly
  *      - Users call authorize() on this contract, which forwards to operator and tracks time
  */
@@ -28,17 +38,21 @@ contract EscrowPeriodCondition is IReleaseCondition, IAuthorizable, ERC165 {
     /// @notice Duration of the escrow period in seconds
     uint256 public immutable ESCROW_PERIOD;
 
-    /// @notice Optional freeze checker contract (address(0) = no freeze check)
-    IFreezeChecker public immutable FREEZE_CHECKER;
+    /// @notice Optional freeze policy contract (address(0) = no freeze support)
+    IFreezePolicy public immutable FREEZE_POLICY;
 
     /// @notice Stores the authorization time for each payment
     /// @dev Key: paymentInfoHash
     mapping(bytes32 => uint256) public authorizationTimes;
 
-    constructor(uint256 _escrowPeriod, address _freezeChecker) {
+    /// @notice Tracks frozen payments
+    /// @dev Key: paymentInfoHash
+    mapping(bytes32 => bool) public frozen;
+
+    constructor(uint256 _escrowPeriod, address _freezePolicy) {
         if (_escrowPeriod == 0) revert InvalidEscrowPeriod();
         ESCROW_PERIOD = _escrowPeriod;
-        FREEZE_CHECKER = IFreezeChecker(_freezeChecker);
+        FREEZE_POLICY = IFreezePolicy(_freezePolicy);
     }
 
     /**
@@ -68,6 +82,59 @@ contract EscrowPeriodCondition is IReleaseCondition, IAuthorizable, ERC165 {
     }
 
     /**
+     * @notice Freeze a payment to block release
+     * @dev Only callable during escrow period. Authorization checked via FREEZE_POLICY.
+     * @param paymentInfo PaymentInfo struct for the payment to freeze
+     */
+    function freeze(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external {
+        if (address(FREEZE_POLICY) == address(0)) revert NoFreezePolicy();
+
+        ArbitrationOperator operator = ArbitrationOperator(paymentInfo.operator);
+        bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
+
+        // Check escrow period hasn't expired
+        uint256 authTime = authorizationTimes[paymentInfoHash];
+        if (authTime == 0 || block.timestamp >= authTime + ESCROW_PERIOD) {
+            revert EscrowPeriodExpired();
+        }
+
+        // Check authorization via policy
+        if (!FREEZE_POLICY.canFreeze(paymentInfo, msg.sender)) {
+            revert UnauthorizedFreeze();
+        }
+
+        if (frozen[paymentInfoHash]) revert AlreadyFrozen();
+
+        frozen[paymentInfoHash] = true;
+
+        emit PaymentFrozen(paymentInfo, msg.sender);
+    }
+
+    /**
+     * @notice Unfreeze a payment to allow release
+     * @dev No escrow period check - unfreezing should always be allowed.
+     *      Authorization checked via FREEZE_POLICY.
+     * @param paymentInfo PaymentInfo struct for the payment to unfreeze
+     */
+    function unfreeze(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external {
+        if (address(FREEZE_POLICY) == address(0)) revert NoFreezePolicy();
+
+        ArbitrationOperator operator = ArbitrationOperator(paymentInfo.operator);
+        bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
+
+        // Check authorization via policy
+        if (!FREEZE_POLICY.canUnfreeze(paymentInfo, msg.sender)) {
+            revert UnauthorizedFreeze();
+        }
+
+        if (!frozen[paymentInfoHash]) revert NotFrozen();
+
+        frozen[paymentInfoHash] = false;
+
+        emit PaymentUnfrozen(paymentInfo, msg.sender);
+    }
+
+    /**
      * @notice Release funds by calling the operator
      * @dev Anyone can call after escrow period has passed and funds are not frozen.
      *      Note: Payer can bypass this by calling operator.release() directly.
@@ -81,8 +148,8 @@ contract EscrowPeriodCondition is IReleaseCondition, IAuthorizable, ERC165 {
         ArbitrationOperator operator = ArbitrationOperator(paymentInfo.operator);
         bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
 
-        // Check if frozen by external contract (e.g., during arbitration)
-        if (address(FREEZE_CHECKER) != address(0) && FREEZE_CHECKER.isFrozen(paymentInfoHash)) {
+        // Check if frozen
+        if (frozen[paymentInfoHash]) {
             revert FundsFrozen();
         }
 
@@ -107,6 +174,15 @@ contract EscrowPeriodCondition is IReleaseCondition, IAuthorizable, ERC165 {
      */
     function getAuthorizationTime(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external view returns (uint256) {
         return authorizationTimes[ArbitrationOperator(paymentInfo.operator).ESCROW().getHash(paymentInfo)];
+    }
+
+    /**
+     * @notice Check if a payment is frozen
+     * @param paymentInfo PaymentInfo struct
+     * @return True if the payment is frozen
+     */
+    function isFrozen(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external view returns (bool) {
+        return frozen[ArbitrationOperator(paymentInfo.operator).ESCROW().getHash(paymentInfo)];
     }
 
     /**

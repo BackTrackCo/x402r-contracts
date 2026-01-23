@@ -283,10 +283,18 @@ contract EscrowPeriodConditionTest is Test {
     }
 }
 
-// ============ Freeze Checker Tests ============
+// ============ Freeze Policy Tests ============
 
-import {MockFreezeChecker} from "./mocks/MockFreezeChecker.sol";
-import {FundsFrozen} from "../src/commerce-payments/release-conditions/escrow-period/types/Errors.sol";
+import {MockFreezePolicy} from "./mocks/MockFreezePolicy.sol";
+import {PayerFreezePolicy} from "../src/commerce-payments/release-conditions/escrow-period/PayerFreezePolicy.sol";
+import {
+    FundsFrozen,
+    EscrowPeriodExpired,
+    UnauthorizedFreeze,
+    AlreadyFrozen,
+    NotFrozen,
+    NoFreezePolicy
+} from "../src/commerce-payments/release-conditions/escrow-period/types/Errors.sol";
 
 contract EscrowPeriodConditionFreezeTest is Test {
     EscrowPeriodCondition public condition;
@@ -295,7 +303,7 @@ contract EscrowPeriodConditionFreezeTest is Test {
     ArbitrationOperatorFactory public operatorFactory;
     MockERC20 public token;
     MockEscrow public escrow;
-    MockFreezeChecker public freezeChecker;
+    MockFreezePolicy public freezePolicy;
 
     address public owner;
     address public protocolFeeRecipient;
@@ -309,6 +317,10 @@ contract EscrowPeriodConditionFreezeTest is Test {
     uint256 public constant PAYMENT_AMOUNT = 1000 * 10**18;
     uint256 public constant ESCROW_PERIOD = 7 days;
 
+    // Events
+    event PaymentFrozen(AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed caller);
+    event PaymentUnfrozen(AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed caller);
+
     function setUp() public {
         owner = address(this);
         protocolFeeRecipient = makeAddr("protocolFeeRecipient");
@@ -319,11 +331,11 @@ contract EscrowPeriodConditionFreezeTest is Test {
         // Deploy mock contracts
         token = new MockERC20("Test Token", "TEST");
         escrow = new MockEscrow();
-        freezeChecker = new MockFreezeChecker();
+        freezePolicy = new MockFreezePolicy();
 
-        // Deploy condition factory and condition WITH freeze checker
+        // Deploy condition factory and condition WITH freeze policy
         conditionFactory = new EscrowPeriodConditionFactory();
-        condition = EscrowPeriodCondition(conditionFactory.deployCondition(ESCROW_PERIOD, address(freezeChecker)));
+        condition = EscrowPeriodCondition(conditionFactory.deployCondition(ESCROW_PERIOD, address(freezePolicy)));
 
         // Deploy operator factory
         operatorFactory = new ArbitrationOperatorFactory(
@@ -404,13 +416,13 @@ contract EscrowPeriodConditionFreezeTest is Test {
     // ============ Freeze Tests ============
 
     function test_Freeze_BlocksRelease() public {
-        (bytes32 paymentInfoHash, AuthCaptureEscrow.PaymentInfo memory paymentInfo, uint256 authTime) = _authorizeViaCondition();
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo, uint256 authTime) = _authorizeViaCondition();
+
+        // Freeze during escrow period
+        condition.freeze(paymentInfo);
 
         // Warp past escrow period
         vm.warp(authTime + ESCROW_PERIOD);
-
-        // Freeze the payment
-        freezeChecker.freeze(paymentInfoHash);
 
         // Release should fail due to freeze
         vm.expectRevert(FundsFrozen.selector);
@@ -418,24 +430,24 @@ contract EscrowPeriodConditionFreezeTest is Test {
     }
 
     function test_Freeze_UnfreezeAllowsRelease() public {
-        (bytes32 paymentInfoHash, AuthCaptureEscrow.PaymentInfo memory paymentInfo, uint256 authTime) = _authorizeViaCondition();
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo, uint256 authTime) = _authorizeViaCondition();
+
+        // Freeze then unfreeze during escrow period
+        condition.freeze(paymentInfo);
+        condition.unfreeze(paymentInfo);
 
         // Warp past escrow period
         vm.warp(authTime + ESCROW_PERIOD);
-
-        // Freeze then unfreeze
-        freezeChecker.freeze(paymentInfoHash);
-        freezeChecker.unfreeze(paymentInfoHash);
 
         // Release should succeed
         condition.release(paymentInfo, PAYMENT_AMOUNT);
     }
 
     function test_Freeze_PayerCanStillBypass() public {
-        (bytes32 paymentInfoHash, AuthCaptureEscrow.PaymentInfo memory paymentInfo,) = _authorizeViaCondition();
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo,) = _authorizeViaCondition();
 
         // Freeze the payment
-        freezeChecker.freeze(paymentInfoHash);
+        condition.freeze(paymentInfo);
 
         // Release via condition fails
         vm.expectRevert(FundsFrozen.selector);
@@ -446,8 +458,404 @@ contract EscrowPeriodConditionFreezeTest is Test {
         operator.release(paymentInfo, PAYMENT_AMOUNT);
     }
 
-    function test_FreezeChecker_IsSetCorrectly() public view {
-        assertEq(address(condition.FREEZE_CHECKER()), address(freezeChecker));
+    function test_Freeze_RevertsAfterEscrowPeriod() public {
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo, uint256 authTime) = _authorizeViaCondition();
+
+        // Warp past escrow period
+        vm.warp(authTime + ESCROW_PERIOD);
+
+        // Freezing should fail after escrow period
+        vm.expectRevert(EscrowPeriodExpired.selector);
+        condition.freeze(paymentInfo);
+    }
+
+    function test_Freeze_RevertsIfUnauthorized() public {
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo,) = _authorizeViaCondition();
+
+        // Disable freeze authorization in mock policy
+        freezePolicy.setAllowFreeze(false);
+
+        // Freezing should fail
+        vm.expectRevert(UnauthorizedFreeze.selector);
+        condition.freeze(paymentInfo);
+    }
+
+    function test_Freeze_RevertsIfAlreadyFrozen() public {
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo,) = _authorizeViaCondition();
+
+        // Freeze once
+        condition.freeze(paymentInfo);
+
+        // Second freeze should fail
+        vm.expectRevert(AlreadyFrozen.selector);
+        condition.freeze(paymentInfo);
+    }
+
+    function test_Unfreeze_RevertsIfNotFrozen() public {
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo,) = _authorizeViaCondition();
+
+        // Unfreeze without freezing should fail
+        vm.expectRevert(NotFrozen.selector);
+        condition.unfreeze(paymentInfo);
+    }
+
+    function test_Unfreeze_RevertsIfUnauthorized() public {
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo,) = _authorizeViaCondition();
+
+        // Freeze first
+        condition.freeze(paymentInfo);
+
+        // Disable unfreeze authorization in mock policy
+        freezePolicy.setAllowUnfreeze(false);
+
+        // Unfreezing should fail
+        vm.expectRevert(UnauthorizedFreeze.selector);
+        condition.unfreeze(paymentInfo);
+    }
+
+    function test_Unfreeze_AllowedAfterEscrowPeriod() public {
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo, uint256 authTime) = _authorizeViaCondition();
+
+        // Freeze during escrow period
+        condition.freeze(paymentInfo);
+
+        // Warp past escrow period
+        vm.warp(authTime + ESCROW_PERIOD);
+
+        // Unfreeze should still work after escrow period
+        condition.unfreeze(paymentInfo);
+
+        // Release should now succeed
+        condition.release(paymentInfo, PAYMENT_AMOUNT);
+    }
+
+    function test_FreezePolicy_IsSetCorrectly() public view {
+        assertEq(address(condition.FREEZE_POLICY()), address(freezePolicy));
+    }
+
+    function test_IsFrozen_ReturnsCorrectState() public {
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo,) = _authorizeViaCondition();
+
+        // Not frozen initially
+        assertFalse(condition.isFrozen(paymentInfo));
+
+        // Freeze
+        condition.freeze(paymentInfo);
+        assertTrue(condition.isFrozen(paymentInfo));
+
+        // Unfreeze
+        condition.unfreeze(paymentInfo);
+        assertFalse(condition.isFrozen(paymentInfo));
+    }
+
+    function test_Freeze_EmitsEvent() public {
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo,) = _authorizeViaCondition();
+
+        vm.expectEmit(true, true, false, true);
+        emit PaymentFrozen(paymentInfo, address(this));
+
+        condition.freeze(paymentInfo);
+    }
+
+    function test_Unfreeze_EmitsEvent() public {
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo,) = _authorizeViaCondition();
+
+        condition.freeze(paymentInfo);
+
+        vm.expectEmit(true, true, false, true);
+        emit PaymentUnfrozen(paymentInfo, address(this));
+
+        condition.unfreeze(paymentInfo);
+    }
+}
+
+// ============ Payer Freeze Policy Tests ============
+
+contract PayerFreezePolicyTest is Test {
+    EscrowPeriodCondition public condition;
+    EscrowPeriodConditionFactory public conditionFactory;
+    ArbitrationOperator public operator;
+    ArbitrationOperatorFactory public operatorFactory;
+    MockERC20 public token;
+    MockEscrow public escrow;
+    PayerFreezePolicy public payerFreezePolicy;
+
+    address public owner;
+    address public protocolFeeRecipient;
+    address public receiver;
+    address public arbiter;
+    address public payer;
+
+    uint256 public constant MAX_TOTAL_FEE_RATE = 50;
+    uint256 public constant PROTOCOL_FEE_PERCENTAGE = 25;
+    uint256 public constant INITIAL_BALANCE = 1000000 * 10**18;
+    uint256 public constant PAYMENT_AMOUNT = 1000 * 10**18;
+    uint256 public constant ESCROW_PERIOD = 7 days;
+
+    function setUp() public {
+        owner = address(this);
+        protocolFeeRecipient = makeAddr("protocolFeeRecipient");
+        receiver = makeAddr("receiver");
+        arbiter = makeAddr("arbiter");
+        payer = makeAddr("payer");
+
+        // Deploy mock contracts
+        token = new MockERC20("Test Token", "TEST");
+        escrow = new MockEscrow();
+        payerFreezePolicy = new PayerFreezePolicy();
+
+        // Deploy condition factory and condition WITH payer freeze policy
+        conditionFactory = new EscrowPeriodConditionFactory();
+        condition = EscrowPeriodCondition(conditionFactory.deployCondition(ESCROW_PERIOD, address(payerFreezePolicy)));
+
+        // Deploy operator factory
+        operatorFactory = new ArbitrationOperatorFactory(
+            address(escrow),
+            protocolFeeRecipient,
+            MAX_TOTAL_FEE_RATE,
+            PROTOCOL_FEE_PERCENTAGE,
+            owner
+        );
+
+        // Deploy operator via factory with the escrow period condition
+        operator = ArbitrationOperator(operatorFactory.deployOperator(arbiter, address(condition)));
+
+        // Setup balances
+        token.mint(payer, INITIAL_BALANCE);
+        token.mint(receiver, INITIAL_BALANCE);
+
+        vm.prank(payer);
+        token.approve(address(escrow), type(uint256).max);
+
+        vm.prank(receiver);
+        token.approve(address(escrow), type(uint256).max);
+    }
+
+    function _createPaymentInfo() internal view returns (MockEscrow.PaymentInfo memory) {
+        return MockEscrow.PaymentInfo({
+            operator: address(operator),
+            payer: payer,
+            receiver: receiver,
+            token: address(token),
+            maxAmount: uint120(PAYMENT_AMOUNT),
+            preApprovalExpiry: uint48(block.timestamp + 1 days),
+            authorizationExpiry: type(uint48).max,
+            refundExpiry: type(uint48).max,
+            minFeeBps: uint16(MAX_TOTAL_FEE_RATE),
+            maxFeeBps: uint16(MAX_TOTAL_FEE_RATE),
+            feeReceiver: address(operator),
+            salt: 12345
+        });
+    }
+
+    function _toAuthCapturePaymentInfo(MockEscrow.PaymentInfo memory mockInfo)
+        internal
+        pure
+        returns (AuthCaptureEscrow.PaymentInfo memory)
+    {
+        return AuthCaptureEscrow.PaymentInfo({
+            operator: mockInfo.operator,
+            payer: mockInfo.payer,
+            receiver: mockInfo.receiver,
+            token: mockInfo.token,
+            maxAmount: mockInfo.maxAmount,
+            preApprovalExpiry: mockInfo.preApprovalExpiry,
+            authorizationExpiry: mockInfo.authorizationExpiry,
+            refundExpiry: mockInfo.refundExpiry,
+            minFeeBps: mockInfo.minFeeBps,
+            maxFeeBps: mockInfo.maxFeeBps,
+            feeReceiver: mockInfo.feeReceiver,
+            salt: mockInfo.salt
+        });
+    }
+
+    function _authorizeViaCondition() internal returns (bytes32, AuthCaptureEscrow.PaymentInfo memory, uint256) {
+        MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+        uint256 authTime = block.timestamp;
+
+        condition.authorize(
+            _toAuthCapturePaymentInfo(paymentInfo),
+            PAYMENT_AMOUNT,
+            address(0),
+            ""
+        );
+
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+        return (paymentInfoHash, _toAuthCapturePaymentInfo(paymentInfo), authTime);
+    }
+
+    function test_PayerCanFreeze() public {
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo,) = _authorizeViaCondition();
+
+        // Payer can freeze
+        vm.prank(payer);
+        condition.freeze(paymentInfo);
+
+        assertTrue(condition.isFrozen(paymentInfo));
+    }
+
+    function test_NonPayerCannotFreeze() public {
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo,) = _authorizeViaCondition();
+
+        // Receiver cannot freeze
+        vm.prank(receiver);
+        vm.expectRevert(UnauthorizedFreeze.selector);
+        condition.freeze(paymentInfo);
+
+        // Arbiter cannot freeze
+        vm.prank(arbiter);
+        vm.expectRevert(UnauthorizedFreeze.selector);
+        condition.freeze(paymentInfo);
+    }
+
+    function test_PayerCanUnfreeze() public {
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo,) = _authorizeViaCondition();
+
+        // Payer freezes
+        vm.prank(payer);
+        condition.freeze(paymentInfo);
+
+        // Payer can unfreeze
+        vm.prank(payer);
+        condition.unfreeze(paymentInfo);
+
+        assertFalse(condition.isFrozen(paymentInfo));
+    }
+
+    function test_NonPayerCannotUnfreeze() public {
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo,) = _authorizeViaCondition();
+
+        // Payer freezes
+        vm.prank(payer);
+        condition.freeze(paymentInfo);
+
+        // Receiver cannot unfreeze
+        vm.prank(receiver);
+        vm.expectRevert(UnauthorizedFreeze.selector);
+        condition.unfreeze(paymentInfo);
+    }
+}
+
+// ============ No Freeze Policy Tests ============
+
+contract NoFreezePolicyTest is Test {
+    EscrowPeriodCondition public condition;
+    EscrowPeriodConditionFactory public conditionFactory;
+    ArbitrationOperator public operator;
+    ArbitrationOperatorFactory public operatorFactory;
+    MockERC20 public token;
+    MockEscrow public escrow;
+
+    address public owner;
+    address public protocolFeeRecipient;
+    address public receiver;
+    address public arbiter;
+    address public payer;
+
+    uint256 public constant MAX_TOTAL_FEE_RATE = 50;
+    uint256 public constant PROTOCOL_FEE_PERCENTAGE = 25;
+    uint256 public constant INITIAL_BALANCE = 1000000 * 10**18;
+    uint256 public constant PAYMENT_AMOUNT = 1000 * 10**18;
+    uint256 public constant ESCROW_PERIOD = 7 days;
+
+    function setUp() public {
+        owner = address(this);
+        protocolFeeRecipient = makeAddr("protocolFeeRecipient");
+        receiver = makeAddr("receiver");
+        arbiter = makeAddr("arbiter");
+        payer = makeAddr("payer");
+
+        // Deploy mock contracts
+        token = new MockERC20("Test Token", "TEST");
+        escrow = new MockEscrow();
+
+        // Deploy condition WITHOUT freeze policy (address(0))
+        conditionFactory = new EscrowPeriodConditionFactory();
+        condition = EscrowPeriodCondition(conditionFactory.deployCondition(ESCROW_PERIOD));
+
+        // Deploy operator factory
+        operatorFactory = new ArbitrationOperatorFactory(
+            address(escrow),
+            protocolFeeRecipient,
+            MAX_TOTAL_FEE_RATE,
+            PROTOCOL_FEE_PERCENTAGE,
+            owner
+        );
+
+        // Deploy operator via factory with the escrow period condition
+        operator = ArbitrationOperator(operatorFactory.deployOperator(arbiter, address(condition)));
+
+        // Setup balances
+        token.mint(payer, INITIAL_BALANCE);
+
+        vm.prank(payer);
+        token.approve(address(escrow), type(uint256).max);
+    }
+
+    function _createPaymentInfo() internal view returns (MockEscrow.PaymentInfo memory) {
+        return MockEscrow.PaymentInfo({
+            operator: address(operator),
+            payer: payer,
+            receiver: receiver,
+            token: address(token),
+            maxAmount: uint120(PAYMENT_AMOUNT),
+            preApprovalExpiry: uint48(block.timestamp + 1 days),
+            authorizationExpiry: type(uint48).max,
+            refundExpiry: type(uint48).max,
+            minFeeBps: uint16(MAX_TOTAL_FEE_RATE),
+            maxFeeBps: uint16(MAX_TOTAL_FEE_RATE),
+            feeReceiver: address(operator),
+            salt: 12345
+        });
+    }
+
+    function _toAuthCapturePaymentInfo(MockEscrow.PaymentInfo memory mockInfo)
+        internal
+        pure
+        returns (AuthCaptureEscrow.PaymentInfo memory)
+    {
+        return AuthCaptureEscrow.PaymentInfo({
+            operator: mockInfo.operator,
+            payer: mockInfo.payer,
+            receiver: mockInfo.receiver,
+            token: mockInfo.token,
+            maxAmount: mockInfo.maxAmount,
+            preApprovalExpiry: mockInfo.preApprovalExpiry,
+            authorizationExpiry: mockInfo.authorizationExpiry,
+            refundExpiry: mockInfo.refundExpiry,
+            minFeeBps: mockInfo.minFeeBps,
+            maxFeeBps: mockInfo.maxFeeBps,
+            feeReceiver: mockInfo.feeReceiver,
+            salt: mockInfo.salt
+        });
+    }
+
+    function test_Freeze_RevertsWithNoPolicy() public {
+        MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+
+        condition.authorize(
+            _toAuthCapturePaymentInfo(paymentInfo),
+            PAYMENT_AMOUNT,
+            address(0),
+            ""
+        );
+
+        vm.expectRevert(NoFreezePolicy.selector);
+        condition.freeze(_toAuthCapturePaymentInfo(paymentInfo));
+    }
+
+    function test_Unfreeze_RevertsWithNoPolicy() public {
+        MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+
+        condition.authorize(
+            _toAuthCapturePaymentInfo(paymentInfo),
+            PAYMENT_AMOUNT,
+            address(0),
+            ""
+        );
+
+        vm.expectRevert(NoFreezePolicy.selector);
+        condition.unfreeze(_toAuthCapturePaymentInfo(paymentInfo));
     }
 }
 

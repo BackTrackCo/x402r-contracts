@@ -9,7 +9,15 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 /// @param authorizationTime Timestamp when the payment was authorized
 event PaymentAuthorized(AuthCaptureEscrow.PaymentInfo paymentInfo, uint256 authorizationTime);
 
+/// @notice Emitted when a payment is frozen
+/// @param paymentInfo The PaymentInfo struct
+/// @param caller The address that froze the payment
+event PaymentFrozen(AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed caller);
 
+/// @notice Emitted when a payment is unfrozen
+/// @param paymentInfo The PaymentInfo struct
+/// @param caller The address that unfroze the payment
+event PaymentUnfrozen(AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed caller);
 
 /// @notice Emitted when escrow period condition is deployed via factory
 /// @param condition Address of the deployed condition contract
