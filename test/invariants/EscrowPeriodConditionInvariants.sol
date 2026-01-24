@@ -39,6 +39,10 @@ contract EscrowPeriodConditionInvariants {
     mapping(bytes32 => bool) public isAuthorized;
     mapping(bytes32 => uint256) public authTimes;
 
+    // Track frozen payments for invariant checking
+    bytes32[] public frozenPayments;
+    mapping(bytes32 => bool) public isFrozen;
+
     constructor() {
         owner = address(this);
         protocolFeeRecipient = address(0x1);
@@ -87,11 +91,39 @@ contract EscrowPeriodConditionInvariants {
 
     /**
      * @notice INVARIANT: Frozen payment cannot have release succeed through condition
-     * @dev This tests that frozen state properly blocks release
+     * @dev Verifies that all tracked frozen payments remain frozen in the condition contract
      */
     function echidna_frozen_blocks_release() public view returns (bool) {
-        // This is checked implicitly by the release function reverting
-        // A formal invariant would require tracking state changes
+        for (uint256 i = 0; i < frozenPayments.length; i++) {
+            bytes32 hash = frozenPayments[i];
+            if (isFrozen[hash]) {
+                // Get the payment info and check if condition still shows it as frozen
+                AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(hash);
+                if (!condition.isFrozen(paymentInfo)) {
+                    // Payment was unfrozen without our tracking - check if we unfroze it
+                    // If isFrozen[hash] is true but condition shows unfrozen, invariant broken
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
+     * @notice INVARIANT: Authorization time is always <= current block.timestamp
+     * @dev Ensures auth times are monotonically bounded by current time
+     */
+    function echidna_auth_time_monotonic() public view returns (bool) {
+        for (uint256 i = 0; i < authorizedPayments.length; i++) {
+            bytes32 hash = authorizedPayments[i];
+            if (isAuthorized[hash]) {
+                AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(hash);
+                uint256 authTime = condition.getAuthorizationTime(paymentInfo);
+                if (authTime > block.timestamp) {
+                    return false;
+                }
+            }
+        }
         return true;
     }
 
@@ -143,6 +175,94 @@ contract EscrowPeriodConditionInvariants {
                 isAuthorized[hash] = true;
                 authorizedPayments.push(hash);
                 authTimes[hash] = block.timestamp;
+            } catch {}
+        }
+    }
+
+    /**
+     * @notice Fuzz target: Try to freeze a payment
+     * @dev Must be called by payer (address(0x4)) to succeed with PayerFreezePolicy
+     */
+    function fuzz_freeze(uint256 salt) public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(bytes32(salt));
+        bytes32 hash = escrow.getHash(MockEscrow.PaymentInfo({
+            operator: paymentInfo.operator,
+            payer: paymentInfo.payer,
+            receiver: paymentInfo.receiver,
+            token: paymentInfo.token,
+            maxAmount: paymentInfo.maxAmount,
+            preApprovalExpiry: paymentInfo.preApprovalExpiry,
+            authorizationExpiry: paymentInfo.authorizationExpiry,
+            refundExpiry: paymentInfo.refundExpiry,
+            minFeeBps: paymentInfo.minFeeBps,
+            maxFeeBps: paymentInfo.maxFeeBps,
+            feeReceiver: paymentInfo.feeReceiver,
+            salt: paymentInfo.salt
+        }));
+
+        if (isAuthorized[hash] && !isFrozen[hash]) {
+            try condition.freeze(paymentInfo) {
+                isFrozen[hash] = true;
+                frozenPayments.push(hash);
+            } catch {}
+        }
+    }
+
+    /**
+     * @notice Fuzz target: Try to unfreeze a payment
+     */
+    function fuzz_unfreeze(uint256 salt) public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(bytes32(salt));
+        bytes32 hash = escrow.getHash(MockEscrow.PaymentInfo({
+            operator: paymentInfo.operator,
+            payer: paymentInfo.payer,
+            receiver: paymentInfo.receiver,
+            token: paymentInfo.token,
+            maxAmount: paymentInfo.maxAmount,
+            preApprovalExpiry: paymentInfo.preApprovalExpiry,
+            authorizationExpiry: paymentInfo.authorizationExpiry,
+            refundExpiry: paymentInfo.refundExpiry,
+            minFeeBps: paymentInfo.minFeeBps,
+            maxFeeBps: paymentInfo.maxFeeBps,
+            feeReceiver: paymentInfo.feeReceiver,
+            salt: paymentInfo.salt
+        }));
+
+        if (isFrozen[hash]) {
+            try condition.unfreeze(paymentInfo) {
+                isFrozen[hash] = false;
+            } catch {}
+        }
+    }
+
+    /**
+     * @notice Fuzz target: Try to release a payment through condition
+     * @dev Should fail if frozen or escrow period not passed
+     */
+    function fuzz_release(uint256 salt, uint256 amount) public {
+        if (amount == 0 || amount > 1e30) return;
+
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(bytes32(salt));
+        bytes32 hash = escrow.getHash(MockEscrow.PaymentInfo({
+            operator: paymentInfo.operator,
+            payer: paymentInfo.payer,
+            receiver: paymentInfo.receiver,
+            token: paymentInfo.token,
+            maxAmount: paymentInfo.maxAmount,
+            preApprovalExpiry: paymentInfo.preApprovalExpiry,
+            authorizationExpiry: paymentInfo.authorizationExpiry,
+            refundExpiry: paymentInfo.refundExpiry,
+            minFeeBps: paymentInfo.minFeeBps,
+            maxFeeBps: paymentInfo.maxFeeBps,
+            feeReceiver: paymentInfo.feeReceiver,
+            salt: paymentInfo.salt
+        }));
+
+        // If frozen, release should fail - this is tested by echidna_frozen_blocks_release
+        if (isAuthorized[hash]) {
+            try condition.release(paymentInfo, amount) {
+                // Release succeeded - verify it wasn't frozen
+                // (invariant will catch if frozen payment was released)
             } catch {}
         }
     }

@@ -39,6 +39,11 @@ contract ArbitrationOperatorInvariants {
     bytes32[] public authorizedPayments;
     mapping(bytes32 => bool) public isAuthorized;
 
+    // Track fee distributions for conservation invariant
+    uint256 public totalFeesDistributed;
+    uint256 public totalProtocolFees;
+    uint256 public totalArbiterFees;
+
     constructor() {
         owner = address(this);
         protocolFeeRecipient = address(0x1);
@@ -134,6 +139,34 @@ contract ArbitrationOperatorInvariants {
         return true;
     }
 
+    /**
+     * @notice INVARIANT: Fee distribution conserves total fees
+     * @dev Total fees distributed must equal protocol fees + arbiter fees
+     */
+    function echidna_fee_distribution_conservation() public view returns (bool) {
+        return totalFeesDistributed == totalProtocolFees + totalArbiterFees;
+    }
+
+    /**
+     * @notice INVARIANT: Protocol fee percentage matches expected split
+     * @dev When fees enabled, protocol gets PROTOCOL_FEE_PERCENTAGE of total
+     */
+    function echidna_protocol_fee_split_correct() public view returns (bool) {
+        if (totalFeesDistributed == 0) return true;
+
+        // When fees are enabled, protocol should get approximately PROTOCOL_FEE_PERCENTAGE
+        // We use a tolerance of 1 wei for rounding
+        if (operator.feesEnabled() && totalProtocolFees > 0) {
+            uint256 expectedProtocol = (totalFeesDistributed * PROTOCOL_FEE_PERCENTAGE) / 100;
+            // Allow 1 wei tolerance for rounding
+            if (totalProtocolFees > expectedProtocol + 1 ||
+                (totalProtocolFees + 1 < expectedProtocol && expectedProtocol > 0)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     // ============ Helper Functions ============
 
     function _createPaymentInfo(uint256 salt) internal view returns (MockEscrow.PaymentInfo memory) {
@@ -204,9 +237,31 @@ contract ArbitrationOperatorInvariants {
     }
 
     /**
-     * @notice Fuzz target: Try to distribute fees
+     * @notice Fuzz target: Try to distribute fees and track amounts
      */
     function fuzz_distribute_fees() public {
-        try operator.distributeFees(address(token)) {} catch {}
+        uint256 operatorBalanceBefore = token.balanceOf(address(operator));
+        uint256 protocolBalanceBefore = token.balanceOf(protocolFeeRecipient);
+        uint256 arbiterBalanceBefore = token.balanceOf(arbiter);
+
+        try operator.distributeFees(address(token)) {
+            uint256 protocolReceived = token.balanceOf(protocolFeeRecipient) - protocolBalanceBefore;
+            uint256 arbiterReceived = token.balanceOf(arbiter) - arbiterBalanceBefore;
+
+            totalFeesDistributed += operatorBalanceBefore;
+            totalProtocolFees += protocolReceived;
+            totalArbiterFees += arbiterReceived;
+        } catch {}
+    }
+
+    /**
+     * @notice Fuzz target: Send tokens to operator to simulate fee accumulation
+     */
+    function fuzz_accumulate_fees(uint256 amount) public {
+        if (amount == 0 || amount > 1e24) return;
+
+        // Mint tokens to this contract and transfer to operator
+        token.mint(address(this), amount);
+        token.transfer(address(operator), amount);
     }
 }

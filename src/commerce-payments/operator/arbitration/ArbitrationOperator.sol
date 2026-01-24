@@ -16,9 +16,9 @@ import {
     UnauthorizedCaller,
     ETHTransferFailed
 } from "../types/Errors.sol";
+import {IOperator} from "../types/IOperator.sol";
 import {IReleaseCondition} from "../types/IReleaseCondition.sol";
 import {IAuthorizable} from "../types/IAuthorizable.sol";
-import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {
     AuthorizationCreated,
@@ -40,8 +40,11 @@ import {
  *      - Arbiter OR receiver can trigger refunds via partialVoid
  *      - Uses PaymentInfo struct from Base Commerce Payments for x402-escrow compatibility
  *      - Escrow is source of truth; operator stores PaymentInfo for indexing only
+ *
+ * ARCHITECTURE: Implements IOperator. Release conditions call into this contract:
+ *        User -> IReleaseCondition.release() -> IOperator.release() -> ESCROW.capture()
  */
-contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IAuthorizable, ERC165 {
+contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
 
     // ============ Core State ============
     AuthCaptureEscrow public immutable ESCROW;
@@ -262,15 +265,6 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IAuthorizabl
             (bool success,) = msg.sender.call{value: balance}("");
             if (!success) revert ETHTransferFailed();
         }
-    }
-
-    /// @notice Check if contract implements an interface
-    /// @param interfaceId The interface identifier to check
-    /// @return True if the interface is supported
-    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
-        return
-            interfaceId == type(IAuthorizable).interfaceId ||
-            super.supportsInterface(interfaceId);
     }
 
     // ============ View Functions ============

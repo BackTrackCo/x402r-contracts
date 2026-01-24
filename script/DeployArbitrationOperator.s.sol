@@ -18,6 +18,25 @@ import {ArbitrationOperator} from "../src/commerce-payments/operator/arbitration
  *      - ARBITER_ADDRESS: Address of the arbiter for dispute resolution (required)
  *      - OWNER_ADDRESS: Owner of the operator contract (required)
  *      - RELEASE_CONDITION: Release condition contract address (required)
+ *
+ * ESCROW PERIOD SECURITY GUIDELINES:
+ *      When deploying with EscrowPeriodCondition, use appropriate minimum escrow periods:
+ *
+ *      L1 (Ethereum Mainnet):
+ *      - MINIMUM: 5 minutes (300 seconds)
+ *      - RECOMMENDED: 15+ minutes for high-value transactions
+ *      - REASON: Miners can manipulate block.timestamp by ~15 seconds. Short periods
+ *                increase risk of timestamp manipulation affecting freeze/release windows.
+ *
+ *      L2 (Base, Optimism, Arbitrum, etc.):
+ *      - MINIMUM: 30 seconds
+ *      - RECOMMENDED: 5+ minutes for high-value transactions
+ *      - REASON: Sequencer controls timestamps and is already trusted for tx ordering.
+ *                Shorter periods acceptable given existing sequencer trust model.
+ *
+ *      For EscrowPeriodConditionFactory deployment, set ESCROW_PERIOD env variable:
+ *      - ESCROW_PERIOD=300    (5 minutes - L1 minimum)
+ *      - ESCROW_PERIOD=604800 (7 days - dispute resolution use case)
  */
 contract DeployArbitrationOperator is Script {
     function run() public {
