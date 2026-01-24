@@ -19,6 +19,7 @@ import {
 import {IOperator} from "../types/IOperator.sol";
 import {IReleaseCondition} from "../types/IReleaseCondition.sol";
 import {IAuthorizable} from "../types/IAuthorizable.sol";
+import {PaymentState} from "../types/Types.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {
     AuthorizationCreated,
@@ -295,6 +296,57 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
     function isInEscrow(bytes32 paymentInfoHash) public view returns (bool) {
         (, uint120 capturableAmount,) = ESCROW.paymentState(paymentInfoHash);
         return capturableAmount > 0;
+    }
+
+    /**
+     * @notice Get the explicit state of a payment in its lifecycle
+     * @param paymentInfo The PaymentInfo struct
+     * @return state The current PaymentState enum value
+     * @dev See PaymentState enum for state machine documentation
+     *
+     *      Escrow struct fields:
+     *      - hasCollectedPayment: true if authorize() or charge() was called
+     *      - capturableAmount: funds in escrow that can be captured (released)
+     *      - refundableAmount: captured funds eligible for refund
+     */
+    function getPaymentState(AuthCaptureEscrow.PaymentInfo calldata paymentInfo)
+        external
+        view
+        returns (PaymentState state)
+    {
+        bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
+
+        // Check if payment exists in this operator
+        if (paymentInfos[paymentInfoHash].payer == address(0)) {
+            return PaymentState.NonExistent;
+        }
+
+        // Get escrow state
+        (bool hasCollectedPayment, uint120 capturableAmount, uint120 refundableAmount) =
+            ESCROW.paymentState(paymentInfoHash);
+
+        // If never collected, shouldn't happen if exists in operator, but handle gracefully
+        if (!hasCollectedPayment) {
+            return PaymentState.NonExistent;
+        }
+
+        // Check if expired (can be reclaimed)
+        if (capturableAmount > 0 && block.timestamp >= paymentInfo.authorizationExpiry) {
+            return PaymentState.Expired;
+        }
+
+        // Determine state based on amounts
+        if (capturableAmount > 0) {
+            // Funds still in escrow, can be captured or voided
+            return PaymentState.InEscrow;
+        } else if (refundableAmount > 0) {
+            // Funds have been captured/released, still within refund window
+            return PaymentState.Released;
+        } else {
+            // No capturable and no refundable = payment is settled
+            // Could be: voided, fully refunded, or refund period expired
+            return PaymentState.Settled;
+        }
     }
 
     /**
