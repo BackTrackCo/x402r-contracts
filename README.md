@@ -1,26 +1,24 @@
-## Deployed Contracts (Base Mainnet)
+## Deployed Contracts
 
 ⚠️ **WARNING: CONTRACTS UNAUDITED - USE AT YOUR OWN RISK**
 
-These contracts have been deployed to Base mainnet but have **not been audited**. 
+These contracts have been deployed but have **not been audited**. 
 Users should exercise extreme caution and conduct thorough due diligence before 
 interacting with these contracts. The developers assume no liability for any 
 losses incurred from using these contracts.
 
-### Contract Addresses
+### Base Sepolia
 
 **Source of truth:** This README. Addresses will eventually be moved to `@x402r/sdk` package.
 
 | Contract | Address |
 |----------|---------|
-| Escrow | `0x6De78B73dE889BEda028C02ECb38247EBD7e350e` |
-| MerchantRouter | `0xa48E8AdcA504D2f48e5AF6be49039354e922913F` |
-| DepositRelayFactory | `0xb6D04024077bDfcfE3b62aF3d119bf44DBbfC41D` |
-| DepositRelay (impl) | `0x3CEb7EE0309B47d127e644B47e1D2e1A4bAAfc4c` |
-| RefundRequest | `0x55e0Fb85833f77A0d699346E827afa06bcf58e4e` |
-| CreateX | `0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed` |
-| USDC | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
-| Aave Pool | `0xA238Dd80C259a72e81d7e4664a9801593F98d1c5` |
+| AuthCaptureEscrow | `0xb33D6502EdBbC47201cd1E53C49d703EC0a660b8` |
+| ERC3009PaymentCollector | `0xed02d3E5167BCc9582D851885A89b050AB816a56` |
+| EscrowPeriodConditionFactory | `0xc9BbA6A2CF9838e7Dd8c19BC8B3BAC620B9D8178` |
+| ArbitrationOperatorFactory | `0x46C44071BDf9753482400B76d88A5850318b776F` |
+| PayerFreezePolicy | `0x2714EA3e839Ac50F52B2e2a5788F614cACeE5316` |
+| RefundRequest | `0x26A3d27139b442Be5ECc10c8608c494627B660BF` |
 
 ### Project Contracts
 
