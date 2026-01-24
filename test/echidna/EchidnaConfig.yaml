@@ -1,0 +1,10 @@
+# Echidna configuration for ArbitrationOperator testing
+testMode: property
+prefix: echidna_
+coverage: true
+corpusDir: echidna-corpus
+timeout: 300
+testLimit: 50000
+shrinkLimit: 5000
+deployer: "0x10000"
+sender: ["0x20000", "0x30000", "0x40000"]

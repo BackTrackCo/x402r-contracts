@@ -33,6 +33,18 @@ import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
  *      - Freezing only allowed during escrow period, but frozen state persists
  *      - Payer can always bypass by calling operator.release() directly
  *      - Users call authorize() on this contract, which forwards to operator and tracks time
+ *
+ * TRUST ASSUMPTIONS:
+ *      - FREEZE_POLICY: The freeze policy contract is trusted to correctly determine who can
+ *        freeze/unfreeze payments. A malicious policy could deny legitimate freezes or allow
+ *        unauthorized freezes. Operators should audit the policy implementation before deployment.
+ *      - Timestamp: Uses block.timestamp for time-based escrow periods.
+ *        On L1 (Ethereum mainnet): Miners can manipulate timestamps within ~15 seconds.
+ *        For ESCROW_PERIOD values < 1 minute on L1, this manipulation could be significant.
+ *        Recommended minimum ESCROW_PERIOD is 5 minutes (300 seconds) for L1 deployments.
+ *        On L2s (e.g., Base): The sequencer (Coinbase for Base) controls timestamps and is
+ *        already trusted for transaction ordering. Shorter periods (< 1 minute) are acceptable
+ *        on L2s given the sequencer trust model and faster block times (~2 seconds on Base).
  */
 contract EscrowPeriodCondition is IReleaseCondition, IAuthorizable, ERC165 {
     /// @notice Duration of the escrow period in seconds

@@ -1,0 +1,33 @@
+# Echidna configuration for x402r-contracts invariant tests
+# Run: echidna . --contract <ContractName> --config echidna.yaml
+
+# Test mode: property testing
+testMode: property
+
+# Number of test sequences
+testLimit: 50000
+
+# Sequence length
+seqLen: 100
+
+# Shrinking sequences
+shrinkLimit: 5000
+
+# Contract deployment
+contractAddr: "0x00a329c0648769A73afAc7F9381E08FB43dBEA72"
+
+# Compilation options (foundry/forge)
+prefix: "echidna_"
+
+# Coverage
+coverage: true
+corpusDir: "echidna-corpus"
+
+# Verbosity
+format: text
+
+# Deploy contracts with constructor args
+deployContracts: [
+  ["EscrowPeriodConditionInvariants", "test/invariants/EscrowPeriodConditionInvariants.sol"],
+  ["ArbitrationOperatorInvariants", "test/invariants/ArbitrationOperatorInvariants.sol"]
+]

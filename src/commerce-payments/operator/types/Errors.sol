@@ -13,3 +13,4 @@ error InvalidAuthorizationExpiry();
 error InvalidFeeBps();
 error InvalidFeeReceiver();
 error UnauthorizedCaller();
+error ETHTransferFailed();

@@ -13,10 +13,12 @@ import {
     InvalidAuthorizationExpiry,
     InvalidFeeBps,
     InvalidFeeReceiver,
-    UnauthorizedCaller
+    UnauthorizedCaller,
+    ETHTransferFailed
 } from "../types/Errors.sol";
 import {IReleaseCondition} from "../types/IReleaseCondition.sol";
 import {IAuthorizable} from "../types/IAuthorizable.sol";
+import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {
     AuthorizationCreated,
@@ -39,7 +41,7 @@ import {
  *      - Uses PaymentInfo struct from Base Commerce Payments for x402-escrow compatibility
  *      - Escrow is source of truth; operator stores PaymentInfo for indexing only
  */
-contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
+contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IAuthorizable, ERC165 {
 
     // ============ Core State ============
     AuthCaptureEscrow public immutable ESCROW;
@@ -258,8 +260,17 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
         uint256 balance = address(this).balance;
         if (balance > 0) {
             (bool success,) = msg.sender.call{value: balance}("");
-            require(success);
+            if (!success) revert ETHTransferFailed();
         }
+    }
+
+    /// @notice Check if contract implements an interface
+    /// @param interfaceId The interface identifier to check
+    /// @return True if the interface is supported
+    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+        return
+            interfaceId == type(IAuthorizable).interfaceId ||
+            super.supportsInterface(interfaceId);
     }
 
     // ============ View Functions ============
