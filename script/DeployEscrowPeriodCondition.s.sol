@@ -4,7 +4,6 @@ pragma solidity ^0.8.23;
 import {Script, console} from "forge-std/Script.sol";
 import {EscrowPeriodCondition} from "../src/commerce-payments/release-conditions/escrow-period/EscrowPeriodCondition.sol";
 import {EscrowPeriodConditionFactory} from "../src/commerce-payments/release-conditions/escrow-period/EscrowPeriodConditionFactory.sol";
-import {PayerFreezePolicy} from "../src/commerce-payments/release-conditions/escrow-period/PayerFreezePolicy.sol";
 
 /**
  * @title DeployEscrowPeriodCondition
@@ -13,8 +12,11 @@ import {PayerFreezePolicy} from "../src/commerce-payments/release-conditions/esc
  *
  *      Environment variables:
  *      - ESCROW_PERIOD: Duration in seconds for escrow lock (required)
- *      - FREEZE_POLICY: Address of freeze policy contract (optional, deploys PayerFreezePolicy if not set)
- *      - DEPLOY_FACTORY: Set to "true" to deploy the factory (optional, default: false)
+ *      - FREEZE_POLICY: Address of freeze policy contract (optional, defaults to address(0) = no freeze support)
+ *                       Options:
+ *                       - address(0) or empty: No freeze policy (freeze/unfreeze disabled)
+ *                       - PayerFreezePolicy address: Only payer can freeze/unfreeze their own payments
+ *                       - Custom IFreezePolicy address: Custom authorization logic (must implement IFreezePolicy)
  *
  * ESCROW PERIOD SECURITY GUIDELINES:
  *
@@ -46,11 +48,8 @@ contract DeployEscrowPeriodCondition is Script {
         // Get escrow period from environment
         uint256 escrowPeriod = vm.envUint("ESCROW_PERIOD");
 
-        // Get freeze policy (optional - deploy PayerFreezePolicy if not provided)
+        // Get freeze policy (optional - defaults to address(0) for no freeze support)
         address freezePolicy = vm.envOr("FREEZE_POLICY", address(0));
-
-        // Check if we should deploy factory
-        bool deployFactory = vm.envOr("DEPLOY_FACTORY", false);
 
         // Validate escrow period with warnings
         _validateEscrowPeriod(escrowPeriod);
@@ -61,40 +60,31 @@ contract DeployEscrowPeriodCondition is Script {
         console.log("Escrow period (seconds):", escrowPeriod);
         console.log("Escrow period (human):", _formatDuration(escrowPeriod));
 
-        // Deploy PayerFreezePolicy if no policy provided
         if (freezePolicy == address(0)) {
-            console.log("\nNo freeze policy provided, deploying PayerFreezePolicy...");
-            PayerFreezePolicy policy = new PayerFreezePolicy();
-            freezePolicy = address(policy);
-            console.log("PayerFreezePolicy deployed at:", freezePolicy);
+            console.log("\nNo freeze policy (freeze not allowed)");
+            console.log("FreezePolicy: address(0) - freeze/unfreeze disabled");
         } else {
-            console.log("Using existing freeze policy:", freezePolicy);
+            console.log("\nUsing freeze policy:", freezePolicy);
         }
 
-        // Deploy condition directly or via factory
-        address conditionAddress;
+        // Deploy factory and condition instance
+        console.log("\nDeploying EscrowPeriodConditionFactory...");
+        EscrowPeriodConditionFactory factory = new EscrowPeriodConditionFactory();
+        console.log("Factory deployed at:", address(factory));
 
-        if (deployFactory) {
-            console.log("\nDeploying EscrowPeriodConditionFactory...");
-            EscrowPeriodConditionFactory factory = new EscrowPeriodConditionFactory();
-            console.log("Factory deployed at:", address(factory));
-
-            console.log("\nDeploying condition via factory...");
-            conditionAddress = factory.deployCondition(escrowPeriod, freezePolicy);
-        } else {
-            console.log("\nDeploying EscrowPeriodCondition directly...");
-            EscrowPeriodCondition condition = new EscrowPeriodCondition(escrowPeriod, freezePolicy);
-            conditionAddress = address(condition);
-        }
+        console.log("\nDeploying condition via factory...");
+        address conditionAddress = factory.deployCondition(escrowPeriod, freezePolicy);
 
         EscrowPeriodCondition deployedCondition = EscrowPeriodCondition(conditionAddress);
 
         console.log("\n=== Deployment Summary ===");
+        console.log("EscrowPeriodConditionFactory:", address(factory));
         console.log("EscrowPeriodCondition:", conditionAddress);
         console.log("ESCROW_PERIOD:", deployedCondition.ESCROW_PERIOD());
         console.log("FREEZE_POLICY:", address(deployedCondition.FREEZE_POLICY()));
 
         console.log("\n=== Configuration for ArbitrationOperator ===");
+        console.log("CONDITION_FACTORY_ADDRESS=", address(factory));
         console.log("RELEASE_CONDITION=", conditionAddress);
 
         vm.stopBroadcast();
