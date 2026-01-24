@@ -4,8 +4,8 @@ pragma solidity ^0.8.28;
 
 import {IReleaseCondition} from "../../operator/types/IReleaseCondition.sol";
 import {ArbitrationOperator} from "../../operator/arbitration/ArbitrationOperator.sol";
+import {ArbitrationOperatorAccess} from "../../operator/arbitration/ArbitrationOperatorAccess.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {NotArbiter} from "./types/Errors.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
 /**
@@ -13,7 +13,7 @@ import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
  * @notice Release condition where only the arbiter can release funds via this contract.
  *         Payer can bypass by calling operator.release() directly.
  */
-contract ArbiterDecisionCondition is IReleaseCondition, ERC165 {
+contract ArbiterDecisionCondition is IReleaseCondition, ArbitrationOperatorAccess, ERC165 {
     /**
      * @notice Release funds by calling the operator
      * @dev Only arbiter can call this. Payer can bypass by calling operator.release() directly.
@@ -23,11 +23,7 @@ contract ArbiterDecisionCondition is IReleaseCondition, ERC165 {
     function release(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint256 amount
-    ) external override {
-        if (msg.sender != ArbitrationOperator(paymentInfo.operator).ARBITER()) {
-            revert NotArbiter();
-        }
-
+    ) external override onlyArbiter(ArbitrationOperator(paymentInfo.operator).ARBITER()) {
         ArbitrationOperator(paymentInfo.operator).release(paymentInfo, amount);
     }
 

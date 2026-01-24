@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {ArbitrationOperator} from "../../operator/arbitration/ArbitrationOperator.sol";
+import {ArbitrationOperatorAccess} from "../../operator/arbitration/ArbitrationOperatorAccess.sol";
 import {RefundRequestAccess} from "./RefundRequestAccess.sol";
 import {RequestStatus} from "../types/Types.sol";
 import {
@@ -27,7 +28,7 @@ import {
  *      In escrow: receiver (merchant) OR arbiter can approve
  *      Post escrow: receiver (merchant) ONLY can approve
  */
-contract RefundRequest is RefundRequestAccess {
+contract RefundRequest is ArbitrationOperatorAccess, RefundRequestAccess {
     struct RefundRequestData {
         bytes32 paymentInfoHash;    // Hash of PaymentInfo
         RequestStatus status;       // Current status of the request
@@ -48,7 +49,7 @@ contract RefundRequest is RefundRequestAccess {
     /// @dev Only the payer can request a refund
     function requestRefund(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo
-    ) external validOperator(paymentInfo) onlyPayer(paymentInfo) {
+    ) external operatorNotZero(paymentInfo) onlyPayer(paymentInfo) {
         ArbitrationOperator operator = ArbitrationOperator(paymentInfo.operator);
         bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
 
@@ -80,7 +81,7 @@ contract RefundRequest is RefundRequestAccess {
     function updateStatus(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         RequestStatus newStatus
-    ) external validOperator(paymentInfo) onlyAuthorizedForRefundStatus(paymentInfo) {
+    ) external operatorNotZero(paymentInfo) onlyAuthorizedForRefundStatus(paymentInfo) {
         _updateStatus(paymentInfo, newStatus);
     }
 
@@ -90,7 +91,7 @@ contract RefundRequest is RefundRequestAccess {
     ///      Request must be in Pending status
     function cancelRefundRequest(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo
-    ) external validOperator(paymentInfo) onlyPayer(paymentInfo) {
+    ) external operatorNotZero(paymentInfo) onlyPayer(paymentInfo) {
         ArbitrationOperator operator = ArbitrationOperator(paymentInfo.operator);
         bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
 

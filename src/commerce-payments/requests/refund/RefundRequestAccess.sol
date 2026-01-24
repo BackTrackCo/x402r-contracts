@@ -6,27 +6,24 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {ArbitrationOperator} from "../../operator/arbitration/ArbitrationOperator.sol";
 import {
     NotReceiver,
-    NotPayer,
     NotReceiverOrArbiter,
     InvalidOperator
 } from "../../types/Errors.sol";
 
 /**
  * @title RefundRequestAccess
- * @notice Access control for RefundRequest - reads directly from PaymentInfo
- * @dev Escrow is source of truth - no stored state validation needed
+ * @notice Stateless access control for RefundRequest - complements ArbitrationOperatorAccess
+ * @dev Contains RefundRequest-specific modifiers. Use with ArbitrationOperatorAccess for onlyPayer.
  */
 abstract contract RefundRequestAccess {
 
-    // ============ Payer Modifiers ============
+    // ============ Refund Status Authorization ============
 
-    modifier onlyPayer(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
-        if (msg.sender != paymentInfo.payer) revert NotPayer();
-        _;
-    }
-
-    // ============ Combined Modifiers ============
-
+    /**
+     * @notice Modifier to check authorization for updating refund status
+     * @dev In escrow: receiver OR arbiter can update
+     *      Post escrow: only receiver can update
+     */
     modifier onlyAuthorizedForRefundStatus(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
         ArbitrationOperator operator = ArbitrationOperator(paymentInfo.operator);
         (, uint120 capturableAmount,) = operator.ESCROW().paymentState(operator.ESCROW().getHash(paymentInfo));
@@ -45,7 +42,11 @@ abstract contract RefundRequestAccess {
 
     // ============ Operator Validation ============
 
-    modifier validOperator(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
+    /**
+     * @notice Modifier to validate operator address is set
+     * @dev Different from ArbitrationOperatorAccess.validOperator which checks operator == address(this)
+     */
+    modifier operatorNotZero(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
         if (paymentInfo.operator == address(0)) revert InvalidOperator();
         _;
     }

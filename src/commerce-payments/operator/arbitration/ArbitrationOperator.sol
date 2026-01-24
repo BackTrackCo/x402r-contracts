@@ -7,6 +7,7 @@ import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {ArbitrationOperatorAccess} from "./ArbitrationOperatorAccess.sol";
 import {ZeroAddress, ZeroAmount} from "../../types/Errors.sol";
+import {ZeroEscrow, ZeroArbiter} from "../types/Errors.sol";
 import {
     TotalFeeRateExceedsMax,
     InvalidAuthorizationExpiry,
@@ -40,7 +41,16 @@ import {
  */
 contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
 
-    // Fee configuration
+    // ============ Core State ============
+    AuthCaptureEscrow public immutable ESCROW;
+    address public immutable ARBITER;
+    mapping(bytes32 => AuthCaptureEscrow.PaymentInfo) public paymentInfos;
+
+    // Payment indexing for discoverability
+    mapping(address => bytes32[]) private payerPayments;
+    mapping(address => bytes32[]) private receiverPayments;
+
+    // ============ Fee Configuration ============
     uint256 public constant BASIS_POINTS = 10000;
     uint256 public immutable MAX_TOTAL_FEE_RATE;
     uint256 public immutable PROTOCOL_FEE_PERCENTAGE;
@@ -61,7 +71,11 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
         address _arbiter,
         address _owner,
         address _releaseCondition
-    ) ArbitrationOperatorAccess(_escrow, _arbiter) {
+    ) {
+        if (_escrow == address(0)) revert ZeroEscrow();
+        if (_arbiter == address(0)) revert ZeroArbiter();
+        ESCROW = AuthCaptureEscrow(_escrow);
+        ARBITER = _arbiter;
         if (_protocolFeeRecipient == address(0)) revert ZeroAddress();
         if (_owner == address(0)) revert ZeroAddress();
         if (_releaseCondition == address(0)) revert ZeroAddress();
@@ -119,30 +133,25 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
         address tokenCollector,
         bytes calldata collectorData
     ) external validOperator(paymentInfo) {
-        // Enforce restriction if applicable
+        // ============ CHECKS ============
         if (AUTHORIZATION_RESTRICTED && msg.sender != address(RELEASE_CONDITION)) {
             revert UnauthorizedCaller();
         }
-
-        // Validate required paymentInfo fields
         if (paymentInfo.authorizationExpiry != type(uint48).max) revert InvalidAuthorizationExpiry();
         if (paymentInfo.minFeeBps != MAX_TOTAL_FEE_RATE || paymentInfo.maxFeeBps != MAX_TOTAL_FEE_RATE) {
             revert InvalidFeeBps();
         }
         if (paymentInfo.feeReceiver != address(this)) revert InvalidFeeReceiver();
 
-        // Forward to escrow
-        ESCROW.authorize(paymentInfo, amount, tokenCollector, collectorData);
-
-        // Compute hash once for indexing
+        // ============ EFFECTS ============
+        // Compute hash and update state before external call (CEI pattern)
         bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
-
-        // Store PaymentInfo for indexing (not for validation)
         paymentInfos[paymentInfoHash] = paymentInfo;
-
-        // Index by payer and receiver for discoverability
         _addPayerPayment(paymentInfo.payer, paymentInfoHash);
         _addReceiverPayment(paymentInfo.receiver, paymentInfoHash);
+
+        // ============ INTERACTIONS ============
+        ESCROW.authorize(paymentInfo, amount, tokenCollector, collectorData);
 
         emit AuthorizationCreated(
             paymentInfoHash,
@@ -164,12 +173,7 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
     function release(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint256 amount
-    ) external validOperator(paymentInfo) {
-        // Allow release condition OR payer to release
-        if (msg.sender != address(RELEASE_CONDITION) && msg.sender != paymentInfo.payer) {
-            revert UnauthorizedCaller();
-        }
-
+    ) external validOperator(paymentInfo) onlyAuthorizedOrPayer(paymentInfo, address(RELEASE_CONDITION)) {
         uint16 feeBps = uint16(MAX_TOTAL_FEE_RATE);
         address feeReceiver = address(this);
 
@@ -188,7 +192,7 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
     function refundInEscrow(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint120 amount
-    ) external validOperator(paymentInfo) onlyReceiverOrArbiter(paymentInfo) {
+    ) external validOperator(paymentInfo) onlyReceiverOrArbiter(paymentInfo, ARBITER) {
         // Forward to escrow's partialVoid - escrow validates payment exists
         ESCROW.partialVoid(paymentInfo, amount);
 
@@ -256,5 +260,73 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess {
             (bool success,) = msg.sender.call{value: balance}("");
             require(success);
         }
+    }
+
+    // ============ View Functions ============
+
+    /**
+     * @notice Check if a payment exists (has been authorized)
+     * @param paymentInfoHash The hash of the PaymentInfo
+     * @return True if payment exists
+     */
+    function paymentExists(bytes32 paymentInfoHash) public view returns (bool) {
+        return paymentInfos[paymentInfoHash].payer != address(0);
+    }
+
+    /**
+     * @notice Get stored PaymentInfo for a given hash
+     * @param paymentInfoHash The hash of the PaymentInfo
+     * @return The stored PaymentInfo struct
+     */
+    function getPaymentInfo(bytes32 paymentInfoHash) public view returns (AuthCaptureEscrow.PaymentInfo memory) {
+        return paymentInfos[paymentInfoHash];
+    }
+
+    /**
+     * @notice Check if payment is in escrow (has capturable amount)
+     * @param paymentInfoHash The hash of the PaymentInfo
+     * @return True if payment is in escrow
+     */
+    function isInEscrow(bytes32 paymentInfoHash) public view returns (bool) {
+        (, uint120 capturableAmount,) = ESCROW.paymentState(paymentInfoHash);
+        return capturableAmount > 0;
+    }
+
+    /**
+     * @notice Get all payment hashes for a payer
+     * @param payer The payer address
+     * @return Array of payment info hashes
+     */
+    function getPayerPayments(address payer) external view returns (bytes32[] memory) {
+        return payerPayments[payer];
+    }
+
+    /**
+     * @notice Get all payment hashes for a receiver (merchant)
+     * @param receiver The receiver address
+     * @return Array of payment info hashes
+     */
+    function getReceiverPayments(address receiver) external view returns (bytes32[] memory) {
+        return receiverPayments[receiver];
+    }
+
+    // ============ Internal Helpers ============
+
+    /**
+     * @notice Add payment hash to payer's list
+     * @param payer The payer address
+     * @param hash The payment info hash
+     */
+    function _addPayerPayment(address payer, bytes32 hash) internal {
+        payerPayments[payer].push(hash);
+    }
+
+    /**
+     * @notice Add payment hash to receiver's list
+     * @param receiver The receiver address
+     * @param hash The payment info hash
+     */
+    function _addReceiverPayment(address receiver, bytes32 hash) internal {
+        receiverPayments[receiver].push(hash);
     }
 }

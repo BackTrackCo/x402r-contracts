@@ -8,7 +8,7 @@ import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/Arbi
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockEscrow} from "./mocks/MockEscrow.sol";
-import {NotArbiter} from "../src/commerce-payments/release-conditions/arbiter-decision/types/Errors.sol";
+import {NotArbiter} from "../src/commerce-payments/types/Errors.sol";
 import {UnauthorizedCaller} from "../src/commerce-payments/operator/types/Errors.sol";
 
 contract ArbiterDecisionConditionTest is Test {

@@ -57,7 +57,8 @@ contract EscrowPeriodCondition is IReleaseCondition, IAuthorizable, ERC165 {
 
     /**
      * @notice Authorize payment through the operator, tracking authorization time
-     * @dev Forwards to paymentInfo.operator.authorize() and records block.timestamp
+     * @dev Forwards to paymentInfo.operator.authorize() and records block.timestamp.
+     *      Follows checks-effects-interactions pattern.
      * @param paymentInfo PaymentInfo struct (must have correct required values for operator)
      * @param amount Amount to authorize
      * @param tokenCollector Address of the token collector
@@ -71,12 +72,14 @@ contract EscrowPeriodCondition is IReleaseCondition, IAuthorizable, ERC165 {
     ) external override {
         ArbitrationOperator operator = ArbitrationOperator(paymentInfo.operator);
 
-        // Forward to operator (operator validates paymentInfo)
-        operator.authorize(paymentInfo, amount, tokenCollector, collectorData);
-
-        // Compute hash and track authorization time
+        // ============ EFFECTS ============
+        // Record authorization time before external call (CEI pattern)
         bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
         authorizationTimes[paymentInfoHash] = block.timestamp;
+
+        // ============ INTERACTIONS ============
+        // Forward to operator (operator validates paymentInfo)
+        operator.authorize(paymentInfo, amount, tokenCollector, collectorData);
 
         emit PaymentAuthorized(paymentInfo, block.timestamp);
     }
