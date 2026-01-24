@@ -32,17 +32,6 @@ contract EscrowPeriodConditionFactory {
     }
 
     /**
-     * @notice Get the condition address for a given escrow period (no freeze policy)
-     * @dev Convenience function for backward compatibility
-     * @param escrowPeriod Duration of the escrow period in seconds
-     * @return condition The condition address (address(0) if not deployed)
-     */
-    function getCondition(uint256 escrowPeriod) external view returns (address) {
-        bytes32 key = keccak256(abi.encode(escrowPeriod, address(0)));
-        return conditions[key];
-    }
-
-    /**
      * @notice Calculate the deterministic address for an escrow condition
      * @dev Uses CREATE2 formula: keccak256(0xff ++ address(this) ++ salt ++ keccak256(bytecode))
      * @param escrowPeriod Duration of the escrow period in seconds
@@ -65,16 +54,6 @@ contract EscrowPeriodConditionFactory {
             salt,
             bytecodeHash
         )))));
-    }
-
-    /**
-     * @notice Calculate the deterministic address for an escrow condition (no freeze policy)
-     * @dev Convenience function for backward compatibility
-     * @param escrowPeriod Duration of the escrow period in seconds
-     * @return condition The predicted condition address
-     */
-    function computeAddress(uint256 escrowPeriod) external view returns (address condition) {
-        return this.computeAddress(escrowPeriod, address(0));
     }
 
     /**
@@ -105,15 +84,5 @@ contract EscrowPeriodConditionFactory {
         emit EscrowPeriodConditionDeployed(condition, escrowPeriod);
 
         return condition;
-    }
-
-    /**
-     * @notice Deploy an escrow period condition (no freeze policy)
-     * @dev Convenience function for backward compatibility
-     * @param escrowPeriod Duration of the escrow period in seconds
-     * @return condition The condition address
-     */
-    function deployCondition(uint256 escrowPeriod) external returns (address condition) {
-        return this.deployCondition(escrowPeriod, address(0));
     }
 }

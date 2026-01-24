@@ -51,3 +51,11 @@ cache_hardhat/
 # Test artifacts
 test-results/
 
+# Claude Code 
+.claude/
+inheritance-graph.dot
+slither-output.json
+slither-results-new.json
+slither-results.json
+src/.inheritance-graph.dot
+src/commerce-payments/.inheritance-graph.dot

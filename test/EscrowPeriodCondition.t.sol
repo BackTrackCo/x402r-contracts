@@ -50,7 +50,7 @@ contract EscrowPeriodConditionTest is Test {
 
         // Deploy condition factory and condition first
         conditionFactory = new EscrowPeriodConditionFactory();
-        condition = EscrowPeriodCondition(conditionFactory.deployCondition(ESCROW_PERIOD));
+        condition = EscrowPeriodCondition(conditionFactory.deployCondition(ESCROW_PERIOD, address(0)));
 
         // Deploy operator factory
         operatorFactory = new ArbitrationOperatorFactory(
@@ -142,35 +142,35 @@ contract EscrowPeriodConditionTest is Test {
     // ============ Factory Tests ============
 
     function test_Factory_DeploysCondition() public view {
-        address deployedCondition = conditionFactory.getCondition(ESCROW_PERIOD);
+        address deployedCondition = conditionFactory.getCondition(ESCROW_PERIOD, address(0));
         assertEq(deployedCondition, address(condition));
     }
 
     function test_Factory_IdempotentDeploy() public {
-        address first = conditionFactory.deployCondition(ESCROW_PERIOD);
-        address second = conditionFactory.deployCondition(ESCROW_PERIOD);
+        address first = conditionFactory.deployCondition(ESCROW_PERIOD, address(0));
+        address second = conditionFactory.deployCondition(ESCROW_PERIOD, address(0));
         assertEq(first, second);
     }
 
     function test_Factory_DifferentPeriodsDifferentConditions() public {
-        address cond1 = conditionFactory.deployCondition(ESCROW_PERIOD);
-        address cond2 = conditionFactory.deployCondition(ESCROW_PERIOD * 2);
+        address cond1 = conditionFactory.deployCondition(ESCROW_PERIOD, address(0));
+        address cond2 = conditionFactory.deployCondition(ESCROW_PERIOD * 2, address(0));
         assertTrue(cond1 != cond2);
     }
 
     function test_Factory_RevertsOnZeroPeriod() public {
         vm.expectRevert(InvalidEscrowPeriod.selector);
-        conditionFactory.deployCondition(0);
+        conditionFactory.deployCondition(0, address(0));
     }
 
     function test_ComputeAddressMatchesDeploy() public {
         uint256 period = 20 days;
-        
+
         // 1. Compute expected address
-        address predicted = conditionFactory.computeAddress(period);
+        address predicted = conditionFactory.computeAddress(period, address(0));
 
         // 2. Deploy
-        address actual = conditionFactory.deployCondition(period);
+        address actual = conditionFactory.deployCondition(period, address(0));
 
         // 3. Verify match
         assertEq(predicted, actual, "Computed address should match deployed address");
@@ -771,7 +771,7 @@ contract NoFreezePolicyTest is Test {
 
         // Deploy condition WITHOUT freeze policy (address(0))
         conditionFactory = new EscrowPeriodConditionFactory();
-        condition = EscrowPeriodCondition(conditionFactory.deployCondition(ESCROW_PERIOD));
+        condition = EscrowPeriodCondition(conditionFactory.deployCondition(ESCROW_PERIOD, address(0)));
 
         // Deploy operator factory
         operatorFactory = new ArbitrationOperatorFactory(

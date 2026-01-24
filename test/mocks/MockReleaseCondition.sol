@@ -40,7 +40,6 @@ contract MockReleaseCondition is IReleaseCondition {
         // Silence unused variable warning
         amount;
 
-        // Use keccak256 of paymentInfo for backward compatibility with existing tests
         bytes32 paymentInfoHash = keccak256(abi.encode(paymentInfo));
         if (!approved[paymentInfoHash]) {
             revert ReleaseLocked();
