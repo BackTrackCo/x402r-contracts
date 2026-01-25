@@ -214,5 +214,5 @@ After any security incident:
 ## Contact
 
 - **Security Email**: security@x402r.com
-- **General Inquiries**: team@x402r.com
-- **Twitter**: [@x402r](https://twitter.com/x402r)
+- **General Inquiries**: contact@x402r.org
+- **Twitter**: [@x402rorg](https://twitter.com/x402rorg)
