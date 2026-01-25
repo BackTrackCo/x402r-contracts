@@ -26,18 +26,17 @@ contract MockFreezePolicy is IFreezePolicy {
         freezeDuration = _duration;
     }
 
-    function canFreeze(
-        AuthCaptureEscrow.PaymentInfo calldata,
-        address
-    ) external view override returns (bool allowed, uint256 duration) {
+    function canFreeze(AuthCaptureEscrow.PaymentInfo calldata, address)
+        external
+        view
+        override
+        returns (bool allowed, uint256 duration)
+    {
         allowed = allowFreeze;
         duration = freezeDuration;
     }
 
-    function canUnfreeze(
-        AuthCaptureEscrow.PaymentInfo calldata,
-        address
-    ) external view override returns (bool) {
+    function canUnfreeze(AuthCaptureEscrow.PaymentInfo calldata, address) external view override returns (bool) {
         return allowUnfreeze;
     }
 }

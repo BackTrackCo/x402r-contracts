@@ -14,7 +14,9 @@ import {
     InvalidFeeBps,
     InvalidFeeReceiver,
     ETHTransferFailed,
-    ConditionNotMet
+    ConditionNotMet,
+    TimelockNotElapsed,
+    NoPendingChange
 } from "../types/Errors.sol";
 import {IOperator} from "../types/IOperator.sol";
 import {ICondition} from "../../conditions/ICondition.sol";
@@ -26,6 +28,8 @@ import {
     ReleaseExecuted,
     RefundExecuted,
     ProtocolFeesEnabledUpdated,
+    FeesEnabledChangeQueued,
+    FeesEnabledChangeCancelled,
     FeesDistributed
 } from "../types/Events.sol";
 
@@ -57,6 +61,14 @@ import {
  *        User -> operator.authorize() -> escrow.authorize()
  *        User -> operator.charge() -> escrow.charge()
  *        User -> operator.release() -> escrow.capture()
+ *
+ * OWNERSHIP: Uses Solady's Ownable with built-in 2-step transfer for safety:
+ *        1. New owner calls requestOwnershipHandover()
+ *        2. Current owner calls completeOwnershipHandover(newOwner) within 48 hours
+ *        This prevents accidental transfers to wrong addresses.
+ *
+ * PRODUCTION REQUIREMENT: Owner MUST be a multisig (e.g., Gnosis Safe) in production.
+ *        Single EOA ownership is only acceptable for testing/development.
  */
 contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
     /// @notice Configuration struct for condition/recorder slots
@@ -107,6 +119,14 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
     address public immutable protocolFeeRecipient;
     bool public feesEnabled;
 
+    // ============ Timelock for Fee Changes ============
+    /// @notice Delay before fee changes take effect (24 hours)
+    uint256 public constant TIMELOCK_DELAY = 24 hours;
+    /// @notice Pending fee enabled state (only valid if pendingFeesEnabledTimestamp > 0)
+    bool public pendingFeesEnabled;
+    /// @notice Timestamp when pending fee change can be executed (0 = no pending change)
+    uint256 public pendingFeesEnabledTimestamp;
+
     constructor(
         address _escrow,
         address _protocolFeeRecipient,
@@ -148,14 +168,39 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         REFUND_POST_ESCROW_RECORDER = IRecorder(_conditions.refundPostEscrowRecorder);
     }
 
-    // ============ Owner Functions ============
+    // ============ Owner Functions (Timelocked) ============
 
     /**
-     * @notice Enable or disable protocol fees
+     * @notice Queue a change to protocol fees enabled state
+     * @dev Change takes effect after TIMELOCK_DELAY (24 hours)
+     * @param enabled New fees enabled state
      */
-    function setFeesEnabled(bool enabled) external onlyOwner {
-        feesEnabled = enabled;
-        emit ProtocolFeesEnabledUpdated(enabled);
+    function queueFeesEnabled(bool enabled) external onlyOwner {
+        pendingFeesEnabled = enabled;
+        pendingFeesEnabledTimestamp = block.timestamp + TIMELOCK_DELAY;
+        emit FeesEnabledChangeQueued(enabled, pendingFeesEnabledTimestamp);
+    }
+
+    /**
+     * @notice Execute a queued fee change after timelock delay
+     * @dev Reverts if no pending change or timelock not elapsed
+     */
+    function executeFeesEnabled() external onlyOwner {
+        if (pendingFeesEnabledTimestamp == 0) revert NoPendingChange();
+        if (block.timestamp < pendingFeesEnabledTimestamp) revert TimelockNotElapsed();
+
+        feesEnabled = pendingFeesEnabled;
+        pendingFeesEnabledTimestamp = 0;
+        emit ProtocolFeesEnabledUpdated(feesEnabled);
+    }
+
+    /**
+     * @notice Cancel a pending fee change
+     */
+    function cancelFeesEnabled() external onlyOwner {
+        if (pendingFeesEnabledTimestamp == 0) revert NoPendingChange();
+        pendingFeesEnabledTimestamp = 0;
+        emit FeesEnabledChangeCancelled();
     }
 
     // ============ Payment Functions ============

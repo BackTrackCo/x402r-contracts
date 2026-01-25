@@ -1,3 +1,8 @@
+# x402r Contracts
+
+[![CI](https://github.com/x402r/x402r-contracts/actions/workflows/ci.yml/badge.svg)](https://github.com/x402r/x402r-contracts/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/x402r/x402r-contracts/branch/main/graph/badge.svg)](https://codecov.io/gh/x402r/x402r-contracts)
+
 ## Deployed Contracts
 
 ⚠️ **WARNING: CONTRACTS UNAUDITED - USE AT YOUR OWN RISK**
@@ -23,6 +28,154 @@ losses incurred from using these contracts.
 ### Project Contracts
 
 This repository contains contracts for the x402r refund extension system.
+
+## Architecture
+
+### System Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              USER INTERACTIONS                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Payer                    Receiver                   Arbiter                │
+│    │                         │                          │                   │
+│    │  authorize()            │  release()               │  refund*()        │
+│    │  freeze()               │                          │  updateStatus()   │
+│    │  requestRefund()        │                          │                   │
+└────┼─────────────────────────┼──────────────────────────┼───────────────────┘
+     │                         │                          │
+     ▼                         ▼                          ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         ARBITRATION OPERATOR                                 │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  Condition Slots (before action)    Recorder Slots (after action)   │   │
+│  │  ─────────────────────────────────  ─────────────────────────────   │   │
+│  │  AUTHORIZE_CONDITION ──────────────► AUTHORIZE_RECORDER             │   │
+│  │  CHARGE_CONDITION ─────────────────► CHARGE_RECORDER                │   │
+│  │  RELEASE_CONDITION ────────────────► RELEASE_RECORDER               │   │
+│  │  REFUND_IN_ESCROW_CONDITION ───────► REFUND_IN_ESCROW_RECORDER      │   │
+│  │  REFUND_POST_ESCROW_CONDITION ─────► REFUND_POST_ESCROW_RECORDER    │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                    │                                        │
+│  Owner Functions (24h Timelock):   │                                        │
+│  - queueFeesEnabled()              │                                        │
+│  - executeFeesEnabled()            │                                        │
+│  - cancelFeesEnabled()             │                                        │
+└────────────────────────────────────┼────────────────────────────────────────┘
+                                     │
+                                     ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         AUTH CAPTURE ESCROW                                  │
+│                    (Base Commerce Payments)                                  │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  Payment State Machine:                                              │   │
+│  │                                                                      │   │
+│  │  NonExistent ──authorize()──► InEscrow ──release()──► Released      │   │
+│  │                                  │                        │          │   │
+│  │                     void/reclaim │      refundPostEscrow  │          │   │
+│  │                     refundInEscrow                        │          │   │
+│  │                                  ▼                        ▼          │   │
+│  │                            ┌─────────────────────────────────┐      │   │
+│  │                            │           Settled               │      │   │
+│  │                            └─────────────────────────────────┘      │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Condition Combinator Pattern
+
+Conditions are composable plugins that control access to operator actions:
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                     CONDITION COMBINATORS                         │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  AndCondition([A, B, C])  ──►  A && B && C                       │
+│  OrCondition([A, B])      ──►  A || B                            │
+│  NotCondition(A)          ──►  !A                                │
+│                                                                   │
+│  Example: Release requires (Receiver OR Arbiter) AND EscrowPassed│
+│                                                                   │
+│  OrCondition([                                                   │
+│    ReceiverCondition,                                            │
+│    ArbiterCondition                                              │
+│  ])                                                              │
+│    └──► AndCondition([                                           │
+│           <above>,                                               │
+│           EscrowPeriodCondition                                  │
+│         ])                                                       │
+│                                                                   │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Escrow Period & Freeze Flow
+
+```
+Timeline:
+├─────────────── ESCROW_PERIOD (e.g., 7 days) ───────────────┼──── Post-Escrow ────►
+│                                                             │
+│  [Payer can freeze]                                        │  [Release allowed]
+│  [Release blocked]                                         │  [Freeze blocked]
+│                                                             │
+│  freeze() ──► PaymentFrozen                                │
+│  unfreeze() ──► PaymentUnfrozen                            │
+│                                                             │
+└─────────────────────────────────────────────────────────────┴─────────────────────►
+
+MEV Protection: Payers should freeze EARLY, not at deadline.
+                Use private mempool (Flashbots Protect) if freezing near expiry.
+```
+
+### Contract Relationships
+
+```
+┌─────────────────────────┐
+│ ArbitrationOperatorFactory │◄─── Owner (Multisig in production)
+└────────────┬────────────┘
+             │ deploys
+             ▼
+┌─────────────────────────┐      ┌─────────────────────────┐
+│  ArbitrationOperator    │─────►│    AuthCaptureEscrow    │
+│  (per-arbiter instance) │      │   (shared singleton)    │
+└────────────┬────────────┘      └─────────────────────────┘
+             │ uses
+             ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    PLUGGABLE CONDITIONS                      │
+├─────────────────────────────────────────────────────────────┤
+│  Access Conditions:          │  Time Conditions:            │
+│  - PayerCondition            │  - EscrowPeriodCondition     │
+│  - ReceiverCondition         │    └─► EscrowPeriodRecorder  │
+│  - ArbiterCondition          │        └─► PayerFreezePolicy │
+│  - AlwaysTrueCondition       │                              │
+├─────────────────────────────────────────────────────────────┤
+│  Combinators:                │  Auxiliary:                  │
+│  - AndCondition              │  - RefundRequest             │
+│  - OrCondition               │                              │
+│  - NotCondition              │                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Roles & Permissions
+
+| Role | Capabilities |
+|------|-------------|
+| **Payer** | `authorize()`, `freeze()`, `unfreeze()`, `requestRefund()`, `cancelRefundRequest()` |
+| **Receiver** | `release()` (if condition allows), `charge()` |
+| **Arbiter** | `refundInEscrow()`, `refundPostEscrow()`, `updateStatus()` on refund requests |
+| **Owner** | `queueFeesEnabled()`, `executeFeesEnabled()`, `cancelFeesEnabled()`, `rescueETH()` |
+
+### Security Features
+
+| Feature | Implementation |
+|---------|---------------|
+| **Reentrancy Protection** | `ReentrancyGuardTransient` on escrow |
+| **CEI Pattern** | All functions: Checks → Effects → Interactions |
+| **2-Step Ownership** | Solady's `requestOwnershipHandover()` + `completeOwnershipHandover()` |
+| **24h Timelock** | Fee changes require queue → wait → execute |
+| **Multisig Requirement** | Owner must be Gnosis Safe in production |
+| **Incident Response** | See [SECURITY.md](SECURITY.md) |
 
 #### Commerce Payments Contracts
 

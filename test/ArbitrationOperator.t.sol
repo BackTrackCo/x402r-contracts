@@ -504,7 +504,8 @@ contract ArbitrationOperatorTest is Test {
 
     function test_Refund_Success() public {
         // Deploy permissive operator for refund testing
-        ArbitrationOperator permissiveOperator = ArbitrationOperator(factory.deployOperator(_createSimpleConfig(arbiter)));
+        ArbitrationOperator permissiveOperator =
+            ArbitrationOperator(factory.deployOperator(_createSimpleConfig(arbiter)));
 
         MockEscrow.PaymentInfo memory paymentInfo = MockEscrow.PaymentInfo({
             operator: address(permissiveOperator),
@@ -543,7 +544,8 @@ contract ArbitrationOperatorTest is Test {
 
     function test_Refund_MultiplePartial() public {
         // Deploy permissive operator for refund testing
-        ArbitrationOperator permissiveOperator = ArbitrationOperator(factory.deployOperator(_createSimpleConfig(arbiter)));
+        ArbitrationOperator permissiveOperator =
+            ArbitrationOperator(factory.deployOperator(_createSimpleConfig(arbiter)));
 
         MockEscrow.PaymentInfo memory paymentInfo = MockEscrow.PaymentInfo({
             operator: address(permissiveOperator),
@@ -580,17 +582,47 @@ contract ArbitrationOperatorTest is Test {
     // ============ Fee Management Tests ============
 
     function test_SetFeesEnabled_OnlyOwner() public {
-        operator.setFeesEnabled(true);
+        // Queue the change
+        operator.queueFeesEnabled(true);
+        assertFalse(operator.feesEnabled()); // Not yet active
+
+        // Warp past timelock
+        vm.warp(block.timestamp + operator.TIMELOCK_DELAY());
+
+        // Execute the change
+        operator.executeFeesEnabled();
         assertTrue(operator.feesEnabled());
 
-        operator.setFeesEnabled(false);
+        // Queue disable
+        operator.queueFeesEnabled(false);
+        vm.warp(block.timestamp + operator.TIMELOCK_DELAY());
+        operator.executeFeesEnabled();
         assertFalse(operator.feesEnabled());
     }
 
     function test_SetFeesEnabled_RevertsOnNotOwner() public {
         vm.prank(makeAddr("notOwner"));
         vm.expectRevert();
-        operator.setFeesEnabled(true);
+        operator.queueFeesEnabled(true);
+    }
+
+    function test_SetFeesEnabled_TimelockNotElapsed() public {
+        operator.queueFeesEnabled(true);
+
+        // Try to execute before timelock - should revert
+        vm.expectRevert();
+        operator.executeFeesEnabled();
+    }
+
+    function test_SetFeesEnabled_CancelPending() public {
+        operator.queueFeesEnabled(true);
+
+        // Cancel the pending change
+        operator.cancelFeesEnabled();
+
+        // Try to execute - should revert (no pending change)
+        vm.expectRevert();
+        operator.executeFeesEnabled();
     }
 
     function test_DistributeFees_ProtocolDisabled() public {
@@ -613,7 +645,10 @@ contract ArbitrationOperatorTest is Test {
     }
 
     function test_DistributeFees_ProtocolEnabled() public {
-        operator.setFeesEnabled(true);
+        // Enable fees via timelock
+        operator.queueFeesEnabled(true);
+        vm.warp(block.timestamp + operator.TIMELOCK_DELAY());
+        operator.executeFeesEnabled();
         assertTrue(operator.feesEnabled());
 
         uint256 feeAmount = 1000 * 10 ** 18;

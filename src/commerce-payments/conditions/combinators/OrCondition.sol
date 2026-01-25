@@ -10,16 +10,23 @@ import {ICondition} from "../ICondition.sol";
 /// @dev Returns true if ANY condition returns true
 /// @dev Short-circuits on first true result for gas efficiency
 contract OrCondition is ICondition {
+    /// @notice Maximum number of conditions allowed to prevent gas griefing
+    uint256 public constant MAX_CONDITIONS = 10;
+
     /// @notice The conditions to check (OR logic)
     ICondition[] public conditions;
 
     /// @notice Error when no conditions are provided
     error NoConditions();
 
+    /// @notice Error when too many conditions are provided
+    error TooManyConditions();
+
     /// @notice Create an OR combinator with multiple conditions
     /// @param _conditions Array of conditions to combine with OR logic
     constructor(ICondition[] memory _conditions) {
         if (_conditions.length == 0) revert NoConditions();
+        if (_conditions.length > MAX_CONDITIONS) revert TooManyConditions();
         for (uint256 i = 0; i < _conditions.length; i++) {
             conditions.push(_conditions[i]);
         }

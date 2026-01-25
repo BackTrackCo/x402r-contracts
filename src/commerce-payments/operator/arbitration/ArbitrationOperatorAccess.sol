@@ -3,12 +3,7 @@
 pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {
-    NotReceiver,
-    NotPayer,
-    NotArbiter,
-    InvalidOperator
-} from "../../types/Errors.sol";
+import {NotReceiver, NotPayer, NotArbiter, InvalidOperator} from "../../types/Errors.sol";
 import {InvalidFeeBps, InvalidFeeReceiver} from "../types/Errors.sol";
 
 /**
@@ -21,7 +16,6 @@ import {InvalidFeeBps, InvalidFeeReceiver} from "../types/Errors.sol";
  *      - onlyReceiver, onlyPayer, onlyArbiter: Require specific msg.sender
  */
 abstract contract ArbitrationOperatorAccess {
-
     // ============ Guard Modifiers (AND logic) ============
 
     /**

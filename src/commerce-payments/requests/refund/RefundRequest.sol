@@ -14,11 +14,7 @@ import {
     InvalidStatus,
     FullyRefunded
 } from "../types/Errors.sol";
-import {
-    RefundRequested,
-    RefundRequestStatusUpdated,
-    RefundRequestCancelled
-} from "../types/Events.sol";
+import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} from "../types/Events.sol";
 
 /**
  * @title RefundRequest
@@ -30,8 +26,8 @@ import {
  */
 contract RefundRequest is ArbitrationOperatorAccess, RefundRequestAccess {
     struct RefundRequestData {
-        bytes32 paymentInfoHash;    // Hash of PaymentInfo
-        RequestStatus status;       // Current status of the request
+        bytes32 paymentInfoHash; // Hash of PaymentInfo
+        RequestStatus status; // Current status of the request
     }
 
     // paymentInfoHash => refund request
@@ -47,9 +43,11 @@ contract RefundRequest is ArbitrationOperatorAccess, RefundRequestAccess {
     /// @notice Request a refund for an authorization
     /// @param paymentInfo PaymentInfo struct
     /// @dev Only the payer can request a refund
-    function requestRefund(
-        AuthCaptureEscrow.PaymentInfo calldata paymentInfo
-    ) external operatorNotZero(paymentInfo) onlyPayer(paymentInfo) {
+    function requestRefund(AuthCaptureEscrow.PaymentInfo calldata paymentInfo)
+        external
+        operatorNotZero(paymentInfo)
+        onlyPayer(paymentInfo)
+    {
         ArbitrationOperator operator = ArbitrationOperator(paymentInfo.operator);
         bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
 
@@ -60,10 +58,8 @@ contract RefundRequest is ArbitrationOperatorAccess, RefundRequestAccess {
         }
 
         // Create or update refund request
-        refundRequests[paymentInfoHash] = RefundRequestData({
-            paymentInfoHash: paymentInfoHash,
-            status: RequestStatus.Pending
-        });
+        refundRequests[paymentInfoHash] =
+            RefundRequestData({paymentInfoHash: paymentInfoHash, status: RequestStatus.Pending});
 
         // Update indexing arrays (only add if not already in arrays)
         _addPayerRequest(paymentInfo.payer, paymentInfoHash);
@@ -78,10 +74,11 @@ contract RefundRequest is ArbitrationOperatorAccess, RefundRequestAccess {
     /// @dev In escrow: receiver OR arbiter can approve/deny
     ///      Post escrow: only receiver can approve/deny
     ///      Status can only be changed from Pending to Approved or Denied
-    function updateStatus(
-        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
-        RequestStatus newStatus
-    ) external operatorNotZero(paymentInfo) onlyAuthorizedForRefundStatus(paymentInfo) {
+    function updateStatus(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, RequestStatus newStatus)
+        external
+        operatorNotZero(paymentInfo)
+        onlyAuthorizedForRefundStatus(paymentInfo)
+    {
         _updateStatus(paymentInfo, newStatus);
     }
 
@@ -89,9 +86,11 @@ contract RefundRequest is ArbitrationOperatorAccess, RefundRequestAccess {
     /// @param paymentInfo PaymentInfo struct
     /// @dev Only the payer who created the request can cancel it
     ///      Request must be in Pending status
-    function cancelRefundRequest(
-        AuthCaptureEscrow.PaymentInfo calldata paymentInfo
-    ) external operatorNotZero(paymentInfo) onlyPayer(paymentInfo) {
+    function cancelRefundRequest(AuthCaptureEscrow.PaymentInfo calldata paymentInfo)
+        external
+        operatorNotZero(paymentInfo)
+        onlyPayer(paymentInfo)
+    {
         ArbitrationOperator operator = ArbitrationOperator(paymentInfo.operator);
         bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
 
@@ -187,33 +186,21 @@ contract RefundRequest is ArbitrationOperatorAccess, RefundRequestAccess {
     /// @notice Get all refund request hashes for a payer
     /// @param payer The payer address
     /// @return Array of payment info hashes
-    function getPayerRefundRequestHashes(address payer)
-        external
-        view
-        returns (bytes32[] memory)
-    {
+    function getPayerRefundRequestHashes(address payer) external view returns (bytes32[] memory) {
         return payerRefundRequests[payer];
     }
 
     /// @notice Get all refund request hashes for a receiver (merchant)
     /// @param receiver The receiver address
     /// @return Array of payment info hashes
-    function getReceiverRefundRequestHashes(address receiver)
-        external
-        view
-        returns (bytes32[] memory)
-    {
+    function getReceiverRefundRequestHashes(address receiver) external view returns (bytes32[] memory) {
         return receiverRefundRequests[receiver];
     }
 
     /// @notice Get refund request data by hash
     /// @param paymentInfoHash The payment info hash
     /// @return The refund request data
-    function getRefundRequestByHash(bytes32 paymentInfoHash)
-        external
-        view
-        returns (RefundRequestData memory)
-    {
+    function getRefundRequestByHash(bytes32 paymentInfoHash) external view returns (RefundRequestData memory) {
         RefundRequestData memory request = refundRequests[paymentInfoHash];
         if (request.paymentInfoHash == bytes32(0)) revert RequestDoesNotExist();
         return request;

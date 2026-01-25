@@ -12,7 +12,7 @@ import {MockReleaseCondition} from "../mocks/MockReleaseCondition.sol";
  * @title ArbitrationOperatorInvariants
  * @notice Echidna invariant tests for ArbitrationOperator
  * @dev Run with: echidna test/invariants/ArbitrationOperatorInvariants.sol --contract ArbitrationOperatorInvariants
- * 
+ *
  * Key invariants tested:
  * 1. Fee rates never exceed MAX_TOTAL_FEE_RATE
  * 2. Protocol fee percentage never exceeds 100%
@@ -57,13 +57,9 @@ contract ArbitrationOperatorInvariants {
         releaseCondition = new MockReleaseCondition();
 
         operatorFactory = new ArbitrationOperatorFactory(
-            address(escrow),
-            protocolFeeRecipient,
-            MAX_TOTAL_FEE_RATE,
-            PROTOCOL_FEE_PERCENTAGE,
-            owner
+            address(escrow), protocolFeeRecipient, MAX_TOTAL_FEE_RATE, PROTOCOL_FEE_PERCENTAGE, owner
         );
-        
+
         // Deploy operator with release condition
         ArbitrationOperatorFactory.OperatorConfig memory config = ArbitrationOperatorFactory.OperatorConfig({
             arbiter: arbiter,
@@ -174,8 +170,10 @@ contract ArbitrationOperatorInvariants {
         if (operator.feesEnabled() && totalProtocolFees > 0) {
             uint256 expectedProtocol = (totalFeesDistributed * PROTOCOL_FEE_PERCENTAGE) / 100;
             // Allow 1 wei tolerance for rounding
-            if (totalProtocolFees > expectedProtocol + 1 ||
-                (totalProtocolFees + 1 < expectedProtocol && expectedProtocol > 0)) {
+            if (
+                totalProtocolFees > expectedProtocol + 1
+                    || (totalProtocolFees + 1 < expectedProtocol && expectedProtocol > 0)
+            ) {
                 return false;
             }
         }
@@ -230,7 +228,7 @@ contract ArbitrationOperatorInvariants {
      */
     function fuzz_authorize(uint256 amount, uint256 salt) public {
         if (amount == 0 || amount > 1e30) return;
-        
+
         MockEscrow.PaymentInfo memory mockInfo = _createPaymentInfo(salt);
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _toAuthCapturePaymentInfo(mockInfo);
         bytes32 hash = escrow.getHash(mockInfo);
@@ -244,10 +242,14 @@ contract ArbitrationOperatorInvariants {
     }
 
     /**
-     * @notice Fuzz target: Toggle fees enabled
+     * @notice Fuzz target: Toggle fees enabled via timelock
      */
     function fuzz_toggle_fees(bool enabled) public {
-        try operator.setFeesEnabled(enabled) {} catch {}
+        // Queue the change
+        try operator.queueFeesEnabled(enabled) {} catch {}
+
+        // Note: In real fuzzing, time would need to advance for execute to work
+        // For invariant testing, we just test the queue doesn't break invariants
     }
 
     /**

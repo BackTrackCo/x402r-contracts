@@ -34,10 +34,7 @@ contract EscrowPeriodConditionFactory {
      * @return recorder Address of the deployed recorder
      * @return condition Address of the deployed condition
      */
-    function deploy(uint256 escrowPeriod, address freezePolicy)
-        external
-        returns (address recorder, address condition)
-    {
+    function deploy(uint256 escrowPeriod, address freezePolicy) external returns (address recorder, address condition) {
         bytes32 key = getKey(escrowPeriod, freezePolicy);
 
         // Return existing deployment if already deployed
@@ -94,13 +91,16 @@ contract EscrowPeriodConditionFactory {
         bytes32 recorderSalt = keccak256(abi.encodePacked("recorder", key));
         bytes memory recorderBytecode =
             abi.encodePacked(type(EscrowPeriodRecorder).creationCode, abi.encode(escrowPeriod, freezePolicy));
-        bytes32 recorderHash = keccak256(abi.encodePacked(bytes1(0xff), address(this), recorderSalt, keccak256(recorderBytecode)));
+        bytes32 recorderHash =
+            keccak256(abi.encodePacked(bytes1(0xff), address(this), recorderSalt, keccak256(recorderBytecode)));
         recorder = address(uint160(uint256(recorderHash)));
 
         // Compute condition address
         bytes32 conditionSalt = keccak256(abi.encodePacked("condition", key));
-        bytes memory conditionBytecode = abi.encodePacked(type(EscrowPeriodCondition).creationCode, abi.encode(recorder));
-        bytes32 conditionHash = keccak256(abi.encodePacked(bytes1(0xff), address(this), conditionSalt, keccak256(conditionBytecode)));
+        bytes memory conditionBytecode =
+            abi.encodePacked(type(EscrowPeriodCondition).creationCode, abi.encode(recorder));
+        bytes32 conditionHash =
+            keccak256(abi.encodePacked(bytes1(0xff), address(this), conditionSalt, keccak256(conditionBytecode)));
         condition = address(uint160(uint256(conditionHash)));
     }
 

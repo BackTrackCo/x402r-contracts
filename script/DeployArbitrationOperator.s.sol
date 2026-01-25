@@ -83,13 +83,7 @@ contract DeployArbitrationOperator is Script {
             refundPostEscrowRecorder: refundPostEscrowRecorder
         });
         ArbitrationOperator operator = new ArbitrationOperator(
-            escrow,
-            protocolFeeRecipient,
-            maxTotalFeeRate,
-            protocolFeePercentage,
-            arbiter,
-            owner,
-            conditions
+            escrow, protocolFeeRecipient, maxTotalFeeRate, protocolFeePercentage, arbiter, owner, conditions
         );
 
         console.log("\n=== Deployment Summary ===");

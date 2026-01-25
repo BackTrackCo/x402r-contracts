@@ -4,11 +4,7 @@ pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {ArbitrationOperator} from "../../operator/arbitration/ArbitrationOperator.sol";
-import {
-    NotReceiver,
-    NotReceiverOrArbiter,
-    InvalidOperator
-} from "../../types/Errors.sol";
+import {NotReceiver, NotReceiverOrArbiter, InvalidOperator} from "../../types/Errors.sol";
 
 /**
  * @title RefundRequestAccess
@@ -16,7 +12,6 @@ import {
  * @dev Contains RefundRequest-specific modifiers. Use with ArbitrationOperatorAccess for onlyPayer.
  */
 abstract contract RefundRequestAccess {
-
     // ============ Refund Status Authorization ============
 
     /**
@@ -50,5 +45,4 @@ abstract contract RefundRequestAccess {
         if (paymentInfo.operator == address(0)) revert InvalidOperator();
         _;
     }
-
 }

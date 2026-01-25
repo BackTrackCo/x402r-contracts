@@ -4,7 +4,9 @@ pragma solidity ^0.8.23;
 import {Script, console} from "forge-std/Script.sol";
 import {AuthCaptureEscrow} from "../lib/commerce-payments/src/AuthCaptureEscrow.sol";
 import {ERC3009PaymentCollector} from "../lib/commerce-payments/src/collectors/ERC3009PaymentCollector.sol";
-import {EscrowPeriodConditionFactory} from "../src/commerce-payments/conditions/escrow-period/EscrowPeriodConditionFactory.sol";
+import {
+    EscrowPeriodConditionFactory
+} from "../src/commerce-payments/conditions/escrow-period/EscrowPeriodConditionFactory.sol";
 import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
 import {PayerFreezePolicy} from "../src/commerce-payments/conditions/escrow-period/freeze-policy/PayerFreezePolicy.sol";
 import {RefundRequest} from "../src/commerce-payments/requests/refund/RefundRequest.sol";
@@ -84,13 +86,8 @@ contract DeployAll is Script {
 
         // Step 4: Deploy ArbitrationOperatorFactory
         console.log("\n=== Step 4: Deploying ArbitrationOperatorFactory ===");
-        ArbitrationOperatorFactory operatorFactoryContract = new ArbitrationOperatorFactory(
-            escrow,
-            protocolFeeRecipient,
-            maxTotalFeeRate,
-            protocolFeePercentage,
-            owner
-        );
+        ArbitrationOperatorFactory operatorFactoryContract =
+            new ArbitrationOperatorFactory(escrow, protocolFeeRecipient, maxTotalFeeRate, protocolFeePercentage, owner);
         operatorFactory = address(operatorFactoryContract);
         console.log("ArbitrationOperatorFactory:", operatorFactory);
 

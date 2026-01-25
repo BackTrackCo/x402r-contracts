@@ -3,10 +3,14 @@ pragma solidity ^0.8.28;
 
 import {EscrowPeriodCondition} from "../../src/commerce-payments/conditions/escrow-period/EscrowPeriodCondition.sol";
 import {EscrowPeriodRecorder} from "../../src/commerce-payments/conditions/escrow-period/EscrowPeriodRecorder.sol";
-import {EscrowPeriodConditionFactory} from "../../src/commerce-payments/conditions/escrow-period/EscrowPeriodConditionFactory.sol";
+import {
+    EscrowPeriodConditionFactory
+} from "../../src/commerce-payments/conditions/escrow-period/EscrowPeriodConditionFactory.sol";
 import {ArbitrationOperator} from "../../src/commerce-payments/operator/arbitration/ArbitrationOperator.sol";
 import {ArbitrationOperatorFactory} from "../../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
-import {PayerFreezePolicy} from "../../src/commerce-payments/conditions/escrow-period/freeze-policy/PayerFreezePolicy.sol";
+import {
+    PayerFreezePolicy
+} from "../../src/commerce-payments/conditions/escrow-period/freeze-policy/PayerFreezePolicy.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockEscrow} from "../mocks/MockEscrow.sol";
@@ -64,21 +68,17 @@ contract EscrowPeriodConditionInvariants {
         condition = EscrowPeriodCondition(conditionAddr);
 
         operatorFactory = new ArbitrationOperatorFactory(
-            address(escrow),
-            protocolFeeRecipient,
-            MAX_TOTAL_FEE_RATE,
-            PROTOCOL_FEE_PERCENTAGE,
-            owner
+            address(escrow), protocolFeeRecipient, MAX_TOTAL_FEE_RATE, PROTOCOL_FEE_PERCENTAGE, owner
         );
 
         // Deploy operator with escrow period condition and recorder
         ArbitrationOperatorFactory.OperatorConfig memory config = ArbitrationOperatorFactory.OperatorConfig({
             arbiter: arbiter,
             authorizeCondition: address(0),
-            authorizeRecorder: address(recorder),  // Records auth time
+            authorizeRecorder: address(recorder), // Records auth time
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(condition),   // Checks escrow period + frozen
+            releaseCondition: address(condition), // Checks escrow period + frozen
             releaseRecorder: address(0),
             refundInEscrowCondition: address(0),
             refundInEscrowRecorder: address(0),
@@ -177,20 +177,22 @@ contract EscrowPeriodConditionInvariants {
         if (amount == 0 || amount > 1e30) return;
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(bytes32(salt));
-        bytes32 hash = escrow.getHash(MockEscrow.PaymentInfo({
-            operator: paymentInfo.operator,
-            payer: paymentInfo.payer,
-            receiver: paymentInfo.receiver,
-            token: paymentInfo.token,
-            maxAmount: paymentInfo.maxAmount,
-            preApprovalExpiry: paymentInfo.preApprovalExpiry,
-            authorizationExpiry: paymentInfo.authorizationExpiry,
-            refundExpiry: paymentInfo.refundExpiry,
-            minFeeBps: paymentInfo.minFeeBps,
-            maxFeeBps: paymentInfo.maxFeeBps,
-            feeReceiver: paymentInfo.feeReceiver,
-            salt: paymentInfo.salt
-        }));
+        bytes32 hash = escrow.getHash(
+            MockEscrow.PaymentInfo({
+                operator: paymentInfo.operator,
+                payer: paymentInfo.payer,
+                receiver: paymentInfo.receiver,
+                token: paymentInfo.token,
+                maxAmount: paymentInfo.maxAmount,
+                preApprovalExpiry: paymentInfo.preApprovalExpiry,
+                authorizationExpiry: paymentInfo.authorizationExpiry,
+                refundExpiry: paymentInfo.refundExpiry,
+                minFeeBps: paymentInfo.minFeeBps,
+                maxFeeBps: paymentInfo.maxFeeBps,
+                feeReceiver: paymentInfo.feeReceiver,
+                salt: paymentInfo.salt
+            })
+        );
 
         if (!isAuthorized[hash]) {
             try operator.authorize(paymentInfo, amount, address(0), "") {
@@ -207,20 +209,22 @@ contract EscrowPeriodConditionInvariants {
      */
     function fuzz_freeze(uint256 salt) public {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(bytes32(salt));
-        bytes32 hash = escrow.getHash(MockEscrow.PaymentInfo({
-            operator: paymentInfo.operator,
-            payer: paymentInfo.payer,
-            receiver: paymentInfo.receiver,
-            token: paymentInfo.token,
-            maxAmount: paymentInfo.maxAmount,
-            preApprovalExpiry: paymentInfo.preApprovalExpiry,
-            authorizationExpiry: paymentInfo.authorizationExpiry,
-            refundExpiry: paymentInfo.refundExpiry,
-            minFeeBps: paymentInfo.minFeeBps,
-            maxFeeBps: paymentInfo.maxFeeBps,
-            feeReceiver: paymentInfo.feeReceiver,
-            salt: paymentInfo.salt
-        }));
+        bytes32 hash = escrow.getHash(
+            MockEscrow.PaymentInfo({
+                operator: paymentInfo.operator,
+                payer: paymentInfo.payer,
+                receiver: paymentInfo.receiver,
+                token: paymentInfo.token,
+                maxAmount: paymentInfo.maxAmount,
+                preApprovalExpiry: paymentInfo.preApprovalExpiry,
+                authorizationExpiry: paymentInfo.authorizationExpiry,
+                refundExpiry: paymentInfo.refundExpiry,
+                minFeeBps: paymentInfo.minFeeBps,
+                maxFeeBps: paymentInfo.maxFeeBps,
+                feeReceiver: paymentInfo.feeReceiver,
+                salt: paymentInfo.salt
+            })
+        );
 
         if (isAuthorized[hash] && !isFrozen[hash]) {
             try recorder.freeze(paymentInfo) {
@@ -235,20 +239,22 @@ contract EscrowPeriodConditionInvariants {
      */
     function fuzz_unfreeze(uint256 salt) public {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(bytes32(salt));
-        bytes32 hash = escrow.getHash(MockEscrow.PaymentInfo({
-            operator: paymentInfo.operator,
-            payer: paymentInfo.payer,
-            receiver: paymentInfo.receiver,
-            token: paymentInfo.token,
-            maxAmount: paymentInfo.maxAmount,
-            preApprovalExpiry: paymentInfo.preApprovalExpiry,
-            authorizationExpiry: paymentInfo.authorizationExpiry,
-            refundExpiry: paymentInfo.refundExpiry,
-            minFeeBps: paymentInfo.minFeeBps,
-            maxFeeBps: paymentInfo.maxFeeBps,
-            feeReceiver: paymentInfo.feeReceiver,
-            salt: paymentInfo.salt
-        }));
+        bytes32 hash = escrow.getHash(
+            MockEscrow.PaymentInfo({
+                operator: paymentInfo.operator,
+                payer: paymentInfo.payer,
+                receiver: paymentInfo.receiver,
+                token: paymentInfo.token,
+                maxAmount: paymentInfo.maxAmount,
+                preApprovalExpiry: paymentInfo.preApprovalExpiry,
+                authorizationExpiry: paymentInfo.authorizationExpiry,
+                refundExpiry: paymentInfo.refundExpiry,
+                minFeeBps: paymentInfo.minFeeBps,
+                maxFeeBps: paymentInfo.maxFeeBps,
+                feeReceiver: paymentInfo.feeReceiver,
+                salt: paymentInfo.salt
+            })
+        );
 
         if (isFrozen[hash]) {
             try recorder.unfreeze(paymentInfo) {
@@ -265,26 +271,29 @@ contract EscrowPeriodConditionInvariants {
         if (amount == 0 || amount > 1e30) return;
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(bytes32(salt));
-        bytes32 hash = escrow.getHash(MockEscrow.PaymentInfo({
-            operator: paymentInfo.operator,
-            payer: paymentInfo.payer,
-            receiver: paymentInfo.receiver,
-            token: paymentInfo.token,
-            maxAmount: paymentInfo.maxAmount,
-            preApprovalExpiry: paymentInfo.preApprovalExpiry,
-            authorizationExpiry: paymentInfo.authorizationExpiry,
-            refundExpiry: paymentInfo.refundExpiry,
-            minFeeBps: paymentInfo.minFeeBps,
-            maxFeeBps: paymentInfo.maxFeeBps,
-            feeReceiver: paymentInfo.feeReceiver,
-            salt: paymentInfo.salt
-        }));
+        bytes32 hash = escrow.getHash(
+            MockEscrow.PaymentInfo({
+                operator: paymentInfo.operator,
+                payer: paymentInfo.payer,
+                receiver: paymentInfo.receiver,
+                token: paymentInfo.token,
+                maxAmount: paymentInfo.maxAmount,
+                preApprovalExpiry: paymentInfo.preApprovalExpiry,
+                authorizationExpiry: paymentInfo.authorizationExpiry,
+                refundExpiry: paymentInfo.refundExpiry,
+                minFeeBps: paymentInfo.minFeeBps,
+                maxFeeBps: paymentInfo.maxFeeBps,
+                feeReceiver: paymentInfo.feeReceiver,
+                salt: paymentInfo.salt
+            })
+        );
 
         // If frozen, release should fail (except for payer bypass)
         if (isAuthorized[hash]) {
             try operator.release(paymentInfo, amount) {
-                // Release succeeded - verify conditions were met
-            } catch {}
+            // Release succeeded - verify conditions were met
+            }
+                catch {}
         }
     }
 }

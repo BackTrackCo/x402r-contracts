@@ -34,20 +34,14 @@ interface IOperator {
      * @param paymentInfo PaymentInfo struct
      * @param amount Amount to release
      */
-    function release(
-        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
-        uint256 amount
-    ) external;
+    function release(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount) external;
 
     /**
      * @notice Refund funds while still in escrow (before capture)
      * @param paymentInfo PaymentInfo struct
      * @param amount Amount to return to payer
      */
-    function refundInEscrow(
-        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
-        uint120 amount
-    ) external;
+    function refundInEscrow(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint120 amount) external;
 
     /**
      * @notice Refund captured funds back to payer (after capture/release)

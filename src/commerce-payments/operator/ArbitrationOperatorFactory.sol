@@ -21,6 +21,15 @@ import {OperatorDeployed} from "./types/Events.sol";
  *      - Client signs ERC-3009 with operator in PaymentInfo, committing to all conditions
  *      - Factory owner controls fee settings on all deployed operators
  *      - Works with Base Commerce Payments as designed
+ *
+ * OWNERSHIP: Uses Solady's Ownable with built-in 2-step transfer for safety:
+ *        1. New owner calls requestOwnershipHandover()
+ *        2. Current owner calls completeOwnershipHandover(newOwner) within 48 hours
+ *        This prevents accidental transfers to wrong addresses.
+ *
+ * PRODUCTION REQUIREMENT: Owner MUST be a multisig (e.g., Gnosis Safe) in production.
+ *        Single EOA ownership is only acceptable for testing/development.
+ *        Factory owner controls all deployed operators, so securing this is critical.
  */
 contract ArbitrationOperatorFactory is Ownable {
     /// @notice Configuration struct for deploying operators
@@ -85,9 +94,7 @@ contract ArbitrationOperatorFactory is Ownable {
         bytes memory bytecode = _getBytecode(config);
         bytes32 bytecodeHash = keccak256(bytecode);
 
-        return address(
-            uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), key, bytecodeHash))))
-        );
+        return address(uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), key, bytecodeHash)))));
     }
 
     /**
@@ -112,8 +119,9 @@ contract ArbitrationOperatorFactory is Ownable {
         // ============ EFFECTS ============
         // Compute deterministic CREATE2 address before deployment (CEI pattern)
         bytes memory bytecode = _getBytecode(config);
-        operator =
-            address(uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), key, keccak256(bytecode))))));
+        operator = address(
+            uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), key, keccak256(bytecode)))))
+        );
 
         // Store before external interaction
         operators[key] = operator;

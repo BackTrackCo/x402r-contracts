@@ -6,12 +6,7 @@ import {RefundRequest} from "../src/commerce-payments/requests/refund/RefundRequ
 import {ArbitrationOperator} from "../src/commerce-payments/operator/arbitration/ArbitrationOperator.sol";
 import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
 import {RequestStatus} from "../src/commerce-payments/requests/types/Types.sol";
-import {
-    NotReceiver,
-    NotPayer,
-    NotReceiverOrArbiter,
-    InvalidOperator
-} from "../src/commerce-payments/types/Errors.sol";
+import {NotReceiver, NotPayer, NotReceiverOrArbiter, InvalidOperator} from "../src/commerce-payments/types/Errors.sol";
 import {
     RequestAlreadyExists,
     RequestDoesNotExist,
@@ -21,7 +16,6 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockEscrow} from "./mocks/MockEscrow.sol";
 import {MockReleaseCondition} from "./mocks/MockReleaseCondition.sol";
-
 
 contract RefundRequestTest is Test {
     RefundRequest public refundRequest;
@@ -39,12 +33,17 @@ contract RefundRequestTest is Test {
 
     uint256 public constant MAX_TOTAL_FEE_RATE = 50;
     uint256 public constant PROTOCOL_FEE_PERCENTAGE = 25;
-    uint256 public constant INITIAL_BALANCE = 1000000 * 10**18;
-    uint256 public constant PAYMENT_AMOUNT = 1000 * 10**18;
+    uint256 public constant INITIAL_BALANCE = 1000000 * 10 ** 18;
+    uint256 public constant PAYMENT_AMOUNT = 1000 * 10 ** 18;
 
     // Events
     event RefundRequested(AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed payer, address indexed receiver);
-    event RefundRequestStatusUpdated(AuthCaptureEscrow.PaymentInfo paymentInfo, RequestStatus oldStatus, RequestStatus newStatus, address indexed updatedBy);
+    event RefundRequestStatusUpdated(
+        AuthCaptureEscrow.PaymentInfo paymentInfo,
+        RequestStatus oldStatus,
+        RequestStatus newStatus,
+        address indexed updatedBy
+    );
     event RefundRequestCancelled(AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed payer);
 
     function setUp() public {
@@ -61,11 +60,7 @@ contract RefundRequestTest is Test {
 
         // Deploy operator factory
         operatorFactory = new ArbitrationOperatorFactory(
-            address(escrow),
-            protocolFeeRecipient,
-            MAX_TOTAL_FEE_RATE,
-            PROTOCOL_FEE_PERCENTAGE,
-            owner
+            address(escrow), protocolFeeRecipient, MAX_TOTAL_FEE_RATE, PROTOCOL_FEE_PERCENTAGE, owner
         );
 
         // Deploy operator with release condition
@@ -141,12 +136,7 @@ contract RefundRequestTest is Test {
     function _authorize() internal returns (bytes32, AuthCaptureEscrow.PaymentInfo memory) {
         MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
 
-        operator.authorize(
-            _toAuthCapturePaymentInfo(paymentInfo),
-            PAYMENT_AMOUNT,
-            address(0),
-            ""
-        );
+        operator.authorize(_toAuthCapturePaymentInfo(paymentInfo), PAYMENT_AMOUNT, address(0), "");
 
         bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
 

@@ -41,7 +41,9 @@ contract MockEscrow {
     mapping(bytes32 => PaymentState) public paymentState;
 
     // Events
-    event PaymentAuthorized(bytes32 indexed paymentInfoHash, PaymentInfo paymentInfo, uint256 amount, address tokenCollector);
+    event PaymentAuthorized(
+        bytes32 indexed paymentInfoHash, PaymentInfo paymentInfo, uint256 amount, address tokenCollector
+    );
     event PaymentCaptured(bytes32 indexed paymentInfoHash, uint256 amount, uint16 feeBps, address feeReceiver);
     event PaymentVoided(bytes32 indexed paymentInfoHash, uint256 amount);
     event PaymentPartiallyVoided(bytes32 indexed paymentInfoHash, uint256 amount, uint256 remainingCapturable);
@@ -61,7 +63,9 @@ contract MockEscrow {
         uint256 amount,
         address tokenCollector,
         bytes calldata /* collectorData */
-    ) external {
+    )
+        external
+    {
         if (msg.sender != paymentInfo.operator) revert InvalidSender(msg.sender, paymentInfo.operator);
         if (amount == 0) revert ZeroAmount();
 
@@ -71,11 +75,8 @@ contract MockEscrow {
         // Transfer tokens from payer to this contract (mock escrow)
         paymentInfo.token.safeTransferFrom(paymentInfo.payer, address(this), amount);
 
-        paymentState[paymentInfoHash] = PaymentState({
-            hasCollectedPayment: true,
-            capturableAmount: uint120(amount),
-            refundableAmount: 0
-        });
+        paymentState[paymentInfoHash] =
+            PaymentState({hasCollectedPayment: true, capturableAmount: uint120(amount), refundableAmount: 0});
 
         emit PaymentAuthorized(paymentInfoHash, paymentInfo, amount, tokenCollector);
     }
@@ -109,21 +110,13 @@ contract MockEscrow {
         }
 
         // Set state: no capturable (already transferred), but refundable for post-capture refunds
-        paymentState[paymentInfoHash] = PaymentState({
-            hasCollectedPayment: true,
-            capturableAmount: 0,
-            refundableAmount: uint120(amount)
-        });
+        paymentState[paymentInfoHash] =
+            PaymentState({hasCollectedPayment: true, capturableAmount: 0, refundableAmount: uint120(amount)});
 
         emit PaymentAuthorized(paymentInfoHash, paymentInfo, amount, tokenCollector);
     }
 
-    function capture(
-        PaymentInfo calldata paymentInfo,
-        uint256 amount,
-        uint16 feeBps,
-        address feeReceiver
-    ) external {
+    function capture(PaymentInfo calldata paymentInfo, uint256 amount, uint16 feeBps, address feeReceiver) external {
         if (msg.sender != paymentInfo.operator) revert InvalidSender(msg.sender, paymentInfo.operator);
         if (amount == 0) revert ZeroAmount();
 
@@ -189,7 +182,9 @@ contract MockEscrow {
         uint256 amount,
         address tokenCollector,
         bytes calldata /* collectorData */
-    ) external {
+    )
+        external
+    {
         if (msg.sender != paymentInfo.operator) revert InvalidSender(msg.sender, paymentInfo.operator);
         if (amount == 0) revert ZeroAmount();
 

@@ -4,7 +4,9 @@ pragma solidity ^0.8.28;
 import {Test, console} from "forge-std/Test.sol";
 import {EscrowPeriodCondition} from "../src/commerce-payments/conditions/escrow-period/EscrowPeriodCondition.sol";
 import {EscrowPeriodRecorder} from "../src/commerce-payments/conditions/escrow-period/EscrowPeriodRecorder.sol";
-import {EscrowPeriodConditionFactory} from "../src/commerce-payments/conditions/escrow-period/EscrowPeriodConditionFactory.sol";
+import {
+    EscrowPeriodConditionFactory
+} from "../src/commerce-payments/conditions/escrow-period/EscrowPeriodConditionFactory.sol";
 import {PayerFreezePolicy} from "../src/commerce-payments/conditions/escrow-period/freeze-policy/PayerFreezePolicy.sol";
 import {ArbitrationOperator} from "../src/commerce-payments/operator/arbitration/ArbitrationOperator.sol";
 import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";

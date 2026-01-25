@@ -18,3 +18,7 @@ error ETHTransferFailed();
 // ============ Condition Errors ============
 error ConditionNotMet();
 
+// ============ Timelock Errors ============
+error TimelockNotElapsed();
+error NoPendingChange();
+

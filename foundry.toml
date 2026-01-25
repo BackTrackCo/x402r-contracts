@@ -24,4 +24,10 @@ remappings = [
 base-sepolia = { key = "${ETHERSCAN_API_KEY}", url = "https://api-sepolia.basescan.org/api" }
 base = { key = "${ETHERSCAN_API_KEY}", url = "https://api.basescan.org/api" }
 
+# CI profile - used in GitHub Actions
+# Coverage threshold enforced in .github/workflows/ci.yml (currently 65%)
+[profile.ci]
+fuzz = { runs = 1000 }
+invariant = { runs = 1000 }
+
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
