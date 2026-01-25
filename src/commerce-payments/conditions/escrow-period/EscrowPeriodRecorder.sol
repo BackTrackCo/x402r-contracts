@@ -43,10 +43,19 @@ interface IArbitrationOperator {
  *      - freeze() will revert with EscrowPeriodExpired
  *      - EscrowPeriodCondition.check() will return true (release allowed)
  *
- *      This is BY DESIGN: freeze is only available during the escrow period to give the payer
- *      time to dispute. Once the period expires, the receiver should be able to release.
- *      The ~12 second block time granularity makes the race window negligible compared to
- *      typical 7-day escrow periods. Payers should freeze well before expiry if needed.
+ *      MEV RISK: A malicious block builder could censor/delay a payer's freeze transaction
+ *      until after the escrow period expires, allowing the receiver to release.
+ *
+ *      MITIGATIONS (in order of importance):
+ *      1. FREEZE EARLY: If you anticipate a dispute, freeze immediately - don't wait until
+ *         the escrow period is about to expire. Freezing early eliminates the race entirely.
+ *      2. PRIVATE MEMPOOL: If freezing near the deadline, submit via Flashbots Protect or
+ *         MEV Blocker to prevent transaction censorship and front-running.
+ *      3. MONITOR: Watch for release attempts and be prepared to freeze proactively.
+ *
+ *      The ~12 second block window is small, but freezing early is the only way to fully
+ *      eliminate the risk. There is no on-chain solution that prevents races at deadline
+ *      boundaries without adding commit-reveal complexity.
  */
 contract EscrowPeriodRecorder is IRecorder {
     /// @notice Duration of the escrow period in seconds

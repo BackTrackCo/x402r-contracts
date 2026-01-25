@@ -194,6 +194,9 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         _addPayerPayment(paymentInfo.payer, paymentInfoHash);
         _addReceiverPayment(paymentInfo.receiver, paymentInfoHash);
 
+        // Emit event before external calls (CEI pattern)
+        emit AuthorizationCreated(paymentInfoHash, paymentInfo.payer, paymentInfo.receiver, amount, block.timestamp);
+
         // ============ INTERACTIONS ============
         ESCROW.authorize(paymentInfo, amount, tokenCollector, collectorData);
 
@@ -201,8 +204,6 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         if (address(AUTHORIZE_RECORDER) != address(0)) {
             AUTHORIZE_RECORDER.record(paymentInfo, amount, msg.sender);
         }
-
-        emit AuthorizationCreated(paymentInfoHash, paymentInfo.payer, paymentInfo.receiver, amount, block.timestamp);
     }
 
     /**
@@ -242,6 +243,9 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         _addPayerPayment(paymentInfo.payer, paymentInfoHash);
         _addReceiverPayment(paymentInfo.receiver, paymentInfoHash);
 
+        // Emit event before external calls (CEI pattern)
+        emit ChargeExecuted(paymentInfoHash, paymentInfo.payer, paymentInfo.receiver, amount, block.timestamp);
+
         // ============ INTERACTIONS ============
         ESCROW.charge(paymentInfo, amount, tokenCollector, collectorData, feeBps, feeReceiver);
 
@@ -249,8 +253,6 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         if (address(CHARGE_RECORDER) != address(0)) {
             CHARGE_RECORDER.record(paymentInfo, amount, msg.sender);
         }
-
-        emit ChargeExecuted(paymentInfoHash, paymentInfo.payer, paymentInfo.receiver, amount, block.timestamp);
     }
 
     /**
