@@ -9,6 +9,7 @@ import {
     NotArbiter,
     InvalidOperator
 } from "../../types/Errors.sol";
+import {InvalidFeeBps, InvalidFeeReceiver} from "../types/Errors.sol";
 
 /**
  * @title ArbitrationOperatorAccess
@@ -57,6 +58,20 @@ abstract contract ArbitrationOperatorAccess {
      */
     modifier onlyArbiter(address arbiter) {
         if (msg.sender != arbiter) revert NotArbiter();
+        _;
+    }
+
+    /**
+     * @notice Modifier to validate fee configuration in PaymentInfo
+     * @dev Ensures minFeeBps == maxFeeBps == maxTotalFeeRate and feeReceiver == address(this)
+     * @param paymentInfo The PaymentInfo struct to validate
+     * @param maxTotalFeeRate The expected fee rate for both minFeeBps and maxFeeBps
+     */
+    modifier validFees(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 maxTotalFeeRate) {
+        if (paymentInfo.minFeeBps != maxTotalFeeRate || paymentInfo.maxFeeBps != maxTotalFeeRate) {
+            revert InvalidFeeBps();
+        }
+        if (paymentInfo.feeReceiver != address(this)) revert InvalidFeeReceiver();
         _;
     }
 }

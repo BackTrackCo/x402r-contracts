@@ -8,23 +8,27 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 /**
  * @title PayerFreezePolicy
  * @notice IFreezePolicy implementation that allows only the payer to freeze/unfreeze.
- * @dev Stateless policy contract - freeze state is owned by EscrowPeriodCondition.
+ * @dev Stateless policy contract - freeze state is owned by EscrowPeriodRecorder.
  *      Only determines authorization: the payer can freeze/unfreeze their own payments.
  */
 contract PayerFreezePolicy is IFreezePolicy {
     /// @inheritdoc IFreezePolicy
-    function canFreeze(
-        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
-        address caller
-    ) external pure override returns (bool) {
+    function canFreeze(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, address caller)
+        external
+        pure
+        override
+        returns (bool)
+    {
         return caller == paymentInfo.payer;
     }
 
     /// @inheritdoc IFreezePolicy
-    function canUnfreeze(
-        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
-        address caller
-    ) external pure override returns (bool) {
+    function canUnfreeze(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, address caller)
+        external
+        pure
+        override
+        returns (bool)
+    {
         return caller == paymentInfo.payer;
     }
 }

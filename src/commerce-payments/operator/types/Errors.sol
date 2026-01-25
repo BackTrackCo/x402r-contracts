@@ -15,3 +15,6 @@ error InvalidFeeReceiver();
 error UnauthorizedCaller();
 error ETHTransferFailed();
 
+// ============ Condition Errors ============
+error ConditionNotMet();
+

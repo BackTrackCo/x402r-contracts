@@ -19,6 +19,14 @@ event ReleaseExecuted(
     uint256 timestamp
 );
 
+event ChargeExecuted(
+    bytes32 indexed paymentInfoHash,
+    address indexed payer,
+    address indexed receiver,
+    uint256 amount,
+    uint256 timestamp
+);
+
 event RefundExecuted(
     AuthCaptureEscrow.PaymentInfo paymentInfo,
     address indexed payer,

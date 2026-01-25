@@ -13,15 +13,16 @@ import {
     InvalidAuthorizationExpiry,
     InvalidFeeBps,
     InvalidFeeReceiver,
-    ETHTransferFailed
+    ETHTransferFailed,
+    ConditionNotMet
 } from "../types/Errors.sol";
 import {IOperator} from "../types/IOperator.sol";
-import {IBeforeHook} from "../../hooks/types/IBeforeHook.sol";
-import {IAfterHook} from "../../hooks/types/IAfterHook.sol";
-import {AUTHORIZE, RELEASE, REFUND_IN_ESCROW, REFUND_POST_ESCROW} from "../../hooks/types/Actions.sol";
+import {ICondition} from "../../conditions/ICondition.sol";
+import {IRecorder} from "../../conditions/IRecorder.sol";
 import {PaymentState} from "../types/Types.sol";
 import {
     AuthorizationCreated,
+    ChargeExecuted,
     ReleaseExecuted,
     RefundExecuted,
     ProtocolFeesEnabledUpdated,
@@ -34,22 +35,43 @@ import {
  *         Anyone (agents, robots, humans) can post jobs, anyone can execute them, payment held in escrow
  *         until verification via release condition contract.
  *
- * @dev Pull Model Architecture:
- *      - Operator controls flow, hooks are optional policy plugins
- *      - 2 hook slots: BEFORE_HOOK and AFTER_HOOK
- *      - address(0) = default behavior (AlwaysAllow for BEFORE, NoOp for AFTER)
- *      - Hooks receive action parameter (AUTHORIZE, RELEASE, REFUND_IN_ESCROW, REFUND_POST_ESCROW)
- *      - BEFORE hooks revert if action is not allowed (no return value)
- *      - AFTER hooks are notifications (called after action succeeds)
+ * @dev Condition Combinator Architecture:
+ *      - Operator controls flow, conditions and recorders are composable plugins
+ *      - 10 slots: 5 conditions (before checks) + 5 recorders (after state updates)
+ *      - address(0) = default behavior (allow for conditions, no-op for recorders)
+ *      - Conditions implement ICondition.check() -> returns bool (true = allowed)
+ *      - Recorders implement IRecorder.record() -> updates state after action
+ *      - Conditions can be composed using combinators (Or, And, Not)
+ *
+ *      Slots:
+ *      - AUTHORIZE_CONDITION / AUTHORIZE_RECORDER
+ *      - CHARGE_CONDITION / CHARGE_RECORDER
+ *      - RELEASE_CONDITION / RELEASE_RECORDER
+ *      - REFUND_IN_ESCROW_CONDITION / REFUND_IN_ESCROW_RECORDER
+ *      - REFUND_POST_ESCROW_CONDITION / REFUND_POST_ESCROW_RECORDER
  *
  *      Flow for each action:
- *      User -> operator.action() -> [BEFORE_HOOK(action)?] -> escrow -> [AFTER_HOOK(action)?]
+ *      User -> operator.action() -> [condition.check()?] -> escrow -> [recorder.record()?]
  *
  * ARCHITECTURE: Implements IOperator. Users call operator methods directly:
  *        User -> operator.authorize() -> escrow.authorize()
+ *        User -> operator.charge() -> escrow.charge()
  *        User -> operator.release() -> escrow.capture()
  */
 contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
+    /// @notice Configuration struct for condition/recorder slots
+    struct ConditionConfig {
+        address authorizeCondition;
+        address authorizeRecorder;
+        address chargeCondition;
+        address chargeRecorder;
+        address releaseCondition;
+        address releaseRecorder;
+        address refundInEscrowCondition;
+        address refundInEscrowRecorder;
+        address refundPostEscrowCondition;
+        address refundPostEscrowRecorder;
+    }
 
     // ============ Core State ============
     AuthCaptureEscrow public immutable ESCROW;
@@ -66,10 +88,21 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
     uint256 public immutable PROTOCOL_FEE_PERCENTAGE;
     uint256 public immutable MAX_ARBITER_FEE_RATE;
 
-    // ============ Hook Slots ============
-    // address(0) = default behavior (AlwaysAllow for BEFORE, NoOp for AFTER)
-    IBeforeHook public immutable BEFORE_HOOK;
-    IAfterHook public immutable AFTER_HOOK;
+    // ============ Condition Slots (before-action checks) ============
+    // address(0) = always allow (default behavior)
+    ICondition public immutable AUTHORIZE_CONDITION;
+    ICondition public immutable CHARGE_CONDITION;
+    ICondition public immutable RELEASE_CONDITION;
+    ICondition public immutable REFUND_IN_ESCROW_CONDITION;
+    ICondition public immutable REFUND_POST_ESCROW_CONDITION;
+
+    // ============ Recorder Slots (after-action state updates) ============
+    // address(0) = no-op (default behavior)
+    IRecorder public immutable AUTHORIZE_RECORDER;
+    IRecorder public immutable CHARGE_RECORDER;
+    IRecorder public immutable RELEASE_RECORDER;
+    IRecorder public immutable REFUND_IN_ESCROW_RECORDER;
+    IRecorder public immutable REFUND_POST_ESCROW_RECORDER;
 
     address public immutable protocolFeeRecipient;
     bool public feesEnabled;
@@ -81,8 +114,7 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         uint256 _protocolFeePercentage,
         address _arbiter,
         address _owner,
-        address _beforeHook,
-        address _afterHook
+        ConditionConfig memory _conditions
     ) {
         if (_escrow == address(0)) revert ZeroEscrow();
         if (_arbiter == address(0)) revert ZeroArbiter();
@@ -101,9 +133,19 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         PROTOCOL_FEE_PERCENTAGE = _protocolFeePercentage;
         MAX_ARBITER_FEE_RATE = (_maxTotalFeeRate * (100 - _protocolFeePercentage)) / 100;
 
-        // Set hook slots (address(0) = default behavior)
-        BEFORE_HOOK = IBeforeHook(_beforeHook);
-        AFTER_HOOK = IAfterHook(_afterHook);
+        // Set condition slots (address(0) = always allow)
+        AUTHORIZE_CONDITION = ICondition(_conditions.authorizeCondition);
+        CHARGE_CONDITION = ICondition(_conditions.chargeCondition);
+        RELEASE_CONDITION = ICondition(_conditions.releaseCondition);
+        REFUND_IN_ESCROW_CONDITION = ICondition(_conditions.refundInEscrowCondition);
+        REFUND_POST_ESCROW_CONDITION = ICondition(_conditions.refundPostEscrowCondition);
+
+        // Set recorder slots (address(0) = no-op)
+        AUTHORIZE_RECORDER = IRecorder(_conditions.authorizeRecorder);
+        CHARGE_RECORDER = IRecorder(_conditions.chargeRecorder);
+        RELEASE_RECORDER = IRecorder(_conditions.releaseRecorder);
+        REFUND_IN_ESCROW_RECORDER = IRecorder(_conditions.refundInEscrowRecorder);
+        REFUND_POST_ESCROW_RECORDER = IRecorder(_conditions.refundPostEscrowRecorder);
     }
 
     // ============ Owner Functions ============
@@ -120,7 +162,7 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
 
     /**
      * @notice Authorize payment via Base Commerce Payments escrow
-     * @dev Pull model: calls BEFORE_HOOK(AUTHORIZE), performs authorization, then calls AFTER_HOOK(AUTHORIZE)
+     * @dev Checks AUTHORIZE_CONDITION, performs authorization, then calls AUTHORIZE_RECORDER
      * @param paymentInfo PaymentInfo struct with required values:
      *        - operator == address(this)
      *        - authorizationExpiry == type(uint48).max
@@ -135,17 +177,15 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         uint256 amount,
         address tokenCollector,
         bytes calldata collectorData
-    ) external validOperator(paymentInfo) {
+    ) external validOperator(paymentInfo) validFees(paymentInfo, MAX_TOTAL_FEE_RATE) {
         // ============ CHECKS ============
-        // Check BEFORE_HOOK (address(0) = always allow, otherwise reverts if not allowed)
-        if (address(BEFORE_HOOK) != address(0)) {
-            BEFORE_HOOK.beforeAction(AUTHORIZE, paymentInfo, amount, msg.sender);
+        // Check AUTHORIZE_CONDITION (address(0) = always allow)
+        if (address(AUTHORIZE_CONDITION) != address(0)) {
+            if (!AUTHORIZE_CONDITION.check(paymentInfo, msg.sender)) {
+                revert ConditionNotMet();
+            }
         }
         if (paymentInfo.authorizationExpiry != type(uint48).max) revert InvalidAuthorizationExpiry();
-        if (paymentInfo.minFeeBps != MAX_TOTAL_FEE_RATE || paymentInfo.maxFeeBps != MAX_TOTAL_FEE_RATE) {
-            revert InvalidFeeBps();
-        }
-        if (paymentInfo.feeReceiver != address(this)) revert InvalidFeeReceiver();
 
         // ============ EFFECTS ============
         // Compute hash and update state before external call (CEI pattern)
@@ -157,34 +197,78 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         // ============ INTERACTIONS ============
         ESCROW.authorize(paymentInfo, amount, tokenCollector, collectorData);
 
-        // Notify AFTER_HOOK (address(0) = no-op)
-        if (address(AFTER_HOOK) != address(0)) {
-            AFTER_HOOK.afterAction(AUTHORIZE, paymentInfo, amount, msg.sender);
+        // Call AUTHORIZE_RECORDER (address(0) = no-op)
+        if (address(AUTHORIZE_RECORDER) != address(0)) {
+            AUTHORIZE_RECORDER.record(paymentInfo, amount, msg.sender);
         }
 
-        emit AuthorizationCreated(
-            paymentInfoHash,
-            paymentInfo.payer,
-            paymentInfo.receiver,
-            amount,
-            block.timestamp
-        );
+        emit AuthorizationCreated(paymentInfoHash, paymentInfo.payer, paymentInfo.receiver, amount, block.timestamp);
+    }
+
+    /**
+     * @notice Direct charge - collects payment and immediately transfers to receiver
+     * @dev Checks CHARGE_CONDITION, performs charge, then calls CHARGE_RECORDER.
+     *      Unlike authorize(), funds go directly to receiver (no escrow hold).
+     *      Refunds are only possible via refundPostEscrow().
+     * @param paymentInfo PaymentInfo struct with required values:
+     *        - operator == address(this)
+     *        - minFeeBps == maxFeeBps == MAX_TOTAL_FEE_RATE
+     *        - feeReceiver == address(this)
+     * @param amount Amount to charge
+     * @param tokenCollector Address of the token collector
+     * @param collectorData Data to pass to the token collector
+     */
+    function charge(
+        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
+        uint256 amount,
+        address tokenCollector,
+        bytes calldata collectorData
+    ) external validOperator(paymentInfo) validFees(paymentInfo, MAX_TOTAL_FEE_RATE) {
+        // ============ CHECKS ============
+        // Check CHARGE_CONDITION (address(0) = always allow)
+        if (address(CHARGE_CONDITION) != address(0)) {
+            if (!CHARGE_CONDITION.check(paymentInfo, msg.sender)) {
+                revert ConditionNotMet();
+            }
+        }
+
+        uint16 feeBps = uint16(MAX_TOTAL_FEE_RATE);
+        address feeReceiver = address(this);
+
+        // ============ EFFECTS ============
+        // Compute hash and update state before external call (CEI pattern)
+        bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
+        paymentInfos[paymentInfoHash] = paymentInfo;
+        _addPayerPayment(paymentInfo.payer, paymentInfoHash);
+        _addReceiverPayment(paymentInfo.receiver, paymentInfoHash);
+
+        // ============ INTERACTIONS ============
+        ESCROW.charge(paymentInfo, amount, tokenCollector, collectorData, feeBps, feeReceiver);
+
+        // Call CHARGE_RECORDER (address(0) = no-op)
+        if (address(CHARGE_RECORDER) != address(0)) {
+            CHARGE_RECORDER.record(paymentInfo, amount, msg.sender);
+        }
+
+        emit ChargeExecuted(paymentInfoHash, paymentInfo.payer, paymentInfo.receiver, amount, block.timestamp);
     }
 
     /**
      * @notice Release funds to receiver
-     * @dev Pull model: calls BEFORE_HOOK(RELEASE), performs capture, then calls AFTER_HOOK(RELEASE)
+     * @dev Checks RELEASE_CONDITION, performs capture, then calls RELEASE_RECORDER
      * @param paymentInfo PaymentInfo struct
      * @param amount Amount to release
      */
-    function release(
-        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
-        uint256 amount
-    ) external validOperator(paymentInfo) {
+    function release(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount)
+        external
+        validOperator(paymentInfo)
+    {
         // ============ CHECKS ============
-        // Check BEFORE_HOOK (address(0) = always allow, otherwise reverts if not allowed)
-        if (address(BEFORE_HOOK) != address(0)) {
-            BEFORE_HOOK.beforeAction(RELEASE, paymentInfo, amount, msg.sender);
+        // Check RELEASE_CONDITION (address(0) = always allow)
+        if (address(RELEASE_CONDITION) != address(0)) {
+            if (!RELEASE_CONDITION.check(paymentInfo, msg.sender)) {
+                revert ConditionNotMet();
+            }
         }
 
         uint16 feeBps = uint16(MAX_TOTAL_FEE_RATE);
@@ -198,27 +282,29 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         // Forward to escrow - escrow validates payment exists
         ESCROW.capture(paymentInfo, amount, feeBps, feeReceiver);
 
-        // Notify AFTER_HOOK (address(0) = no-op)
-        if (address(AFTER_HOOK) != address(0)) {
-            AFTER_HOOK.afterAction(RELEASE, paymentInfo, amount, msg.sender);
+        // Call RELEASE_RECORDER (address(0) = no-op)
+        if (address(RELEASE_RECORDER) != address(0)) {
+            RELEASE_RECORDER.record(paymentInfo, amount, msg.sender);
         }
     }
 
     /**
      * @notice Refund funds while still in escrow (before capture)
-     * @dev Pull model: calls BEFORE_HOOK(REFUND_IN_ESCROW), performs partialVoid, then calls AFTER_HOOK
-     *      Typically receiver or arbiter can call (controlled via hook).
+     * @dev Checks REFUND_IN_ESCROW_CONDITION, performs partialVoid, then calls REFUND_IN_ESCROW_RECORDER
+     *      Typically receiver or arbiter can call (controlled via condition).
      * @param paymentInfo PaymentInfo struct
      * @param amount Amount to return to payer
      */
-    function refundInEscrow(
-        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
-        uint120 amount
-    ) external validOperator(paymentInfo) {
+    function refundInEscrow(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint120 amount)
+        external
+        validOperator(paymentInfo)
+    {
         // ============ CHECKS ============
-        // Check BEFORE_HOOK (address(0) = always allow, otherwise reverts if not allowed)
-        if (address(BEFORE_HOOK) != address(0)) {
-            BEFORE_HOOK.beforeAction(REFUND_IN_ESCROW, paymentInfo, amount, msg.sender);
+        // Check REFUND_IN_ESCROW_CONDITION (address(0) = always allow)
+        if (address(REFUND_IN_ESCROW_CONDITION) != address(0)) {
+            if (!REFUND_IN_ESCROW_CONDITION.check(paymentInfo, msg.sender)) {
+                revert ConditionNotMet();
+            }
         }
 
         // ============ EFFECTS ============
@@ -229,15 +315,15 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         // Forward to escrow's partialVoid - escrow validates payment exists
         ESCROW.partialVoid(paymentInfo, amount);
 
-        // Notify AFTER_HOOK (address(0) = no-op)
-        if (address(AFTER_HOOK) != address(0)) {
-            AFTER_HOOK.afterAction(REFUND_IN_ESCROW, paymentInfo, amount, msg.sender);
+        // Call REFUND_IN_ESCROW_RECORDER (address(0) = no-op)
+        if (address(REFUND_IN_ESCROW_RECORDER) != address(0)) {
+            REFUND_IN_ESCROW_RECORDER.record(paymentInfo, amount, msg.sender);
         }
     }
 
     /**
      * @notice Refund captured funds back to payer (after capture/release)
-     * @dev Pull model: calls BEFORE_HOOK(REFUND_POST_ESCROW), performs refund, then calls AFTER_HOOK
+     * @dev Checks REFUND_POST_ESCROW_CONDITION, performs refund, then calls REFUND_POST_ESCROW_RECORDER
      *      Permission is enforced by the token collector (e.g., receiver must have approved it,
      *      or collectorData contains receiver's signature). Anyone can call, but refund only
      *      succeeds if the token collector can source the funds.
@@ -253,9 +339,11 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         bytes calldata collectorData
     ) external validOperator(paymentInfo) {
         // ============ CHECKS ============
-        // Check BEFORE_HOOK (address(0) = always allow, otherwise reverts if not allowed)
-        if (address(BEFORE_HOOK) != address(0)) {
-            BEFORE_HOOK.beforeAction(REFUND_POST_ESCROW, paymentInfo, amount, msg.sender);
+        // Check REFUND_POST_ESCROW_CONDITION (address(0) = always allow)
+        if (address(REFUND_POST_ESCROW_CONDITION) != address(0)) {
+            if (!REFUND_POST_ESCROW_CONDITION.check(paymentInfo, msg.sender)) {
+                revert ConditionNotMet();
+            }
         }
 
         // ============ EFFECTS ============
@@ -266,9 +354,9 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         // Forward to escrow's refund - token collector enforces permission
         ESCROW.refund(paymentInfo, amount, tokenCollector, collectorData);
 
-        // Notify AFTER_HOOK (address(0) = no-op)
-        if (address(AFTER_HOOK) != address(0)) {
-            AFTER_HOOK.afterAction(REFUND_POST_ESCROW, paymentInfo, amount, msg.sender);
+        // Call REFUND_POST_ESCROW_RECORDER (address(0) = no-op)
+        if (address(REFUND_POST_ESCROW_RECORDER) != address(0)) {
+            REFUND_POST_ESCROW_RECORDER.record(paymentInfo, amount, msg.sender);
         }
     }
 

@@ -53,7 +53,7 @@ The `EscrowPeriodCondition` contract supports an optional freeze policy via the 
 3. **Custom `IFreezePolicy` Implementation**
    - Implement the `IFreezePolicy` interface with custom authorization logic
    - Can define any freeze/unfreeze rules (e.g., arbiter-only, multi-sig, time-based)
-   - See `src/commerce-payments/release-conditions/escrow-period/types/IFreezePolicy.sol` for interface
+   - See `src/commerce-payments/conditions/escrow-period/types/IFreezePolicy.sol` for interface
 
 **Example: Deploying with PayerFreezePolicy**
 
@@ -69,6 +69,42 @@ forge script script/DeployEscrowPeriodCondition.s.sol:DeployEscrowPeriodConditio
 ```
 
 **Note:** If `FREEZE_POLICY` is not set or is `address(0)`, freeze/unfreeze calls will revert with `NoFreezePolicy()` error.
+
+#### ArbitrationOperatorFactory API
+
+The `ArbitrationOperatorFactory` provides a single generic `deployOperator(OperatorConfig)` method. There are no convenience methods - users must construct the full `OperatorConfig` struct:
+
+```solidity
+struct OperatorConfig {
+    address arbiter;
+    address authorizeCondition;
+    address authorizeRecorder;
+    address releaseCondition;
+    address releaseRecorder;
+    address refundInEscrowCondition;
+    address refundInEscrowRecorder;
+    address refundPostEscrowCondition;
+    address refundPostEscrowRecorder;
+}
+```
+
+**Example: Deploy a simple operator (all conditions = address(0))**
+```solidity
+ArbitrationOperatorFactory.OperatorConfig memory config = ArbitrationOperatorFactory.OperatorConfig({
+    arbiter: arbiterAddress,
+    authorizeCondition: address(0),
+    authorizeRecorder: address(0),
+    releaseCondition: address(0),
+    releaseRecorder: address(0),
+    refundInEscrowCondition: address(0),
+    refundInEscrowRecorder: address(0),
+    refundPostEscrowCondition: address(0),
+    refundPostEscrowRecorder: address(0)
+});
+address operator = factory.deployOperator(config);
+```
+
+**Note:** `address(0)` for a condition means "allow all" (no restriction). `address(0)` for a recorder means "no-op" (no state recording).
 
 #### Factory Deployment
 

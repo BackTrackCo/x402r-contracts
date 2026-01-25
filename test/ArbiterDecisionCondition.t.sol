@@ -2,20 +2,35 @@
 pragma solidity ^0.8.28;
 
 import {Test, console} from "forge-std/Test.sol";
-import {ArbiterDecisionCondition, NotPayerOrArbiter} from "../src/commerce-payments/hooks/arbiter-decision/ArbiterDecisionCondition.sol";
 import {ArbitrationOperator} from "../src/commerce-payments/operator/arbitration/ArbitrationOperator.sol";
 import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
+import {ConditionNotMet} from "../src/commerce-payments/operator/types/Errors.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockEscrow} from "./mocks/MockEscrow.sol";
-import {RELEASE} from "../src/commerce-payments/hooks/types/Actions.sol";
 
+// Condition combinators
+import {ICondition} from "../src/commerce-payments/conditions/ICondition.sol";
+import {OrCondition} from "../src/commerce-payments/conditions/combinators/OrCondition.sol";
+import {PayerCondition} from "../src/commerce-payments/conditions/access/PayerCondition.sol";
+import {ArbiterCondition} from "../src/commerce-payments/conditions/access/ArbiterCondition.sol";
+import {ReceiverCondition} from "../src/commerce-payments/conditions/access/ReceiverCondition.sol";
+
+/**
+ * @title ArbiterDecisionConditionTest
+ * @notice Tests the arbiter decision pattern using condition combinators
+ * @dev Release condition: payer OR arbiter can release
+ *      Refund in escrow condition: receiver OR arbiter can refund
+ */
 contract ArbiterDecisionConditionTest is Test {
-    ArbiterDecisionCondition public condition;
     ArbitrationOperator public operator;
     ArbitrationOperatorFactory public operatorFactory;
     MockERC20 public token;
     MockEscrow public escrow;
+
+    // Conditions
+    OrCondition public releaseCondition; // payer OR arbiter
+    OrCondition public refundCondition; // receiver OR arbiter
 
     address public owner;
     address public protocolFeeRecipient;
@@ -25,8 +40,8 @@ contract ArbiterDecisionConditionTest is Test {
 
     uint256 public constant MAX_TOTAL_FEE_RATE = 50;
     uint256 public constant PROTOCOL_FEE_PERCENTAGE = 25;
-    uint256 public constant INITIAL_BALANCE = 1000000 * 10**18;
-    uint256 public constant PAYMENT_AMOUNT = 1000 * 10**18;
+    uint256 public constant INITIAL_BALANCE = 1000000 * 10 ** 18;
+    uint256 public constant PAYMENT_AMOUNT = 1000 * 10 ** 18;
 
     function setUp() public {
         owner = address(this);
@@ -39,25 +54,43 @@ contract ArbiterDecisionConditionTest is Test {
         token = new MockERC20("Test Token", "TEST");
         escrow = new MockEscrow();
 
-        // Deploy condition (uses payerBypass and arbiterBypass modifiers)
-        condition = new ArbiterDecisionCondition();
+        // Deploy atomic conditions
+        PayerCondition payerCond = new PayerCondition();
+        ArbiterCondition arbiterCond = new ArbiterCondition();
+        ReceiverCondition receiverCond = new ReceiverCondition();
+
+        // Create release condition: payer OR arbiter
+        ICondition[] memory releaseConditions = new ICondition[](2);
+        releaseConditions[0] = payerCond;
+        releaseConditions[1] = arbiterCond;
+        releaseCondition = new OrCondition(releaseConditions);
+
+        // Create refund condition: receiver OR arbiter
+        ICondition[] memory refundConditions = new ICondition[](2);
+        refundConditions[0] = receiverCond;
+        refundConditions[1] = arbiterCond;
+        refundCondition = new OrCondition(refundConditions);
 
         // Deploy operator factory
         operatorFactory = new ArbitrationOperatorFactory(
-            address(escrow),
-            protocolFeeRecipient,
-            MAX_TOTAL_FEE_RATE,
-            PROTOCOL_FEE_PERCENTAGE,
-            owner
+            address(escrow), protocolFeeRecipient, MAX_TOTAL_FEE_RATE, PROTOCOL_FEE_PERCENTAGE, owner
         );
 
-        // Deploy operator via factory with the arbiter decision condition
-        // BEFORE_HOOK = condition (arbiter or payer via bypass modifiers)
-        operator = ArbitrationOperator(operatorFactory.deployOperator(
-            arbiter,
-            address(condition),  // BEFORE_HOOK: arbiter or payer
-            address(0)           // AFTER_HOOK: no-op
-        ));
+        // Deploy operator with arbiter decision conditions
+        ArbitrationOperatorFactory.OperatorConfig memory config = ArbitrationOperatorFactory.OperatorConfig({
+            arbiter: arbiter,
+            authorizeCondition: address(0), // anyone can authorize
+            authorizeRecorder: address(0),
+            chargeCondition: address(0),
+            chargeRecorder: address(0),
+            releaseCondition: address(releaseCondition), // payer OR arbiter
+            releaseRecorder: address(0),
+            refundInEscrowCondition: address(refundCondition), // receiver OR arbiter
+            refundInEscrowRecorder: address(0),
+            refundPostEscrowCondition: address(0), // anyone
+            refundPostEscrowRecorder: address(0)
+        });
+        operator = ArbitrationOperator(operatorFactory.deployOperator(config));
 
         // Setup balances
         token.mint(payer, INITIAL_BALANCE);
@@ -114,12 +147,7 @@ contract ArbiterDecisionConditionTest is Test {
         MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
 
         // Authorize directly through operator
-        operator.authorize(
-            _toAuthCapturePaymentInfo(paymentInfo),
-            PAYMENT_AMOUNT,
-            address(0),
-            ""
-        );
+        operator.authorize(_toAuthCapturePaymentInfo(paymentInfo), PAYMENT_AMOUNT, address(0), "");
 
         bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
 
@@ -133,12 +161,12 @@ contract ArbiterDecisionConditionTest is Test {
 
         // Non-arbiter and non-payer cannot release
         vm.prank(receiver);
-        vm.expectRevert(NotPayerOrArbiter.selector);
+        vm.expectRevert(ConditionNotMet.selector);
         operator.release(paymentInfo, PAYMENT_AMOUNT);
 
         // Random address cannot release
         vm.prank(address(0x1234));
-        vm.expectRevert(NotPayerOrArbiter.selector);
+        vm.expectRevert(ConditionNotMet.selector);
         operator.release(paymentInfo, PAYMENT_AMOUNT);
     }
 
@@ -150,61 +178,94 @@ contract ArbiterDecisionConditionTest is Test {
         operator.release(paymentInfo, PAYMENT_AMOUNT);
     }
 
-    // ============ Payer Bypass Tests (via payerBypass modifier) ============
-
-    function test_PayerBypass_CanReleaseDirectlyViaOperator() public {
+    function test_Release_SucceedsForPayer() public {
         (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorizeDirectly();
 
-        // Non-arbiter cannot release
-        vm.prank(receiver);
-        vm.expectRevert(NotPayerOrArbiter.selector);
-        operator.release(paymentInfo, PAYMENT_AMOUNT);
-
-        // But payer can bypass via payerBypass modifier
+        // Payer can release
         vm.prank(payer);
         operator.release(paymentInfo, PAYMENT_AMOUNT);
     }
 
-    function test_PayerBypass_NonPayerCannotBypass() public {
+    // ============ Refund In Escrow Tests ============
+
+    function test_RefundInEscrow_RevertsIfNotReceiverOrArbiter() public {
         (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorizeDirectly();
 
-        // Non-payer and non-arbiter cannot release
-        vm.prank(receiver);
-        vm.expectRevert(NotPayerOrArbiter.selector);
-        operator.release(paymentInfo, PAYMENT_AMOUNT);
+        // Payer cannot refund
+        vm.prank(payer);
+        vm.expectRevert(ConditionNotMet.selector);
+        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
 
+        // Random address cannot refund
         vm.prank(address(0x1234));
-        vm.expectRevert(NotPayerOrArbiter.selector);
-        operator.release(paymentInfo, PAYMENT_AMOUNT);
+        vm.expectRevert(ConditionNotMet.selector);
+        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
     }
 
-    // ============ Direct Hook Tests ============
+    function test_RefundInEscrow_SucceedsForReceiver() public {
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorizeDirectly();
 
-    function test_Condition_RevertsBased_ForNonPayerOrArbiter() public {
-        MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
-        AuthCaptureEscrow.PaymentInfo memory authInfo = _toAuthCapturePaymentInfo(paymentInfo);
-        
-        // Should revert for non-payer and non-arbiter on RELEASE action
-        vm.expectRevert(NotPayerOrArbiter.selector);
-        condition.beforeAction(RELEASE, authInfo, PAYMENT_AMOUNT, receiver);
-        
-        vm.expectRevert(NotPayerOrArbiter.selector);
-        condition.beforeAction(RELEASE, authInfo, PAYMENT_AMOUNT, address(0x1234));
+        // Receiver can refund
+        vm.prank(receiver);
+        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
     }
 
-    function test_Condition_Succeeds_ForPayer() public view {
-        MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
-        AuthCaptureEscrow.PaymentInfo memory authInfo = _toAuthCapturePaymentInfo(paymentInfo);
-        
-        // Should not revert for payer (any action)
-        condition.beforeAction(RELEASE, authInfo, PAYMENT_AMOUNT, payer);
+    function test_RefundInEscrow_SucceedsForArbiter() public {
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorizeDirectly();
+
+        // Arbiter can refund
+        vm.prank(arbiter);
+        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
     }
 
-    function test_Condition_Succeeds_ForArbiter() public view {
+    // ============ Direct Condition Tests ============
+
+    function test_Condition_ReleaseReturnsFalse_ForNonPayerOrArbiter() public view {
         MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
         AuthCaptureEscrow.PaymentInfo memory authInfo = _toAuthCapturePaymentInfo(paymentInfo);
-        
-        // Should not revert for arbiter (any action)
-        condition.beforeAction(RELEASE, authInfo, PAYMENT_AMOUNT, arbiter);
+
+        // Should return false for non-payer and non-arbiter
+        assertFalse(releaseCondition.check(authInfo, receiver));
+        assertFalse(releaseCondition.check(authInfo, address(0x1234)));
+    }
+
+    function test_Condition_ReleaseReturnsTrue_ForPayer() public view {
+        MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+        AuthCaptureEscrow.PaymentInfo memory authInfo = _toAuthCapturePaymentInfo(paymentInfo);
+
+        // Should return true for payer
+        assertTrue(releaseCondition.check(authInfo, payer));
+    }
+
+    function test_Condition_ReleaseReturnsTrue_ForArbiter() public view {
+        MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+        AuthCaptureEscrow.PaymentInfo memory authInfo = _toAuthCapturePaymentInfo(paymentInfo);
+
+        // Should return true for arbiter
+        assertTrue(releaseCondition.check(authInfo, arbiter));
+    }
+
+    function test_Condition_RefundReturnsFalse_ForPayer() public view {
+        MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+        AuthCaptureEscrow.PaymentInfo memory authInfo = _toAuthCapturePaymentInfo(paymentInfo);
+
+        // Should return false for payer (only receiver or arbiter can refund)
+        assertFalse(refundCondition.check(authInfo, payer));
+    }
+
+    function test_Condition_RefundReturnsTrue_ForReceiver() public view {
+        MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+        AuthCaptureEscrow.PaymentInfo memory authInfo = _toAuthCapturePaymentInfo(paymentInfo);
+
+        // Should return true for receiver
+        assertTrue(refundCondition.check(authInfo, receiver));
+    }
+
+    function test_Condition_RefundReturnsTrue_ForArbiter() public view {
+        MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+        AuthCaptureEscrow.PaymentInfo memory authInfo = _toAuthCapturePaymentInfo(paymentInfo);
+
+        // Should return true for arbiter
+        assertTrue(refundCondition.check(authInfo, arbiter));
     }
 }

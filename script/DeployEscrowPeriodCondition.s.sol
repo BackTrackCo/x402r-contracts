@@ -2,7 +2,7 @@
 pragma solidity ^0.8.23;
 
 import {Script, console} from "forge-std/Script.sol";
-import {EscrowPeriodConditionFactory} from "../src/commerce-payments/hooks/escrow-period/EscrowPeriodConditionFactory.sol";
+import {EscrowPeriodConditionFactory} from "../src/commerce-payments/conditions/escrow-period/EscrowPeriodConditionFactory.sol";
 
 /**
  * @title DeployEscrowPeriodCondition

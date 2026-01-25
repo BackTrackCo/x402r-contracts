@@ -68,12 +68,21 @@ contract RefundRequestTest is Test {
             owner
         );
 
-        // Deploy operator with release condition as BEFORE_HOOK
-        operator = ArbitrationOperator(operatorFactory.deployOperator(
-            arbiter,
-            address(releaseCondition), // BEFORE_HOOK: requires approval
-            address(0)                  // AFTER_HOOK: no-op
-        ));
+        // Deploy operator with release condition
+        ArbitrationOperatorFactory.OperatorConfig memory config = ArbitrationOperatorFactory.OperatorConfig({
+            arbiter: arbiter,
+            authorizeCondition: address(0),
+            authorizeRecorder: address(0),
+            chargeCondition: address(0),
+            chargeRecorder: address(0),
+            releaseCondition: address(releaseCondition), // requires approval for release
+            releaseRecorder: address(0),
+            refundInEscrowCondition: address(0),
+            refundInEscrowRecorder: address(0),
+            refundPostEscrowCondition: address(0),
+            refundPostEscrowRecorder: address(0)
+        });
+        operator = ArbitrationOperator(operatorFactory.deployOperator(config));
 
         // Deploy refund request (no factory needed - singleton)
         refundRequest = new RefundRequest();

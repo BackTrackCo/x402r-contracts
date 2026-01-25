@@ -10,24 +10,41 @@ import {OperatorDeployed} from "./types/Events.sol";
 /**
  * @title ArbitrationOperatorFactory
  * @notice Factory contract that deploys ArbitrationOperator instances for x402r/Chamba.
- *         Each unique (arbiter, hooks) configuration gets its own operator contract.
+ *         Each unique configuration gets its own operator contract.
  *
- * @dev Pull Model Architecture:
- *      - Operators have 2 hook slots: BEFORE_HOOK and AFTER_HOOK
- *      - address(0) = default behavior (AlwaysAllow for BEFORE, NoOp for AFTER)
- *      - Hooks receive action parameter (AUTHORIZE, RELEASE, REFUND_IN_ESCROW, REFUND_POST_ESCROW)
- *      - Client signs ERC-3009 with operator in PaymentInfo, committing to arbiter and hooks
+ * @dev Condition Combinator Architecture:
+ *      - Operators have 10 slots: 5 conditions (before checks) + 5 recorders (after state updates)
+ *      - address(0) = default behavior (allow for conditions, no-op for recorders)
+ *      - Conditions implement ICondition.check() -> returns bool (true = allowed)
+ *      - Recorders implement IRecorder.record() -> updates state after action
+ *      - Conditions can be composed using combinators (Or, And, Not)
+ *      - Client signs ERC-3009 with operator in PaymentInfo, committing to all conditions
  *      - Factory owner controls fee settings on all deployed operators
  *      - Works with Base Commerce Payments as designed
  */
 contract ArbitrationOperatorFactory is Ownable {
+    /// @notice Configuration struct for deploying operators
+    struct OperatorConfig {
+        address arbiter;
+        address authorizeCondition;
+        address authorizeRecorder;
+        address chargeCondition;
+        address chargeRecorder;
+        address releaseCondition;
+        address releaseRecorder;
+        address refundInEscrowCondition;
+        address refundInEscrowRecorder;
+        address refundPostEscrowCondition;
+        address refundPostEscrowRecorder;
+    }
+
     // Immutable configuration shared by all deployed operators
     address public immutable ESCROW;
     address public immutable PROTOCOL_FEE_RECIPIENT;
     uint256 public immutable MAX_TOTAL_FEE_RATE;
     uint256 public immutable PROTOCOL_FEE_PERCENTAGE;
 
-    // keccak256(arbiter, hooks...) => operator address
+    // keccak256(config) => operator address
     mapping(bytes32 => address) public operators;
 
     constructor(
@@ -51,17 +68,11 @@ contract ArbitrationOperatorFactory is Ownable {
 
     /**
      * @notice Get the operator address for a given configuration
-     * @param arbiter The arbiter address for dispute resolution
-     * @param beforeHook BEFORE_HOOK address (address(0) = always allow)
-     * @param afterHook AFTER_HOOK address (address(0) = no-op)
+     * @param config The operator configuration
      * @return operator The operator address (address(0) if not deployed)
      */
-    function getOperator(
-        address arbiter,
-        address beforeHook,
-        address afterHook
-    ) external view returns (address) {
-        bytes32 key = _computeKey(arbiter, beforeHook, afterHook);
+    function getOperator(OperatorConfig calldata config) external view returns (address) {
+        bytes32 key = _computeKey(config);
         return operators[key];
     }
 
@@ -69,21 +80,14 @@ contract ArbitrationOperatorFactory is Ownable {
      * @notice Calculate the deterministic address for an operator
      * @dev Uses CREATE2 formula: keccak256(0xff ++ address(this) ++ salt ++ keccak256(bytecode))
      */
-    function computeAddress(
-        address arbiter,
-        address beforeHook,
-        address afterHook
-    ) external view returns (address operator) {
-        bytes32 key = _computeKey(arbiter, beforeHook, afterHook);
-        bytes memory bytecode = _getBytecode(arbiter, beforeHook, afterHook);
+    function computeAddress(OperatorConfig calldata config) external view returns (address operator) {
+        bytes32 key = _computeKey(config);
+        bytes memory bytecode = _getBytecode(config);
         bytes32 bytecodeHash = keccak256(bytecode);
 
-        return address(uint160(uint256(keccak256(abi.encodePacked(
-            bytes1(0xff),
-            address(this),
-            key,
-            bytecodeHash
-        )))));
+        return address(
+            uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), key, bytecodeHash))))
+        );
     }
 
     /**
@@ -91,20 +95,14 @@ contract ArbitrationOperatorFactory is Ownable {
      * @dev Idempotent - returns existing operator if already deployed.
      *      Factory owner becomes the operator owner (controls fee settings).
      *      Uses CREATE2 for deterministic addresses.
-     * @param arbiter The arbiter address for dispute resolution
-     * @param beforeHook BEFORE_HOOK address (address(0) = always allow)
-     * @param afterHook AFTER_HOOK address (address(0) = no-op)
+     * @param config The operator configuration
      * @return operator The operator address
      */
-    function deployOperator(
-        address arbiter,
-        address beforeHook,
-        address afterHook
-    ) external returns (address operator) {
+    function deployOperator(OperatorConfig calldata config) external returns (address operator) {
         // ============ CHECKS ============
-        if (arbiter == address(0)) revert ZeroAddress();
+        if (config.arbiter == address(0)) revert ZeroAddress();
 
-        bytes32 key = _computeKey(arbiter, beforeHook, afterHook);
+        bytes32 key = _computeKey(config);
 
         // Return existing if already deployed (idempotent)
         if (operators[key] != address(0)) {
@@ -113,31 +111,40 @@ contract ArbitrationOperatorFactory is Ownable {
 
         // ============ EFFECTS ============
         // Compute deterministic CREATE2 address before deployment (CEI pattern)
-        bytes memory bytecode = _getBytecode(arbiter, beforeHook, afterHook);
-        operator = address(uint160(uint256(keccak256(abi.encodePacked(
-            bytes1(0xff),
-            address(this),
-            key,
-            keccak256(bytecode)
-        )))));
+        bytes memory bytecode = _getBytecode(config);
+        operator =
+            address(uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), key, keccak256(bytecode))))));
 
         // Store before external interaction
         operators[key] = operator;
 
-        emit OperatorDeployed(operator, arbiter, beforeHook);
+        emit OperatorDeployed(operator, config.arbiter, config.releaseCondition);
 
         // ============ INTERACTIONS ============
         // Deploy new operator - address is deterministic via CREATE2
-        address deployed = address(new ArbitrationOperator{salt: key}(
-            ESCROW,
-            PROTOCOL_FEE_RECIPIENT,
-            MAX_TOTAL_FEE_RATE,
-            PROTOCOL_FEE_PERCENTAGE,
-            arbiter,
-            owner(),
-            beforeHook,
-            afterHook
-        ));
+        ArbitrationOperator.ConditionConfig memory conditions = ArbitrationOperator.ConditionConfig({
+            authorizeCondition: config.authorizeCondition,
+            authorizeRecorder: config.authorizeRecorder,
+            chargeCondition: config.chargeCondition,
+            chargeRecorder: config.chargeRecorder,
+            releaseCondition: config.releaseCondition,
+            releaseRecorder: config.releaseRecorder,
+            refundInEscrowCondition: config.refundInEscrowCondition,
+            refundInEscrowRecorder: config.refundInEscrowRecorder,
+            refundPostEscrowCondition: config.refundPostEscrowCondition,
+            refundPostEscrowRecorder: config.refundPostEscrowRecorder
+        });
+        address deployed = address(
+            new ArbitrationOperator{salt: key}(
+                ESCROW,
+                PROTOCOL_FEE_RECIPIENT,
+                MAX_TOTAL_FEE_RATE,
+                PROTOCOL_FEE_PERCENTAGE,
+                config.arbiter,
+                owner(),
+                conditions
+            )
+        );
 
         // Sanity check - CREATE2 address must match
         assert(deployed == operator);
@@ -157,19 +164,39 @@ contract ArbitrationOperatorFactory is Ownable {
 
     // ============ Internal Helpers ============
 
-    function _computeKey(
-        address arbiter,
-        address beforeHook,
-        address afterHook
-    ) internal pure returns (bytes32) {
-        return keccak256(abi.encodePacked(arbiter, beforeHook, afterHook));
+    function _computeKey(OperatorConfig memory config) internal pure returns (bytes32) {
+        return keccak256(
+            abi.encodePacked(
+                config.arbiter,
+                config.authorizeCondition,
+                config.authorizeRecorder,
+                config.chargeCondition,
+                config.chargeRecorder,
+                config.releaseCondition,
+                config.releaseRecorder,
+                config.refundInEscrowCondition,
+                config.refundInEscrowRecorder,
+                config.refundPostEscrowCondition,
+                config.refundPostEscrowRecorder
+            )
+        );
     }
 
-    function _getBytecode(
-        address arbiter,
-        address beforeHook,
-        address afterHook
-    ) internal view returns (bytes memory) {
+    function _getBytecode(OperatorConfig memory config) internal view returns (bytes memory) {
+        // Create the ConditionConfig struct for encoding
+        ArbitrationOperator.ConditionConfig memory conditions = ArbitrationOperator.ConditionConfig({
+            authorizeCondition: config.authorizeCondition,
+            authorizeRecorder: config.authorizeRecorder,
+            chargeCondition: config.chargeCondition,
+            chargeRecorder: config.chargeRecorder,
+            releaseCondition: config.releaseCondition,
+            releaseRecorder: config.releaseRecorder,
+            refundInEscrowCondition: config.refundInEscrowCondition,
+            refundInEscrowRecorder: config.refundInEscrowRecorder,
+            refundPostEscrowCondition: config.refundPostEscrowCondition,
+            refundPostEscrowRecorder: config.refundPostEscrowRecorder
+        });
+
         return abi.encodePacked(
             type(ArbitrationOperator).creationCode,
             abi.encode(
@@ -177,10 +204,9 @@ contract ArbitrationOperatorFactory is Ownable {
                 PROTOCOL_FEE_RECIPIENT,
                 MAX_TOTAL_FEE_RATE,
                 PROTOCOL_FEE_PERCENTAGE,
-                arbiter,
+                config.arbiter,
                 owner(),
-                beforeHook,
-                afterHook
+                conditions
             )
         );
     }

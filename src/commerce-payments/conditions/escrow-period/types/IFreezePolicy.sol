@@ -16,10 +16,10 @@ interface IFreezePolicy {
      * @param caller The address attempting to freeze
      * @return True if the caller is authorized to freeze
      */
-    function canFreeze(
-        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
-        address caller
-    ) external view returns (bool);
+    function canFreeze(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, address caller)
+        external
+        view
+        returns (bool);
 
     /**
      * @notice Check if a caller is authorized to unfreeze a payment
@@ -27,8 +27,8 @@ interface IFreezePolicy {
      * @param caller The address attempting to unfreeze
      * @return True if the caller is authorized to unfreeze
      */
-    function canUnfreeze(
-        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
-        address caller
-    ) external view returns (bool);
+    function canUnfreeze(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, address caller)
+        external
+        view
+        returns (bool);
 }

@@ -4,9 +4,9 @@ pragma solidity ^0.8.23;
 import {Script, console} from "forge-std/Script.sol";
 import {AuthCaptureEscrow} from "../lib/commerce-payments/src/AuthCaptureEscrow.sol";
 import {ERC3009PaymentCollector} from "../lib/commerce-payments/src/collectors/ERC3009PaymentCollector.sol";
-import {EscrowPeriodConditionFactory} from "../src/commerce-payments/hooks/escrow-period/EscrowPeriodConditionFactory.sol";
+import {EscrowPeriodConditionFactory} from "../src/commerce-payments/conditions/escrow-period/EscrowPeriodConditionFactory.sol";
 import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
-import {PayerFreezePolicy} from "../src/commerce-payments/hooks/escrow-period/PayerFreezePolicy.sol";
+import {PayerFreezePolicy} from "../src/commerce-payments/conditions/escrow-period/PayerFreezePolicy.sol";
 import {RefundRequest} from "../src/commerce-payments/requests/refund/RefundRequest.sol";
 
 /**

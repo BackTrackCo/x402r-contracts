@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {EscrowPeriodCondition} from "../../src/commerce-payments/hooks/escrow-period/EscrowPeriodCondition.sol";
-import {EscrowPeriodConditionFactory} from "../../src/commerce-payments/hooks/escrow-period/EscrowPeriodConditionFactory.sol";
+import {EscrowPeriodCondition} from "../../src/commerce-payments/conditions/escrow-period/EscrowPeriodCondition.sol";
+import {EscrowPeriodRecorder} from "../../src/commerce-payments/conditions/escrow-period/EscrowPeriodRecorder.sol";
+import {EscrowPeriodConditionFactory} from "../../src/commerce-payments/conditions/escrow-period/EscrowPeriodConditionFactory.sol";
 import {ArbitrationOperator} from "../../src/commerce-payments/operator/arbitration/ArbitrationOperator.sol";
 import {ArbitrationOperatorFactory} from "../../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
-import {PayerFreezePolicy} from "../../src/commerce-payments/hooks/escrow-period/PayerFreezePolicy.sol";
+import {PayerFreezePolicy} from "../../src/commerce-payments/conditions/escrow-period/PayerFreezePolicy.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockEscrow} from "../mocks/MockEscrow.sol";
@@ -17,6 +18,7 @@ import {MockEscrow} from "../mocks/MockEscrow.sol";
  */
 contract EscrowPeriodConditionInvariants {
     EscrowPeriodCondition public condition;
+    EscrowPeriodRecorder public recorder;
     EscrowPeriodConditionFactory public conditionFactory;
     ArbitrationOperator public operator;
     ArbitrationOperatorFactory public operatorFactory;
@@ -54,9 +56,11 @@ contract EscrowPeriodConditionInvariants {
         token = new MockERC20("Test", "TST");
         escrow = new MockEscrow();
         freezePolicy = new PayerFreezePolicy();
-        
+
         conditionFactory = new EscrowPeriodConditionFactory();
-        condition = EscrowPeriodCondition(conditionFactory.deployCondition(ESCROW_PERIOD, address(freezePolicy)));
+        (address recorderAddr, address conditionAddr) = conditionFactory.deploy(ESCROW_PERIOD, address(freezePolicy));
+        recorder = EscrowPeriodRecorder(recorderAddr);
+        condition = EscrowPeriodCondition(conditionAddr);
 
         operatorFactory = new ArbitrationOperatorFactory(
             address(escrow),
@@ -65,13 +69,22 @@ contract EscrowPeriodConditionInvariants {
             PROTOCOL_FEE_PERCENTAGE,
             owner
         );
-        
-        // Deploy operator with escrow period condition (same hook for BEFORE and AFTER)
-        operator = ArbitrationOperator(operatorFactory.deployOperator(
-            arbiter,
-            address(condition),   // BEFORE_HOOK: checks escrow period on RELEASE
-            address(condition)    // AFTER_HOOK: records auth time on AUTHORIZE
-        ));
+
+        // Deploy operator with escrow period condition and recorder
+        ArbitrationOperatorFactory.OperatorConfig memory config = ArbitrationOperatorFactory.OperatorConfig({
+            arbiter: arbiter,
+            authorizeCondition: address(0),
+            authorizeRecorder: address(recorder),  // Records auth time
+            chargeCondition: address(0),
+            chargeRecorder: address(0),
+            releaseCondition: address(condition),   // Checks escrow period + frozen
+            releaseRecorder: address(0),
+            refundInEscrowCondition: address(0),
+            refundInEscrowRecorder: address(0),
+            refundPostEscrowCondition: address(0),
+            refundPostEscrowRecorder: address(0)
+        });
+        operator = ArbitrationOperator(operatorFactory.deployOperator(config));
 
         // Setup balances
         token.mint(payer, type(uint256).max);
@@ -93,22 +106,22 @@ contract EscrowPeriodConditionInvariants {
         // Random payment hash that was never authorized
         bytes32 randomHash = keccak256(abi.encodePacked(block.timestamp, block.prevrandao));
         AuthCaptureEscrow.PaymentInfo memory fakePaymentInfo = _createPaymentInfo(randomHash);
-        return condition.getAuthorizationTime(fakePaymentInfo) == 0;
+        return recorder.getAuthorizationTime(fakePaymentInfo) == 0;
     }
 
     /**
      * @notice INVARIANT: Frozen payment cannot have release succeed through condition
-     * @dev Verifies that all tracked frozen payments remain frozen in the condition contract
+     * @dev Verifies that all tracked frozen payments remain frozen in the recorder contract
      */
     function echidna_frozen_blocks_release() public view returns (bool) {
         for (uint256 i = 0; i < frozenPayments.length; i++) {
             bytes32 hash = frozenPayments[i];
             if (isFrozen[hash]) {
-                // Get the payment info and check if condition still shows it as frozen
+                // Get the payment info and check if recorder still shows it as frozen
                 AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(hash);
-                if (!condition.isFrozen(paymentInfo)) {
+                if (!recorder.isFrozen(paymentInfo)) {
                     // Payment was unfrozen without our tracking - check if we unfroze it
-                    // If isFrozen[hash] is true but condition shows unfrozen, invariant broken
+                    // If isFrozen[hash] is true but recorder shows unfrozen, invariant broken
                     return false;
                 }
             }
@@ -125,7 +138,7 @@ contract EscrowPeriodConditionInvariants {
             bytes32 hash = authorizedPayments[i];
             if (isAuthorized[hash]) {
                 AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(hash);
-                uint256 authTime = condition.getAuthorizationTime(paymentInfo);
+                uint256 authTime = recorder.getAuthorizationTime(paymentInfo);
                 if (authTime > block.timestamp) {
                     return false;
                 }
@@ -157,11 +170,11 @@ contract EscrowPeriodConditionInvariants {
 
     /**
      * @notice Fuzz target: Try to authorize a payment
-     * @dev Pull model: authorize through operator (which calls AFTER_HOOK with AUTHORIZE)
+     * @dev Pull model: authorize through operator (which calls authorizeRecorder)
      */
     function fuzz_authorize(uint256 amount, uint256 salt) public {
         if (amount == 0 || amount > 1e30) return;
-        
+
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(bytes32(salt));
         bytes32 hash = escrow.getHash(MockEscrow.PaymentInfo({
             operator: paymentInfo.operator,
@@ -209,7 +222,7 @@ contract EscrowPeriodConditionInvariants {
         }));
 
         if (isAuthorized[hash] && !isFrozen[hash]) {
-            try condition.freeze(paymentInfo) {
+            try recorder.freeze(paymentInfo) {
                 isFrozen[hash] = true;
                 frozenPayments.push(hash);
             } catch {}
@@ -237,7 +250,7 @@ contract EscrowPeriodConditionInvariants {
         }));
 
         if (isFrozen[hash]) {
-            try condition.unfreeze(paymentInfo) {
+            try recorder.unfreeze(paymentInfo) {
                 isFrozen[hash] = false;
             } catch {}
         }
@@ -245,7 +258,7 @@ contract EscrowPeriodConditionInvariants {
 
     /**
      * @notice Fuzz target: Try to release a payment through operator
-     * @dev Pull model: release through operator (which checks BEFORE_HOOK with RELEASE)
+     * @dev Pull model: release through operator (which checks releaseCondition)
      */
     function fuzz_release(uint256 salt, uint256 amount) public {
         if (amount == 0 || amount > 1e30) return;

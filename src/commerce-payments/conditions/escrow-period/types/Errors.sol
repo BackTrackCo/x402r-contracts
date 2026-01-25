@@ -30,3 +30,9 @@ error EscrowPeriodNotPassed();
 
 /// @notice Payment was not authorized through this condition
 error NotAuthorized();
+
+/// @notice Invalid recorder address
+error InvalidRecorder();
+
+/// @notice Caller is not authorized
+error Unauthorized();
