@@ -24,3 +24,9 @@ error NotFrozen();
 
 /// @notice No freeze policy configured
 error NoFreezePolicy();
+
+/// @notice Escrow period has not passed yet
+error EscrowPeriodNotPassed();
+
+/// @notice Payment was not authorized through this condition
+error NotAuthorized();

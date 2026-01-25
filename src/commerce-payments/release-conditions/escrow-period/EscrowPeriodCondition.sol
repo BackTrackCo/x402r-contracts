@@ -2,16 +2,19 @@
 // CONTRACTS UNAUDITED: USE AT YOUR OWN RISK
 pragma solidity ^0.8.28;
 
-import {ICanCondition} from "../../operator/types/ICanCondition.sol";
-import {INoteCondition} from "../../operator/types/INoteCondition.sol";
+import {IBeforeHook} from "../../operator/types/IBeforeHook.sol";
+import {IAfterHook} from "../../operator/types/IAfterHook.sol";
+import {AUTHORIZE, RELEASE} from "../../operator/types/Actions.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {EscrowPeriodConditionAccess} from "./EscrowPeriodConditionAccess.sol";
 import {
     InvalidEscrowPeriod,
     FundsFrozen,
+    EscrowPeriodNotPassed,
     EscrowPeriodExpired,
     AlreadyFrozen,
-    NotFrozen
+    NotFrozen,
+    NotAuthorized
 } from "./types/Errors.sol";
 import {IFreezePolicy} from "./types/IFreezePolicy.sol";
 import {PaymentAuthorized, PaymentFrozen, PaymentUnfrozen} from "./types/Events.sol";
@@ -24,19 +27,19 @@ interface IArbitrationOperator {
 /**
  * @title EscrowPeriodCondition
  * @notice Release condition that enforces a time-based escrow period before funds can be released.
- *         Implements both ICanCondition (for CAN_RELEASE) and INoteCondition (for NOTE_AUTHORIZE).
- *         Payer can bypass this via the CAN_BYPASS condition (typically PayerOnly) for can() checks
- *         and NOTE_BYPASS condition for note() calls.
+ *         Implements both IBeforeHook and IAfterHook with action routing.
+ *         Uses payerBypass modifier for payer to release immediately.
  *         Supports freeze/unfreeze with optional policy-based authorization.
  *
  * @dev Pull Model Architecture:
- *      - Same contract address is passed to both NOTE_AUTHORIZE and CAN_RELEASE slots
- *      - note() records authorization time (called by operator after authorize) and delegates to NOTE_BYPASS if provided
- *      - can() checks escrow period with payer bypass via CAN_BYPASS
+ *      - Same contract address is passed as both BEFORE_HOOK and AFTER_HOOK to operator
+ *      - afterAction(AUTHORIZE) records authorization time
+ *      - beforeAction(RELEASE) checks escrow period (payer bypasses via modifier)
+ *      - Other actions are no-op / allow-through
  *
  *      Operator Configuration:
- *      NOTE_AUTHORIZE = escrowPeriodCondition  // records auth time
- *      CAN_RELEASE = escrowPeriodCondition     // same contract! checks escrow period
+ *      BEFORE_HOOK = escrowPeriodCondition
+ *      AFTER_HOOK = escrowPeriodCondition
  *
  * TRUST ASSUMPTIONS:
  *      - FREEZE_POLICY: The freeze policy contract is trusted to correctly determine who can
@@ -50,18 +53,12 @@ interface IArbitrationOperator {
  *        already trusted for transaction ordering. Shorter periods (< 1 minute) are acceptable
  *        on L2s given the sequencer trust model and faster block times (~2 seconds on Base).
  */
-contract EscrowPeriodCondition is ICanCondition, INoteCondition, EscrowPeriodConditionAccess {
+contract EscrowPeriodCondition is IBeforeHook, IAfterHook, EscrowPeriodConditionAccess {
     /// @notice Duration of the escrow period in seconds
     uint256 public immutable ESCROW_PERIOD;
 
     /// @notice Optional freeze policy contract (address(0) = no freeze support)
     IFreezePolicy public immutable FREEZE_POLICY;
-
-    /// @notice Bypass condition for payer in can() checks (e.g., PayerOnly)
-    address public immutable CAN_BYPASS;
-
-    /// @notice Bypass condition for payer in note() calls (e.g., PayerOnly)
-    address public immutable NOTE_BYPASS;
 
     /// @notice Stores the authorization time for each payment
     /// @dev Key: paymentInfoHash
@@ -71,78 +68,94 @@ contract EscrowPeriodCondition is ICanCondition, INoteCondition, EscrowPeriodCon
     /// @dev Key: paymentInfoHash
     mapping(bytes32 => bool) public frozen;
 
-    constructor(uint256 _escrowPeriod, address _freezePolicy, address _canBypass, address _noteBypass) {
+    constructor(uint256 _escrowPeriod, address _freezePolicy) {
         if (_escrowPeriod == 0) revert InvalidEscrowPeriod();
         ESCROW_PERIOD = _escrowPeriod;
         FREEZE_POLICY = IFreezePolicy(_freezePolicy);
-        CAN_BYPASS = _canBypass;
-        NOTE_BYPASS = _noteBypass;
     }
 
-    // ============ INoteCondition Implementation ============
+    // ============ IAfterHook Implementation ============
 
     /**
-     * @notice Record authorization time (called by operator in NOTE_AUTHORIZE slot)
-     * @dev Must validate msg.sender == paymentInfo.operator for security.
-     *      Also delegates to NOTE_BYPASS.note() if provided.
+     * @notice Called after an action occurs
+     * @dev Routes based on action parameter. Only AUTHORIZE is handled.
+     * @param action The action that occurred
      * @param paymentInfo PaymentInfo struct
-     * @param amount Amount authorized
-     * @param caller The address that called authorize
+     * @param amount Amount (unused for AUTHORIZE)
+     * @param caller The address that called authorize (unused)
      */
-    function note(
+    function afterAction(
+        bytes4 action,
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint256 amount,
         address caller
     ) external override onlyOperator(paymentInfo.operator) {
-        AuthCaptureEscrow escrow = IArbitrationOperator(paymentInfo.operator).ESCROW();
-        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
-        authorizationTimes[paymentInfoHash] = block.timestamp;
+        if (action == AUTHORIZE) {
+            AuthCaptureEscrow escrow = IArbitrationOperator(paymentInfo.operator).ESCROW();
+            bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+            authorizationTimes[paymentInfoHash] = block.timestamp;
 
-        emit PaymentAuthorized(paymentInfo, block.timestamp);
-
-        // Delegate to NOTE_BYPASS if provided
-        if (address(NOTE_BYPASS) != address(0)) {
-            try INoteCondition(NOTE_BYPASS).note(paymentInfo, amount, caller) {} catch {}
+            emit PaymentAuthorized(paymentInfo, block.timestamp);
         }
+        // Other actions: no-op
+
+        // Silence unused variable warnings
+        (amount, caller);
     }
 
-    // ============ ICanCondition Implementation ============
+    // ============ IBeforeHook Implementation ============
 
     /**
-     * @notice Check if release is allowed (called by operator in CAN_RELEASE slot)
-     * @dev Payer bypass via CAN_BYPASS (e.g., PayerOnly). If escrow period has passed
-     *      and funds are not frozen, anyone can release.
+     * @notice Check if action is allowed
+     * @dev Routes based on action parameter. Only RELEASE is guarded.
+     * @param action The action being performed
      * @param paymentInfo PaymentInfo struct
-     * @param amount Amount to release (passed to CAN_BYPASS)
-     * @param caller The address attempting to release
-     * @return True if release is allowed
+     * @param amount Amount (unused)
+     * @param caller The address attempting the action
      */
-    function can(
+    function beforeAction(
+        bytes4 action,
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint256 amount,
         address caller
-    ) external view override returns (bool) {
-        // Payer bypass via CAN_BYPASS (e.g., PayerOnly)
-        if (address(CAN_BYPASS) != address(0) && ICanCondition(CAN_BYPASS).can(paymentInfo, amount, caller)) {
-            return true;
+    ) external view override {
+        if (action == RELEASE) {
+            _beforeRelease(paymentInfo, caller);
         }
+        // Other actions: allow through (no revert)
 
+        // Silence unused variable warning
+        (amount);
+    }
+
+    /**
+     * @notice Internal release check with payer bypass
+     * @dev Payer can release immediately without waiting for escrow period
+     * @param paymentInfo PaymentInfo struct
+     * @param caller The address attempting the release
+     */
+    function _beforeRelease(
+        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
+        address caller
+    ) internal view payerBypass(paymentInfo, caller) {
         AuthCaptureEscrow escrow = IArbitrationOperator(paymentInfo.operator).ESCROW();
         bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
 
         // Check if frozen
         if (frozen[paymentInfoHash]) {
-            return false;
+            revert FundsFrozen();
         }
 
-        // Check if payment was authorized (note() was called)
+        // Check if payment was authorized (afterAction was called)
         uint256 authTime = authorizationTimes[paymentInfoHash];
         if (authTime == 0) {
-            return false;
+            revert NotAuthorized();
         }
 
         // Check if escrow period has passed
-        return block.timestamp >= authTime + ESCROW_PERIOD;
+        if (block.timestamp < authTime + ESCROW_PERIOD) {
+            revert EscrowPeriodNotPassed();
+        }
     }
 
     // ============ Freeze Functions ============

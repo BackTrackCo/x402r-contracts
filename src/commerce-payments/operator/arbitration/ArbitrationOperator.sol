@@ -7,7 +7,7 @@ import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {ArbitrationOperatorAccess} from "./ArbitrationOperatorAccess.sol";
 import {ZeroAddress, ZeroAmount} from "../../types/Errors.sol";
-import {ZeroEscrow, ZeroArbiter, ConditionNotMet} from "../types/Errors.sol";
+import {ZeroEscrow, ZeroArbiter} from "../types/Errors.sol";
 import {
     TotalFeeRateExceedsMax,
     InvalidAuthorizationExpiry,
@@ -16,8 +16,9 @@ import {
     ETHTransferFailed
 } from "../types/Errors.sol";
 import {IOperator} from "../types/IOperator.sol";
-import {ICanCondition} from "../types/ICanCondition.sol";
-import {INoteCondition} from "../types/INoteCondition.sol";
+import {IBeforeHook} from "../types/IBeforeHook.sol";
+import {IAfterHook} from "../types/IAfterHook.sol";
+import {AUTHORIZE, RELEASE, REFUND_IN_ESCROW, REFUND_POST_ESCROW} from "../types/Actions.sol";
 import {PaymentState} from "../types/Types.sol";
 import {
     AuthorizationCreated,
@@ -34,13 +35,15 @@ import {
  *         until verification via release condition contract.
  *
  * @dev Pull Model Architecture:
- *      - Operator controls flow, conditions are optional policy plugins
- *      - 8 condition slots: 4 CAN_* slots (checks) and 4 NOTE_* slots (notifications)
- *      - address(0) = default behavior (AlwaysAllow for CAN_*, NoOp for NOTE_*)
- *      - Conditions can implement ICanCondition, INoteCondition, or both
+ *      - Operator controls flow, hooks are optional policy plugins
+ *      - 2 hook slots: BEFORE_HOOK and AFTER_HOOK
+ *      - address(0) = default behavior (AlwaysAllow for BEFORE, NoOp for AFTER)
+ *      - Hooks receive action parameter (AUTHORIZE, RELEASE, REFUND_IN_ESCROW, REFUND_POST_ESCROW)
+ *      - BEFORE hooks revert if action is not allowed (no return value)
+ *      - AFTER hooks are notifications (called after action succeeds)
  *
  *      Flow for each action:
- *      User -> operator.action() -> [CAN_ACTION?] -> escrow -> [NOTE_ACTION?]
+ *      User -> operator.action() -> [BEFORE_HOOK(action)?] -> escrow -> [AFTER_HOOK(action)?]
  *
  * ARCHITECTURE: Implements IOperator. Users call operator methods directly:
  *        User -> operator.authorize() -> escrow.authorize()
@@ -63,16 +66,10 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
     uint256 public immutable PROTOCOL_FEE_PERCENTAGE;
     uint256 public immutable MAX_ARBITER_FEE_RATE;
 
-    // ============ Condition Slots ============
-    // address(0) = default behavior (AlwaysAllow for CAN_*, NoOp for NOTE_*)
-    ICanCondition public immutable CAN_AUTHORIZE;
-    INoteCondition public immutable NOTE_AUTHORIZE;
-    ICanCondition public immutable CAN_RELEASE;
-    INoteCondition public immutable NOTE_RELEASE;
-    ICanCondition public immutable CAN_REFUND_IN_ESCROW;
-    INoteCondition public immutable NOTE_REFUND_IN_ESCROW;
-    ICanCondition public immutable CAN_REFUND_POST_ESCROW;
-    INoteCondition public immutable NOTE_REFUND_POST_ESCROW;
+    // ============ Hook Slots ============
+    // address(0) = default behavior (AlwaysAllow for BEFORE, NoOp for AFTER)
+    IBeforeHook public immutable BEFORE_HOOK;
+    IAfterHook public immutable AFTER_HOOK;
 
     address public immutable protocolFeeRecipient;
     bool public feesEnabled;
@@ -84,14 +81,8 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         uint256 _protocolFeePercentage,
         address _arbiter,
         address _owner,
-        address _canAuthorize,
-        address _noteAuthorize,
-        address _canRelease,
-        address _noteRelease,
-        address _canRefundInEscrow,
-        address _noteRefundInEscrow,
-        address _canRefundPostEscrow,
-        address _noteRefundPostEscrow
+        address _beforeHook,
+        address _afterHook
     ) {
         if (_escrow == address(0)) revert ZeroEscrow();
         if (_arbiter == address(0)) revert ZeroArbiter();
@@ -110,15 +101,9 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         PROTOCOL_FEE_PERCENTAGE = _protocolFeePercentage;
         MAX_ARBITER_FEE_RATE = (_maxTotalFeeRate * (100 - _protocolFeePercentage)) / 100;
 
-        // Set condition slots (address(0) = default behavior)
-        CAN_AUTHORIZE = ICanCondition(_canAuthorize);
-        NOTE_AUTHORIZE = INoteCondition(_noteAuthorize);
-        CAN_RELEASE = ICanCondition(_canRelease);
-        NOTE_RELEASE = INoteCondition(_noteRelease);
-        CAN_REFUND_IN_ESCROW = ICanCondition(_canRefundInEscrow);
-        NOTE_REFUND_IN_ESCROW = INoteCondition(_noteRefundInEscrow);
-        CAN_REFUND_POST_ESCROW = ICanCondition(_canRefundPostEscrow);
-        NOTE_REFUND_POST_ESCROW = INoteCondition(_noteRefundPostEscrow);
+        // Set hook slots (address(0) = default behavior)
+        BEFORE_HOOK = IBeforeHook(_beforeHook);
+        AFTER_HOOK = IAfterHook(_afterHook);
     }
 
     // ============ Owner Functions ============
@@ -135,7 +120,7 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
 
     /**
      * @notice Authorize payment via Base Commerce Payments escrow
-     * @dev Pull model: checks CAN_AUTHORIZE, performs authorization, then notifies NOTE_AUTHORIZE
+     * @dev Pull model: calls BEFORE_HOOK(AUTHORIZE), performs authorization, then calls AFTER_HOOK(AUTHORIZE)
      * @param paymentInfo PaymentInfo struct with required values:
      *        - operator == address(this)
      *        - authorizationExpiry == type(uint48).max
@@ -152,9 +137,9 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         bytes calldata collectorData
     ) external validOperator(paymentInfo) {
         // ============ CHECKS ============
-        // Check CAN_AUTHORIZE condition (address(0) = always allow)
-        if (address(CAN_AUTHORIZE) != address(0)) {
-            if (!CAN_AUTHORIZE.can(paymentInfo, amount, msg.sender)) revert ConditionNotMet();
+        // Check BEFORE_HOOK (address(0) = always allow, otherwise reverts if not allowed)
+        if (address(BEFORE_HOOK) != address(0)) {
+            BEFORE_HOOK.beforeAction(AUTHORIZE, paymentInfo, amount, msg.sender);
         }
         if (paymentInfo.authorizationExpiry != type(uint48).max) revert InvalidAuthorizationExpiry();
         if (paymentInfo.minFeeBps != MAX_TOTAL_FEE_RATE || paymentInfo.maxFeeBps != MAX_TOTAL_FEE_RATE) {
@@ -172,9 +157,9 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         // ============ INTERACTIONS ============
         ESCROW.authorize(paymentInfo, amount, tokenCollector, collectorData);
 
-        // Notify NOTE_AUTHORIZE condition (address(0) = no-op)
-        if (address(NOTE_AUTHORIZE) != address(0)) {
-            NOTE_AUTHORIZE.note(paymentInfo, amount, msg.sender);
+        // Notify AFTER_HOOK (address(0) = no-op)
+        if (address(AFTER_HOOK) != address(0)) {
+            AFTER_HOOK.afterAction(AUTHORIZE, paymentInfo, amount, msg.sender);
         }
 
         emit AuthorizationCreated(
@@ -188,8 +173,7 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
 
     /**
      * @notice Release funds to receiver
-     * @dev Pull model: checks CAN_RELEASE, performs capture, then notifies NOTE_RELEASE.
-     *      Payer bypass is now handled via the CAN_RELEASE condition (e.g., PayerOnly fallback).
+     * @dev Pull model: calls BEFORE_HOOK(RELEASE), performs capture, then calls AFTER_HOOK(RELEASE)
      * @param paymentInfo PaymentInfo struct
      * @param amount Amount to release
      */
@@ -198,9 +182,9 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         uint256 amount
     ) external validOperator(paymentInfo) {
         // ============ CHECKS ============
-        // Check CAN_RELEASE condition (address(0) = always allow)
-        if (address(CAN_RELEASE) != address(0)) {
-            if (!CAN_RELEASE.can(paymentInfo, amount, msg.sender)) revert ConditionNotMet();
+        // Check BEFORE_HOOK (address(0) = always allow, otherwise reverts if not allowed)
+        if (address(BEFORE_HOOK) != address(0)) {
+            BEFORE_HOOK.beforeAction(RELEASE, paymentInfo, amount, msg.sender);
         }
 
         uint16 feeBps = uint16(MAX_TOTAL_FEE_RATE);
@@ -214,16 +198,16 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         // Forward to escrow - escrow validates payment exists
         ESCROW.capture(paymentInfo, amount, feeBps, feeReceiver);
 
-        // Notify NOTE_RELEASE condition (address(0) = no-op)
-        if (address(NOTE_RELEASE) != address(0)) {
-            NOTE_RELEASE.note(paymentInfo, amount, msg.sender);
+        // Notify AFTER_HOOK (address(0) = no-op)
+        if (address(AFTER_HOOK) != address(0)) {
+            AFTER_HOOK.afterAction(RELEASE, paymentInfo, amount, msg.sender);
         }
     }
 
     /**
      * @notice Refund funds while still in escrow (before capture)
-     * @dev Pull model: checks CAN_REFUND_IN_ESCROW, performs partialVoid, then notifies.
-     *      Typically receiver or arbiter can call (controlled via condition).
+     * @dev Pull model: calls BEFORE_HOOK(REFUND_IN_ESCROW), performs partialVoid, then calls AFTER_HOOK
+     *      Typically receiver or arbiter can call (controlled via hook).
      * @param paymentInfo PaymentInfo struct
      * @param amount Amount to return to payer
      */
@@ -232,9 +216,9 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         uint120 amount
     ) external validOperator(paymentInfo) {
         // ============ CHECKS ============
-        // Check CAN_REFUND_IN_ESCROW condition (address(0) = always allow)
-        if (address(CAN_REFUND_IN_ESCROW) != address(0)) {
-            if (!CAN_REFUND_IN_ESCROW.can(paymentInfo, amount, msg.sender)) revert ConditionNotMet();
+        // Check BEFORE_HOOK (address(0) = always allow, otherwise reverts if not allowed)
+        if (address(BEFORE_HOOK) != address(0)) {
+            BEFORE_HOOK.beforeAction(REFUND_IN_ESCROW, paymentInfo, amount, msg.sender);
         }
 
         // ============ EFFECTS ============
@@ -245,15 +229,15 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         // Forward to escrow's partialVoid - escrow validates payment exists
         ESCROW.partialVoid(paymentInfo, amount);
 
-        // Notify NOTE_REFUND_IN_ESCROW condition (address(0) = no-op)
-        if (address(NOTE_REFUND_IN_ESCROW) != address(0)) {
-            NOTE_REFUND_IN_ESCROW.note(paymentInfo, amount, msg.sender);
+        // Notify AFTER_HOOK (address(0) = no-op)
+        if (address(AFTER_HOOK) != address(0)) {
+            AFTER_HOOK.afterAction(REFUND_IN_ESCROW, paymentInfo, amount, msg.sender);
         }
     }
 
     /**
      * @notice Refund captured funds back to payer (after capture/release)
-     * @dev Pull model: checks CAN_REFUND_POST_ESCROW, performs refund, then notifies.
+     * @dev Pull model: calls BEFORE_HOOK(REFUND_POST_ESCROW), performs refund, then calls AFTER_HOOK
      *      Permission is enforced by the token collector (e.g., receiver must have approved it,
      *      or collectorData contains receiver's signature). Anyone can call, but refund only
      *      succeeds if the token collector can source the funds.
@@ -269,9 +253,9 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         bytes calldata collectorData
     ) external validOperator(paymentInfo) {
         // ============ CHECKS ============
-        // Check CAN_REFUND_POST_ESCROW condition (address(0) = always allow)
-        if (address(CAN_REFUND_POST_ESCROW) != address(0)) {
-            if (!CAN_REFUND_POST_ESCROW.can(paymentInfo, amount, msg.sender)) revert ConditionNotMet();
+        // Check BEFORE_HOOK (address(0) = always allow, otherwise reverts if not allowed)
+        if (address(BEFORE_HOOK) != address(0)) {
+            BEFORE_HOOK.beforeAction(REFUND_POST_ESCROW, paymentInfo, amount, msg.sender);
         }
 
         // ============ EFFECTS ============
@@ -282,9 +266,9 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         // Forward to escrow's refund - token collector enforces permission
         ESCROW.refund(paymentInfo, amount, tokenCollector, collectorData);
 
-        // Notify NOTE_REFUND_POST_ESCROW condition (address(0) = no-op)
-        if (address(NOTE_REFUND_POST_ESCROW) != address(0)) {
-            NOTE_REFUND_POST_ESCROW.note(paymentInfo, amount, msg.sender);
+        // Notify AFTER_HOOK (address(0) = no-op)
+        if (address(AFTER_HOOK) != address(0)) {
+            AFTER_HOOK.afterAction(REFUND_POST_ESCROW, paymentInfo, amount, msg.sender);
         }
     }
 

@@ -7,8 +7,6 @@ import {ERC3009PaymentCollector} from "../lib/commerce-payments/src/collectors/E
 import {EscrowPeriodConditionFactory} from "../src/commerce-payments/release-conditions/escrow-period/EscrowPeriodConditionFactory.sol";
 import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
 import {PayerFreezePolicy} from "../src/commerce-payments/release-conditions/escrow-period/PayerFreezePolicy.sol";
-import {PayerOnly} from "../src/commerce-payments/release-conditions/defaults/PayerOnly.sol";
-import {ReceiverOrArbiter} from "../src/commerce-payments/release-conditions/defaults/ReceiverOrArbiter.sol";
 import {RefundRequest} from "../src/commerce-payments/requests/refund/RefundRequest.sol";
 
 /**
@@ -17,14 +15,14 @@ import {RefundRequest} from "../src/commerce-payments/requests/refund/RefundRequ
  * @dev Deploys all x402r contracts in the correct order:
  *      1. AuthCaptureEscrow (Base Commerce Payments with partialVoid)
  *      2. ERC3009PaymentCollector
- *      3. PayerOnly and ReceiverOrArbiter (default conditions)
- *      4. EscrowPeriodConditionFactory
- *      5. ArbitrationOperatorFactory
- *      6. PayerFreezePolicy (available for use when deploying condition instances)
- *      7. RefundRequest
+ *      3. EscrowPeriodConditionFactory
+ *      4. ArbitrationOperatorFactory
+ *      5. PayerFreezePolicy (available for use when deploying condition instances)
+ *      6. RefundRequest
  *
- *      Note: This script deploys only the factories and default conditions. Factory instances (conditions and operators)
+ *      Note: This script deploys only the factories. Factory instances (conditions and operators)
  *      should be deployed on-demand via the SDK or by calling the factory's deploy methods directly.
+ *      Hook implementations should be deployed separately as needed.
  *
  *      Environment variables:
  *      - PROTOCOL_FEE_RECIPIENT: Address to receive protocol fees (required for operator factory)
@@ -51,8 +49,6 @@ contract DeployAll is Script {
     address public operatorFactory;
     address public conditionFactory;
     address public payerFreezePolicy;
-    address public payerOnly;
-    address public receiverOrArbiter;
 
     function run() public {
         // Get configuration from environment variables
@@ -80,24 +76,14 @@ contract DeployAll is Script {
         erc3009Collector = address(collector);
         console.log("ERC3009PaymentCollector:", erc3009Collector);
 
-        // Step 3: Deploy default conditions
-        console.log("\n=== Step 3: Deploying Default Conditions ===");
-        PayerOnly payerOnlyContract = new PayerOnly();
-        payerOnly = address(payerOnlyContract);
-        console.log("PayerOnly:", payerOnly);
-
-        ReceiverOrArbiter receiverOrArbiterContract = new ReceiverOrArbiter();
-        receiverOrArbiter = address(receiverOrArbiterContract);
-        console.log("ReceiverOrArbiter:", receiverOrArbiter);
-
-        // Step 4: Deploy EscrowPeriodConditionFactory
-        console.log("\n=== Step 4: Deploying EscrowPeriodConditionFactory ===");
+        // Step 3: Deploy EscrowPeriodConditionFactory
+        console.log("\n=== Step 3: Deploying EscrowPeriodConditionFactory ===");
         EscrowPeriodConditionFactory conditionFactoryContract = new EscrowPeriodConditionFactory();
         conditionFactory = address(conditionFactoryContract);
         console.log("EscrowPeriodConditionFactory:", conditionFactory);
 
-        // Step 5: Deploy ArbitrationOperatorFactory
-        console.log("\n=== Step 5: Deploying ArbitrationOperatorFactory ===");
+        // Step 4: Deploy ArbitrationOperatorFactory
+        console.log("\n=== Step 4: Deploying ArbitrationOperatorFactory ===");
         ArbitrationOperatorFactory operatorFactoryContract = new ArbitrationOperatorFactory(
             escrow,
             protocolFeeRecipient,
@@ -108,14 +94,14 @@ contract DeployAll is Script {
         operatorFactory = address(operatorFactoryContract);
         console.log("ArbitrationOperatorFactory:", operatorFactory);
 
-        // Step 6: Deploy PayerFreezePolicy
-        console.log("\n=== Step 6: Deploying PayerFreezePolicy ===");
+        // Step 5: Deploy PayerFreezePolicy
+        console.log("\n=== Step 5: Deploying PayerFreezePolicy ===");
         PayerFreezePolicy payerFreezePolicyContract = new PayerFreezePolicy();
         payerFreezePolicy = address(payerFreezePolicyContract);
         console.log("PayerFreezePolicy:", payerFreezePolicy);
 
-        // Step 7: Deploy RefundRequest
-        console.log("\n=== Step 7: Deploying RefundRequest ===");
+        // Step 6: Deploy RefundRequest
+        console.log("\n=== Step 6: Deploying RefundRequest ===");
         RefundRequest refundRequestContract = new RefundRequest();
         refundRequest = address(refundRequestContract);
         console.log("RefundRequest:", refundRequest);
@@ -126,8 +112,6 @@ contract DeployAll is Script {
         console.log("\n=== Deployment Summary ===");
         console.log("AuthCaptureEscrow:", escrow);
         console.log("ERC3009PaymentCollector:", erc3009Collector);
-        console.log("PayerOnly:", payerOnly);
-        console.log("ReceiverOrArbiter:", receiverOrArbiter);
         console.log("EscrowPeriodConditionFactory:", conditionFactory);
         console.log("ArbitrationOperatorFactory:", operatorFactory);
         console.log("PayerFreezePolicy:", payerFreezePolicy);
@@ -137,9 +121,6 @@ contract DeployAll is Script {
         console.log("Use these factories to deploy instances on-demand via SDK or direct calls:");
         console.log("CONDITION_FACTORY_ADDRESS=", conditionFactory);
         console.log("OPERATOR_FACTORY_ADDRESS=", operatorFactory);
-        console.log("\n=== Default Condition Addresses ===");
-        console.log("PAYER_ONLY_ADDRESS=", payerOnly);
-        console.log("RECEIVER_OR_ARBITER_ADDRESS=", receiverOrArbiter);
         console.log("\n=== Other Contract Addresses ===");
         console.log("ESCROW_ADDRESS=", escrow);
         console.log("ERC3009_COLLECTOR_ADDRESS=", erc3009Collector);

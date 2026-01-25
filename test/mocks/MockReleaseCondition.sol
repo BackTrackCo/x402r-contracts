@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {ICanCondition} from "../../src/commerce-payments/operator/types/ICanCondition.sol";
+import {IBeforeHook} from "../../src/commerce-payments/operator/types/IBeforeHook.sol";
+import {RELEASE} from "../../src/commerce-payments/operator/types/Actions.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
 /// @notice Release conditions are not met
@@ -10,9 +11,10 @@ error ReleaseLocked();
 /**
  * @title MockReleaseCondition
  * @notice Mock release condition for testing - allows manual approval of releases
- * @dev Implements ICanCondition for the pull model architecture
+ * @dev Implements IBeforeHook for the pull model architecture (revert-based)
+ *      Only guards RELEASE action - other actions pass through
  */
-contract MockReleaseCondition is ICanCondition {
+contract MockReleaseCondition is IBeforeHook {
     mapping(bytes32 => bool) public approved;
 
     /**
@@ -41,16 +43,27 @@ contract MockReleaseCondition is ICanCondition {
     }
 
     /**
-     * @notice Check if release is allowed (pull model)
+     * @notice Check if release is allowed (revert-based)
+     * @dev Only guards RELEASE action - other actions pass through
+     * @param action The action being performed
      * @param paymentInfo PaymentInfo struct
-     * @return True if release is approved
+     * @param amount Amount (unused)
+     * @param caller Caller address (unused)
      */
-    function can(
+    function beforeAction(
+        bytes4 action,
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
-        uint256, /* amount */
-        address /* caller */
-    ) external view override returns (bool) {
-        bytes32 paymentInfoHash = keccak256(abi.encode(paymentInfo));
-        return approved[paymentInfoHash];
+        uint256 amount,
+        address caller
+    ) external view override {
+        // Only guard RELEASE action
+        if (action == RELEASE) {
+            bytes32 paymentInfoHash = keccak256(abi.encode(paymentInfo));
+            if (!approved[paymentInfoHash]) revert ReleaseLocked();
+        }
+        // Other actions: allow through
+
+        // Silence unused variable warnings
+        (amount, caller);
     }
 }

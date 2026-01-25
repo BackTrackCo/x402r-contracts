@@ -4,10 +4,7 @@ pragma solidity ^0.8.28;
 import {Test, console} from "forge-std/Test.sol";
 import {ArbitrationOperator} from "../src/commerce-payments/operator/arbitration/ArbitrationOperator.sol";
 import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
-import {PayerOnly} from "../src/commerce-payments/release-conditions/defaults/PayerOnly.sol";
-import {ReceiverOrArbiter} from "../src/commerce-payments/release-conditions/defaults/ReceiverOrArbiter.sol";
-import {InvalidOperator, NotPayer} from "../src/commerce-payments/types/Errors.sol";
-import {ConditionNotMet} from "../src/commerce-payments/operator/types/Errors.sol";
+import {InvalidOperator} from "../src/commerce-payments/types/Errors.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockEscrow} from "./mocks/MockEscrow.sol";
@@ -20,8 +17,6 @@ contract ArbitrationOperatorTest is Test {
     MockERC20 public token;
     MockEscrow public escrow;
     MockReleaseCondition public releaseCondition;
-    PayerOnly public payerOnly;
-    ReceiverOrArbiter public receiverOrArbiter;
 
     address public owner;
     address public protocolFeeRecipient;
@@ -66,10 +61,6 @@ contract ArbitrationOperatorTest is Test {
         token = new MockERC20("Test Token", "TEST");
         escrow = new MockEscrow();
         releaseCondition = new MockReleaseCondition();
-        
-        // Deploy default conditions
-        payerOnly = new PayerOnly();
-        receiverOrArbiter = new ReceiverOrArbiter();
 
         // Deploy factory (owner controls fee settings on all operators)
         factory = new ArbitrationOperatorFactory(
@@ -80,19 +71,11 @@ contract ArbitrationOperatorTest is Test {
             owner
         );
 
-        // Deploy operator via factory with release condition
-        // CAN_RELEASE = releaseCondition (requires approval)
-        // CAN_REFUND_IN_ESCROW = receiverOrArbiter
+        // Deploy operator via factory with release condition as BEFORE_HOOK
         operator = ArbitrationOperator(factory.deployOperator(
             arbiter,
-            address(0),               // CAN_AUTHORIZE: anyone
-            address(0),               // NOTE_AUTHORIZE: no-op
-            address(releaseCondition), // CAN_RELEASE: requires approval
-            address(0),               // NOTE_RELEASE: no-op
-            address(receiverOrArbiter), // CAN_REFUND_IN_ESCROW
-            address(0),               // NOTE_REFUND_IN_ESCROW: no-op
-            address(0),               // CAN_REFUND_POST_ESCROW: anyone
-            address(0)                // NOTE_REFUND_POST_ESCROW: no-op
+            address(releaseCondition), // BEFORE_HOOK: requires approval for RELEASE
+            address(0)                  // AFTER_HOOK: no-op
         ));
 
         // Setup balances
@@ -171,7 +154,8 @@ contract ArbitrationOperatorTest is Test {
         assertEq(operator.ARBITER(), arbiter);
         assertEq(operator.MAX_TOTAL_FEE_RATE(), MAX_TOTAL_FEE_RATE);
         assertEq(operator.PROTOCOL_FEE_PERCENTAGE(), PROTOCOL_FEE_PERCENTAGE);
-        assertEq(address(operator.CAN_RELEASE()), address(releaseCondition));
+        assertEq(address(operator.BEFORE_HOOK()), address(releaseCondition));
+        assertEq(address(operator.AFTER_HOOK()), address(0));
         assertEq(operator.feesEnabled(), false);
         assertEq(operator.owner(), owner);
     }
@@ -181,10 +165,8 @@ contract ArbitrationOperatorTest is Test {
     function test_Factory_DeploysOperator() public view {
         address deployedOperator = factory.getOperator(
             arbiter,
-            address(0), address(0),
-            address(releaseCondition), address(0),
-            address(receiverOrArbiter), address(0),
-            address(0), address(0)
+            address(releaseCondition),
+            address(0)
         );
         assertEq(deployedOperator, address(operator));
     }
@@ -192,17 +174,13 @@ contract ArbitrationOperatorTest is Test {
     function test_Factory_IdempotentDeploy() public {
         address first = factory.deployOperator(
             arbiter,
-            address(0), address(0),
-            address(releaseCondition), address(0),
-            address(receiverOrArbiter), address(0),
-            address(0), address(0)
+            address(releaseCondition),
+            address(0)
         );
         address second = factory.deployOperator(
             arbiter,
-            address(0), address(0),
-            address(releaseCondition), address(0),
-            address(receiverOrArbiter), address(0),
-            address(0), address(0)
+            address(releaseCondition),
+            address(0)
         );
         assertEq(first, second);
     }
@@ -211,17 +189,13 @@ contract ArbitrationOperatorTest is Test {
         address arbiter2 = makeAddr("arbiter2");
         address op1 = factory.deployOperator(
             arbiter,
-            address(0), address(0),
-            address(releaseCondition), address(0),
-            address(receiverOrArbiter), address(0),
-            address(0), address(0)
+            address(releaseCondition),
+            address(0)
         );
         address op2 = factory.deployOperator(
             arbiter2,
-            address(0), address(0),
-            address(releaseCondition), address(0),
-            address(receiverOrArbiter), address(0),
-            address(0), address(0)
+            address(releaseCondition),
+            address(0)
         );
         assertTrue(op1 != op2);
     }
@@ -230,17 +204,13 @@ contract ArbitrationOperatorTest is Test {
         MockReleaseCondition condition2 = new MockReleaseCondition();
         address op1 = factory.deployOperator(
             arbiter,
-            address(0), address(0),
-            address(releaseCondition), address(0),
-            address(receiverOrArbiter), address(0),
-            address(0), address(0)
+            address(releaseCondition),
+            address(0)
         );
         address op2 = factory.deployOperator(
             arbiter,
-            address(0), address(0),
-            address(condition2), address(0),
-            address(receiverOrArbiter), address(0),
-            address(0), address(0)
+            address(condition2),
+            address(0)
         );
         assertTrue(op1 != op2);
     }
@@ -249,10 +219,8 @@ contract ArbitrationOperatorTest is Test {
         MockReleaseCondition newCondition = new MockReleaseCondition();
         address newOperator = factory.deployOperator(
             makeAddr("newArbiter"),
-            address(0), address(0),
-            address(newCondition), address(0),
-            address(receiverOrArbiter), address(0),
-            address(0), address(0)
+            address(newCondition),
+            address(0)
         );
         assertEq(ArbitrationOperator(newOperator).owner(), owner);
     }
@@ -261,19 +229,14 @@ contract ArbitrationOperatorTest is Test {
         // Deploy operator with all zero conditions (most permissive)
         address op = factory.deployOperator(
             arbiter,
-            address(0), address(0),  // CAN_AUTHORIZE, NOTE_AUTHORIZE
-            address(0), address(0),  // CAN_RELEASE, NOTE_RELEASE
-            address(0), address(0),  // CAN_REFUND_IN_ESCROW, NOTE_REFUND_IN_ESCROW
-            address(0), address(0)   // CAN_REFUND_POST_ESCROW, NOTE_REFUND_POST_ESCROW
+            address(0),  // BEFORE_HOOK
+            address(0)   // AFTER_HOOK
         );
         ArbitrationOperator defaultOp = ArbitrationOperator(op);
         
-        // Verify all conditions are zero
-        assertEq(address(defaultOp.CAN_AUTHORIZE()), address(0));
-        assertEq(address(defaultOp.NOTE_AUTHORIZE()), address(0));
-        assertEq(address(defaultOp.CAN_RELEASE()), address(0));
-        assertEq(address(defaultOp.NOTE_RELEASE()), address(0));
-        assertEq(address(defaultOp.CAN_REFUND_IN_ESCROW()), address(0));
+        // Verify all hooks are zero
+        assertEq(address(defaultOp.BEFORE_HOOK()), address(0));
+        assertEq(address(defaultOp.AFTER_HOOK()), address(0));
     }
 
     // ============ Authorization Tests ============
@@ -364,7 +327,7 @@ contract ArbitrationOperatorTest is Test {
 
         // Do NOT approve - condition should block release
         vm.prank(receiver);
-        vm.expectRevert(ConditionNotMet.selector);
+        vm.expectRevert(ReleaseLocked.selector);
         operator.release(paymentInfo, PAYMENT_AMOUNT);
     }
 
@@ -378,24 +341,48 @@ contract ArbitrationOperatorTest is Test {
         releaseCondition.revoke(paymentInfoHash);
 
         vm.prank(receiver);
-        vm.expectRevert(ConditionNotMet.selector);
+        vm.expectRevert(ReleaseLocked.selector);
         operator.release(paymentInfo, PAYMENT_AMOUNT);
     }
 
     // ============ Refund (PartialVoid) Tests ============
+    // Note: Refund tests use a permissive operator (BEFORE_HOOK = address(0))
+    // Access control for refunds should be tested in specific hook implementations
 
-    function test_Refund_ByReceiver() public {
-        (, MockEscrow.PaymentInfo memory enforcedInfo) = _authorize();
-        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _toAuthCapturePaymentInfo(enforcedInfo);
-        bytes32 paymentInfoHash = escrow.getHash(enforcedInfo);
+    function test_Refund_Success() public {
+        // Deploy permissive operator for refund testing
+        ArbitrationOperator permissiveOperator = ArbitrationOperator(factory.deployOperator(
+            arbiter,
+            address(0), // BEFORE_HOOK: anyone can call
+            address(0)  // AFTER_HOOK: no-op
+        ));
+        
+        MockEscrow.PaymentInfo memory paymentInfo = MockEscrow.PaymentInfo({
+            operator: address(permissiveOperator),
+            payer: payer,
+            receiver: receiver,
+            token: address(token),
+            maxAmount: uint120(PAYMENT_AMOUNT),
+            preApprovalExpiry: uint48(block.timestamp + 1 days),
+            authorizationExpiry: type(uint48).max,
+            refundExpiry: type(uint48).max,
+            minFeeBps: uint16(MAX_TOTAL_FEE_RATE),
+            maxFeeBps: uint16(MAX_TOTAL_FEE_RATE),
+            feeReceiver: address(permissiveOperator),
+            salt: 12345
+        });
+        AuthCaptureEscrow.PaymentInfo memory authPaymentInfo = _toAuthCapturePaymentInfo(paymentInfo);
+        
+        permissiveOperator.authorize(authPaymentInfo, PAYMENT_AMOUNT, address(0), "");
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
 
         uint256 payerBalanceBefore = token.balanceOf(payer);
         uint120 refundAmount = uint120(PAYMENT_AMOUNT / 2);
 
         vm.prank(receiver);
-        vm.expectEmit(true, false, false, true, address(operator));
-        emit RefundExecuted(paymentInfo, paymentInfo.payer, refundAmount);
-        operator.refundInEscrow(paymentInfo, refundAmount);
+        vm.expectEmit(true, false, false, true, address(permissiveOperator));
+        emit RefundExecuted(authPaymentInfo, authPaymentInfo.payer, refundAmount);
+        permissiveOperator.refundInEscrow(authPaymentInfo, refundAmount);
 
         // Check payer got refund
         assertEq(token.balanceOf(payer), payerBalanceBefore + refundAmount);
@@ -405,45 +392,41 @@ contract ArbitrationOperatorTest is Test {
         assertEq(capturable, PAYMENT_AMOUNT - refundAmount);
     }
 
-    function test_Refund_ByArbiter() public {
-        (, MockEscrow.PaymentInfo memory enforcedInfo) = _authorize();
-        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _toAuthCapturePaymentInfo(enforcedInfo);
-        bytes32 paymentInfoHash = escrow.getHash(enforcedInfo);
-
-        uint256 payerBalanceBefore = token.balanceOf(payer);
-        uint120 refundAmount = uint120(PAYMENT_AMOUNT / 2);
-
-        vm.prank(arbiter);
-        operator.refundInEscrow(paymentInfo, refundAmount);
-
-        assertEq(token.balanceOf(payer), payerBalanceBefore + refundAmount);
-
-        (, uint120 capturable,) = escrow.paymentState(paymentInfoHash);
-        assertEq(capturable, PAYMENT_AMOUNT - refundAmount);
-    }
-
-    function test_Refund_RevertsOnNotReceiverOrArbiter() public {
-        (, MockEscrow.PaymentInfo memory enforcedInfo) = _authorize();
-        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _toAuthCapturePaymentInfo(enforcedInfo);
-
-        vm.prank(payer);
-        vm.expectRevert(ConditionNotMet.selector);
-        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT / 2));
-    }
-
     function test_Refund_MultiplePartial() public {
-        (, MockEscrow.PaymentInfo memory enforcedInfo) = _authorize();
-        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _toAuthCapturePaymentInfo(enforcedInfo);
-        bytes32 paymentInfoHash = escrow.getHash(enforcedInfo);
+        // Deploy permissive operator for refund testing
+        ArbitrationOperator permissiveOperator = ArbitrationOperator(factory.deployOperator(
+            arbiter,
+            address(0),
+            address(0)
+        ));
+        
+        MockEscrow.PaymentInfo memory paymentInfo = MockEscrow.PaymentInfo({
+            operator: address(permissiveOperator),
+            payer: payer,
+            receiver: receiver,
+            token: address(token),
+            maxAmount: uint120(PAYMENT_AMOUNT),
+            preApprovalExpiry: uint48(block.timestamp + 1 days),
+            authorizationExpiry: type(uint48).max,
+            refundExpiry: type(uint48).max,
+            minFeeBps: uint16(MAX_TOTAL_FEE_RATE),
+            maxFeeBps: uint16(MAX_TOTAL_FEE_RATE),
+            feeReceiver: address(permissiveOperator),
+            salt: 12348
+        });
+        AuthCaptureEscrow.PaymentInfo memory authPaymentInfo = _toAuthCapturePaymentInfo(paymentInfo);
+        
+        permissiveOperator.authorize(authPaymentInfo, PAYMENT_AMOUNT, address(0), "");
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
 
         uint120 firstRefund = uint120(PAYMENT_AMOUNT / 3);
         uint120 secondRefund = uint120(PAYMENT_AMOUNT / 3);
 
         vm.prank(receiver);
-        operator.refundInEscrow(paymentInfo, firstRefund);
+        permissiveOperator.refundInEscrow(authPaymentInfo, firstRefund);
 
         vm.prank(arbiter);
-        operator.refundInEscrow(paymentInfo, secondRefund);
+        permissiveOperator.refundInEscrow(authPaymentInfo, secondRefund);
 
         (, uint120 capturable,) = escrow.paymentState(paymentInfoHash);
         assertEq(capturable, PAYMENT_AMOUNT - firstRefund - secondRefund);

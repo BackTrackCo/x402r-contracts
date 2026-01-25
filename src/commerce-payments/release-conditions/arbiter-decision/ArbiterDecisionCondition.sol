@@ -2,55 +2,58 @@
 // CONTRACTS UNAUDITED: USE AT YOUR OWN RISK
 pragma solidity ^0.8.28;
 
-import {ICanCondition} from "../../operator/types/ICanCondition.sol";
+import {IBeforeHook} from "../../operator/types/IBeforeHook.sol";
+import {ArbitrationOperatorAccess} from "../../operator/arbitration/ArbitrationOperatorAccess.sol";
+import {RELEASE} from "../../operator/types/Actions.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
-// Forward declaration for reading arbiter
-interface IArbitrationOperator {
-    function ARBITER() external view returns (address);
-}
+/// @notice Caller is not authorized (not payer or arbiter)
+error NotPayerOrArbiter();
 
 /**
  * @title ArbiterDecisionCondition
- * @notice Release condition where arbiter or payer (via FALLBACK) can release funds.
- *         Implements ICanCondition for the CAN_RELEASE slot.
+ * @notice Release condition where payer or arbiter can release funds.
+ *         Implements IBeforeHook with action routing.
+ *         Uses payerBypass and arbiterBypass modifiers for clean OR logic.
  *
  * @dev Pull Model Architecture:
- *      - Payer bypass via FALLBACK (e.g., PayerOnly)
- *      - Arbiter can always release
- *      - Reads arbiter from the operator via paymentInfo.operator.ARBITER()
+ *      - Only guards RELEASE action
+ *      - Payer bypass via payerBypass modifier
+ *      - Arbiter bypass via arbiterBypass modifier
+ *      - If neither, reverts with NotPayerOrArbiter
+ *      - Other actions: allow through
  *
  *      Operator Configuration:
- *      CAN_RELEASE = arbiterDecisionCondition  // wraps PayerOnly, adds arbiter
+ *      BEFORE_HOOK = arbiterDecisionCondition
  */
-contract ArbiterDecisionCondition is ICanCondition {
-    /// @notice Fallback condition for payer bypass (e.g., PayerOnly)
-    ICanCondition public immutable FALLBACK;
-
-    constructor(address _fallback) {
-        FALLBACK = ICanCondition(_fallback);
-    }
-
+contract ArbiterDecisionCondition is IBeforeHook, ArbitrationOperatorAccess {
     /**
-     * @notice Check if release is allowed
-     * @dev Payer bypass via FALLBACK. Arbiter can also release.
+     * @notice Check if action is allowed. Reverts if not.
+     * @dev Only guards RELEASE. Payer and arbiter bypass via modifiers.
+     * @param action The action being performed
      * @param paymentInfo PaymentInfo struct
-     * @param amount Amount to release
-     * @param caller The address attempting to release
-     * @return True if release is allowed
+     * @param amount Amount (unused)
+     * @param caller The address attempting the action
      */
-    function can(
+    function beforeAction(
+        bytes4 action,
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint256 amount,
         address caller
-    ) external view override returns (bool) {
-        // Payer bypass via fallback (e.g., PayerOnly)
-        if (address(FALLBACK) != address(0) && FALLBACK.can(paymentInfo, amount, caller)) {
-            return true;
+    )
+        external
+        view
+        override
+        payerBypass(paymentInfo, caller)
+        arbiterBypass(paymentInfo, caller)
+    {
+        if (action == RELEASE) {
+            // If we reach here for RELEASE, caller is neither payer nor arbiter
+            revert NotPayerOrArbiter();
         }
-        
-        // Arbiter can also release
-        address arbiter = IArbitrationOperator(paymentInfo.operator).ARBITER();
-        return caller == arbiter;
+        // Other actions: allow through (no revert)
+
+        // Silence unused variable warning
+        (amount);
     }
 }

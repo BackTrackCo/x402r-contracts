@@ -6,8 +6,6 @@ import {EscrowPeriodConditionFactory} from "../../src/commerce-payments/release-
 import {ArbitrationOperator} from "../../src/commerce-payments/operator/arbitration/ArbitrationOperator.sol";
 import {ArbitrationOperatorFactory} from "../../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
 import {PayerFreezePolicy} from "../../src/commerce-payments/release-conditions/escrow-period/PayerFreezePolicy.sol";
-import {PayerOnly} from "../../src/commerce-payments/release-conditions/defaults/PayerOnly.sol";
-import {ReceiverOrArbiter} from "../../src/commerce-payments/release-conditions/defaults/ReceiverOrArbiter.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockEscrow} from "../mocks/MockEscrow.sol";
@@ -25,8 +23,6 @@ contract EscrowPeriodConditionInvariants {
     MockERC20 public token;
     MockEscrow public escrow;
     PayerFreezePolicy public freezePolicy;
-    PayerOnly public payerOnly;
-    ReceiverOrArbiter public receiverOrArbiter;
 
     uint256 public constant MAX_TOTAL_FEE_RATE = 50;
     uint256 public constant PROTOCOL_FEE_PERCENTAGE = 25;
@@ -58,11 +54,9 @@ contract EscrowPeriodConditionInvariants {
         token = new MockERC20("Test", "TST");
         escrow = new MockEscrow();
         freezePolicy = new PayerFreezePolicy();
-        payerOnly = new PayerOnly();
-        receiverOrArbiter = new ReceiverOrArbiter();
         
         conditionFactory = new EscrowPeriodConditionFactory();
-        condition = EscrowPeriodCondition(conditionFactory.deployCondition(ESCROW_PERIOD, address(freezePolicy), address(payerOnly), address(payerOnly)));
+        condition = EscrowPeriodCondition(conditionFactory.deployCondition(ESCROW_PERIOD, address(freezePolicy)));
 
         operatorFactory = new ArbitrationOperatorFactory(
             address(escrow),
@@ -72,17 +66,11 @@ contract EscrowPeriodConditionInvariants {
             owner
         );
         
-        // Deploy operator with escrow period condition
+        // Deploy operator with escrow period condition (same hook for BEFORE and AFTER)
         operator = ArbitrationOperator(operatorFactory.deployOperator(
             arbiter,
-            address(0),              // CAN_AUTHORIZE: anyone
-            address(condition),      // NOTE_AUTHORIZE: records auth time
-            address(condition),      // CAN_RELEASE: checks escrow period
-            address(0),              // NOTE_RELEASE: no-op
-            address(receiverOrArbiter), // CAN_REFUND_IN_ESCROW
-            address(0),              // NOTE_REFUND_IN_ESCROW: no-op
-            address(0),              // CAN_REFUND_POST_ESCROW: anyone
-            address(0)               // NOTE_REFUND_POST_ESCROW: no-op
+            address(condition),   // BEFORE_HOOK: checks escrow period on RELEASE
+            address(condition)    // AFTER_HOOK: records auth time on AUTHORIZE
         ));
 
         // Setup balances
@@ -169,7 +157,7 @@ contract EscrowPeriodConditionInvariants {
 
     /**
      * @notice Fuzz target: Try to authorize a payment
-     * @dev Pull model: authorize through operator (which calls NOTE_AUTHORIZE)
+     * @dev Pull model: authorize through operator (which calls AFTER_HOOK with AUTHORIZE)
      */
     function fuzz_authorize(uint256 amount, uint256 salt) public {
         if (amount == 0 || amount > 1e30) return;
@@ -257,7 +245,7 @@ contract EscrowPeriodConditionInvariants {
 
     /**
      * @notice Fuzz target: Try to release a payment through operator
-     * @dev Pull model: release through operator (which checks CAN_RELEASE)
+     * @dev Pull model: release through operator (which checks BEFORE_HOOK with RELEASE)
      */
     function fuzz_release(uint256 salt, uint256 amount) public {
         if (amount == 0 || amount > 1e30) return;

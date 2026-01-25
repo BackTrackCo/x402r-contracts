@@ -10,12 +10,13 @@ import {OperatorDeployed} from "./types/Events.sol";
 /**
  * @title ArbitrationOperatorFactory
  * @notice Factory contract that deploys ArbitrationOperator instances for x402r/Chamba.
- *         Each unique (arbiter, conditions) configuration gets its own operator contract.
+ *         Each unique (arbiter, hooks) configuration gets its own operator contract.
  *
  * @dev Pull Model Architecture:
- *      - Operators have 8 condition slots: 4 CAN_* and 4 NOTE_*
- *      - address(0) = default behavior (AlwaysAllow for CAN_*, NoOp for NOTE_*)
- *      - Client signs ERC-3009 with operator in PaymentInfo, committing to arbiter and conditions
+ *      - Operators have 2 hook slots: BEFORE_HOOK and AFTER_HOOK
+ *      - address(0) = default behavior (AlwaysAllow for BEFORE, NoOp for AFTER)
+ *      - Hooks receive action parameter (AUTHORIZE, RELEASE, REFUND_IN_ESCROW, REFUND_POST_ESCROW)
+ *      - Client signs ERC-3009 with operator in PaymentInfo, committing to arbiter and hooks
  *      - Factory owner controls fee settings on all deployed operators
  *      - Works with Base Commerce Payments as designed
  */
@@ -26,7 +27,7 @@ contract ArbitrationOperatorFactory is Ownable {
     uint256 public immutable MAX_TOTAL_FEE_RATE;
     uint256 public immutable PROTOCOL_FEE_PERCENTAGE;
 
-    // keccak256(arbiter, conditions...) => operator address
+    // keccak256(arbiter, hooks...) => operator address
     mapping(bytes32 => address) public operators;
 
     constructor(
@@ -51,34 +52,16 @@ contract ArbitrationOperatorFactory is Ownable {
     /**
      * @notice Get the operator address for a given configuration
      * @param arbiter The arbiter address for dispute resolution
-     * @param canAuthorize CAN_AUTHORIZE condition (address(0) = anyone can authorize)
-     * @param noteAuthorize NOTE_AUTHORIZE condition (address(0) = no tracking)
-     * @param canRelease CAN_RELEASE condition (address(0) = anyone can release)
-     * @param noteRelease NOTE_RELEASE condition (address(0) = no tracking)
-     * @param canRefundInEscrow CAN_REFUND_IN_ESCROW condition
-     * @param noteRefundInEscrow NOTE_REFUND_IN_ESCROW condition
-     * @param canRefundPostEscrow CAN_REFUND_POST_ESCROW condition
-     * @param noteRefundPostEscrow NOTE_REFUND_POST_ESCROW condition
+     * @param beforeHook BEFORE_HOOK address (address(0) = always allow)
+     * @param afterHook AFTER_HOOK address (address(0) = no-op)
      * @return operator The operator address (address(0) if not deployed)
      */
     function getOperator(
         address arbiter,
-        address canAuthorize,
-        address noteAuthorize,
-        address canRelease,
-        address noteRelease,
-        address canRefundInEscrow,
-        address noteRefundInEscrow,
-        address canRefundPostEscrow,
-        address noteRefundPostEscrow
+        address beforeHook,
+        address afterHook
     ) external view returns (address) {
-        bytes32 key = _computeKey(
-            arbiter,
-            canAuthorize, noteAuthorize,
-            canRelease, noteRelease,
-            canRefundInEscrow, noteRefundInEscrow,
-            canRefundPostEscrow, noteRefundPostEscrow
-        );
+        bytes32 key = _computeKey(arbiter, beforeHook, afterHook);
         return operators[key];
     }
 
@@ -88,31 +71,11 @@ contract ArbitrationOperatorFactory is Ownable {
      */
     function computeAddress(
         address arbiter,
-        address canAuthorize,
-        address noteAuthorize,
-        address canRelease,
-        address noteRelease,
-        address canRefundInEscrow,
-        address noteRefundInEscrow,
-        address canRefundPostEscrow,
-        address noteRefundPostEscrow
+        address beforeHook,
+        address afterHook
     ) external view returns (address operator) {
-        bytes32 key = _computeKey(
-            arbiter,
-            canAuthorize, noteAuthorize,
-            canRelease, noteRelease,
-            canRefundInEscrow, noteRefundInEscrow,
-            canRefundPostEscrow, noteRefundPostEscrow
-        );
-
-        bytes memory bytecode = _getBytecode(
-            arbiter,
-            canAuthorize, noteAuthorize,
-            canRelease, noteRelease,
-            canRefundInEscrow, noteRefundInEscrow,
-            canRefundPostEscrow, noteRefundPostEscrow
-        );
-
+        bytes32 key = _computeKey(arbiter, beforeHook, afterHook);
+        bytes memory bytecode = _getBytecode(arbiter, beforeHook, afterHook);
         bytes32 bytecodeHash = keccak256(bytecode);
 
         return address(uint160(uint256(keccak256(abi.encodePacked(
@@ -129,37 +92,19 @@ contract ArbitrationOperatorFactory is Ownable {
      *      Factory owner becomes the operator owner (controls fee settings).
      *      Uses CREATE2 for deterministic addresses.
      * @param arbiter The arbiter address for dispute resolution
-     * @param canAuthorize CAN_AUTHORIZE condition (address(0) = anyone can authorize)
-     * @param noteAuthorize NOTE_AUTHORIZE condition (address(0) = no tracking)
-     * @param canRelease CAN_RELEASE condition (address(0) = anyone can release)
-     * @param noteRelease NOTE_RELEASE condition (address(0) = no tracking)
-     * @param canRefundInEscrow CAN_REFUND_IN_ESCROW condition
-     * @param noteRefundInEscrow NOTE_REFUND_IN_ESCROW condition
-     * @param canRefundPostEscrow CAN_REFUND_POST_ESCROW condition
-     * @param noteRefundPostEscrow NOTE_REFUND_POST_ESCROW condition
+     * @param beforeHook BEFORE_HOOK address (address(0) = always allow)
+     * @param afterHook AFTER_HOOK address (address(0) = no-op)
      * @return operator The operator address
      */
     function deployOperator(
         address arbiter,
-        address canAuthorize,
-        address noteAuthorize,
-        address canRelease,
-        address noteRelease,
-        address canRefundInEscrow,
-        address noteRefundInEscrow,
-        address canRefundPostEscrow,
-        address noteRefundPostEscrow
+        address beforeHook,
+        address afterHook
     ) external returns (address operator) {
         // ============ CHECKS ============
         if (arbiter == address(0)) revert ZeroAddress();
 
-        bytes32 key = _computeKey(
-            arbiter,
-            canAuthorize, noteAuthorize,
-            canRelease, noteRelease,
-            canRefundInEscrow, noteRefundInEscrow,
-            canRefundPostEscrow, noteRefundPostEscrow
-        );
+        bytes32 key = _computeKey(arbiter, beforeHook, afterHook);
 
         // Return existing if already deployed (idempotent)
         if (operators[key] != address(0)) {
@@ -168,13 +113,7 @@ contract ArbitrationOperatorFactory is Ownable {
 
         // ============ EFFECTS ============
         // Compute deterministic CREATE2 address before deployment (CEI pattern)
-        bytes memory bytecode = _getBytecode(
-            arbiter,
-            canAuthorize, noteAuthorize,
-            canRelease, noteRelease,
-            canRefundInEscrow, noteRefundInEscrow,
-            canRefundPostEscrow, noteRefundPostEscrow
-        );
+        bytes memory bytecode = _getBytecode(arbiter, beforeHook, afterHook);
         operator = address(uint160(uint256(keccak256(abi.encodePacked(
             bytes1(0xff),
             address(this),
@@ -185,7 +124,7 @@ contract ArbitrationOperatorFactory is Ownable {
         // Store before external interaction
         operators[key] = operator;
 
-        emit OperatorDeployed(operator, arbiter, canRelease);
+        emit OperatorDeployed(operator, arbiter, beforeHook);
 
         // ============ INTERACTIONS ============
         // Deploy new operator - address is deterministic via CREATE2
@@ -196,10 +135,8 @@ contract ArbitrationOperatorFactory is Ownable {
             PROTOCOL_FEE_PERCENTAGE,
             arbiter,
             owner(),
-            canAuthorize, noteAuthorize,
-            canRelease, noteRelease,
-            canRefundInEscrow, noteRefundInEscrow,
-            canRefundPostEscrow, noteRefundPostEscrow
+            beforeHook,
+            afterHook
         ));
 
         // Sanity check - CREATE2 address must match
@@ -222,34 +159,16 @@ contract ArbitrationOperatorFactory is Ownable {
 
     function _computeKey(
         address arbiter,
-        address canAuthorize,
-        address noteAuthorize,
-        address canRelease,
-        address noteRelease,
-        address canRefundInEscrow,
-        address noteRefundInEscrow,
-        address canRefundPostEscrow,
-        address noteRefundPostEscrow
+        address beforeHook,
+        address afterHook
     ) internal pure returns (bytes32) {
-        return keccak256(abi.encodePacked(
-            arbiter,
-            canAuthorize, noteAuthorize,
-            canRelease, noteRelease,
-            canRefundInEscrow, noteRefundInEscrow,
-            canRefundPostEscrow, noteRefundPostEscrow
-        ));
+        return keccak256(abi.encodePacked(arbiter, beforeHook, afterHook));
     }
 
     function _getBytecode(
         address arbiter,
-        address canAuthorize,
-        address noteAuthorize,
-        address canRelease,
-        address noteRelease,
-        address canRefundInEscrow,
-        address noteRefundInEscrow,
-        address canRefundPostEscrow,
-        address noteRefundPostEscrow
+        address beforeHook,
+        address afterHook
     ) internal view returns (bytes memory) {
         return abi.encodePacked(
             type(ArbitrationOperator).creationCode,
@@ -260,10 +179,8 @@ contract ArbitrationOperatorFactory is Ownable {
                 PROTOCOL_FEE_PERCENTAGE,
                 arbiter,
                 owner(),
-                canAuthorize, noteAuthorize,
-                canRelease, noteRelease,
-                canRefundInEscrow, noteRefundInEscrow,
-                canRefundPostEscrow, noteRefundPostEscrow
+                beforeHook,
+                afterHook
             )
         );
     }

@@ -6,13 +6,10 @@ import {EscrowPeriodCondition} from "../src/commerce-payments/release-conditions
 import {EscrowPeriodConditionFactory} from "../src/commerce-payments/release-conditions/escrow-period/EscrowPeriodConditionFactory.sol";
 import {ArbitrationOperator} from "../src/commerce-payments/operator/arbitration/ArbitrationOperator.sol";
 import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
-import {PayerOnly} from "../src/commerce-payments/release-conditions/defaults/PayerOnly.sol";
-import {ReceiverOrArbiter} from "../src/commerce-payments/release-conditions/defaults/ReceiverOrArbiter.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockEscrow} from "./mocks/MockEscrow.sol";
-import {InvalidEscrowPeriod} from "../src/commerce-payments/release-conditions/escrow-period/types/Errors.sol";
-import {ConditionNotMet} from "../src/commerce-payments/operator/types/Errors.sol";
+import {InvalidEscrowPeriod, EscrowPeriodNotPassed, NotAuthorized} from "../src/commerce-payments/release-conditions/escrow-period/types/Errors.sol";
 
 contract EscrowPeriodConditionTest is Test {
     EscrowPeriodCondition public condition;
@@ -21,8 +18,6 @@ contract EscrowPeriodConditionTest is Test {
     ArbitrationOperatorFactory public operatorFactory;
     MockERC20 public token;
     MockEscrow public escrow;
-    PayerOnly public payerOnly;
-    ReceiverOrArbiter public receiverOrArbiter;
 
     address public owner;
     address public protocolFeeRecipient;
@@ -50,15 +45,10 @@ contract EscrowPeriodConditionTest is Test {
         // Deploy mock contracts
         token = new MockERC20("Test Token", "TEST");
         escrow = new MockEscrow();
-        
-        // Deploy default conditions
-        payerOnly = new PayerOnly();
-        receiverOrArbiter = new ReceiverOrArbiter();
 
-        // Deploy condition factory and condition first
+        // Deploy condition factory and condition
         conditionFactory = new EscrowPeriodConditionFactory();
-        // Pass payerOnly as bypass for both can() and note()
-        condition = EscrowPeriodCondition(conditionFactory.deployCondition(ESCROW_PERIOD, address(0), address(payerOnly), address(payerOnly)));
+        condition = EscrowPeriodCondition(conditionFactory.deployCondition(ESCROW_PERIOD, address(0)));
 
         // Deploy operator factory
         operatorFactory = new ArbitrationOperatorFactory(
@@ -70,18 +60,11 @@ contract EscrowPeriodConditionTest is Test {
         );
 
         // Deploy operator via factory with the escrow period condition
-        // NOTE_AUTHORIZE = condition (records time)
-        // CAN_RELEASE = condition (checks escrow period + payer bypass)
+        // Same condition handles both BEFORE and AFTER hooks with action routing
         operator = ArbitrationOperator(operatorFactory.deployOperator(
             arbiter,
-            address(0),              // CAN_AUTHORIZE: anyone
-            address(condition),      // NOTE_AUTHORIZE: records auth time
-            address(condition),      // CAN_RELEASE: checks escrow period
-            address(0),              // NOTE_RELEASE: no-op
-            address(receiverOrArbiter), // CAN_REFUND_IN_ESCROW
-            address(0),              // NOTE_REFUND_IN_ESCROW: no-op
-            address(0),              // CAN_REFUND_POST_ESCROW: anyone
-            address(0)               // NOTE_REFUND_POST_ESCROW: no-op
+            address(condition),   // BEFORE_HOOK: checks escrow period on RELEASE
+            address(condition)    // AFTER_HOOK: records auth time on AUTHORIZE
         ));
 
         // Setup balances
@@ -140,7 +123,7 @@ contract EscrowPeriodConditionTest is Test {
 
         uint256 authTime = block.timestamp;
 
-        // Authorize through the operator (which calls NOTE_AUTHORIZE = condition)
+        // Authorize through the operator (which calls AFTER_HOOK with AUTHORIZE action)
         operator.authorize(
             _toAuthCapturePaymentInfo(paymentInfo),
             PAYMENT_AMOUNT,
@@ -157,42 +140,41 @@ contract EscrowPeriodConditionTest is Test {
 
     function test_Constructor_SetsCorrectValues() public view {
         assertEq(condition.ESCROW_PERIOD(), ESCROW_PERIOD);
-        assertEq(address(condition.CAN_BYPASS()), address(payerOnly));
-        assertEq(address(condition.NOTE_BYPASS()), address(payerOnly));
+        assertEq(address(condition.FREEZE_POLICY()), address(0));
     }
 
     // ============ Factory Tests ============
 
     function test_Factory_DeploysCondition() public view {
-        address deployedCondition = conditionFactory.getCondition(ESCROW_PERIOD, address(0), address(payerOnly), address(payerOnly));
+        address deployedCondition = conditionFactory.getCondition(ESCROW_PERIOD, address(0));
         assertEq(deployedCondition, address(condition));
     }
 
     function test_Factory_IdempotentDeploy() public {
-        address first = conditionFactory.deployCondition(ESCROW_PERIOD, address(0), address(payerOnly), address(payerOnly));
-        address second = conditionFactory.deployCondition(ESCROW_PERIOD, address(0), address(payerOnly), address(payerOnly));
+        address first = conditionFactory.deployCondition(ESCROW_PERIOD, address(0));
+        address second = conditionFactory.deployCondition(ESCROW_PERIOD, address(0));
         assertEq(first, second);
     }
 
     function test_Factory_DifferentPeriodsDifferentConditions() public {
-        address cond1 = conditionFactory.deployCondition(ESCROW_PERIOD, address(0), address(payerOnly), address(payerOnly));
-        address cond2 = conditionFactory.deployCondition(ESCROW_PERIOD * 2, address(0), address(payerOnly), address(payerOnly));
+        address cond1 = conditionFactory.deployCondition(ESCROW_PERIOD, address(0));
+        address cond2 = conditionFactory.deployCondition(ESCROW_PERIOD * 2, address(0));
         assertTrue(cond1 != cond2);
     }
 
     function test_Factory_RevertsOnZeroPeriod() public {
         vm.expectRevert(InvalidEscrowPeriod.selector);
-        conditionFactory.deployCondition(0, address(0), address(payerOnly), address(payerOnly));
+        conditionFactory.deployCondition(0, address(0));
     }
 
     function test_ComputeAddressMatchesDeploy() public {
         uint256 period = 20 days;
 
         // 1. Compute expected address
-        address predicted = conditionFactory.computeAddress(period, address(0), address(payerOnly), address(payerOnly));
+        address predicted = conditionFactory.computeAddress(period, address(0));
 
         // 2. Deploy
-        address actual = conditionFactory.deployCondition(period, address(0), address(payerOnly), address(payerOnly));
+        address actual = conditionFactory.deployCondition(period, address(0));
 
         // 3. Verify match
         assertEq(predicted, actual, "Computed address should match deployed address");
@@ -234,7 +216,7 @@ contract EscrowPeriodConditionTest is Test {
 
         // Non-payer cannot release
         vm.prank(receiver);
-        vm.expectRevert(ConditionNotMet.selector);
+        vm.expectRevert(EscrowPeriodNotPassed.selector);
         operator.release(paymentInfo, PAYMENT_AMOUNT);
     }
 
@@ -252,14 +234,8 @@ contract EscrowPeriodConditionTest is Test {
         // Deploy a fresh operator with same condition but don't authorize
         ArbitrationOperator freshOperator = ArbitrationOperator(operatorFactory.deployOperator(
             makeAddr("freshArbiter"),
-            address(0),              // CAN_AUTHORIZE: anyone
-            address(condition),      // NOTE_AUTHORIZE: records auth time
-            address(condition),      // CAN_RELEASE: checks escrow period
-            address(0),              // NOTE_RELEASE: no-op
-            address(receiverOrArbiter), // CAN_REFUND_IN_ESCROW
-            address(0),              // NOTE_REFUND_IN_ESCROW: no-op
-            address(0),              // CAN_REFUND_POST_ESCROW: anyone
-            address(0)               // NOTE_REFUND_POST_ESCROW: no-op
+            address(condition),   // BEFORE_HOOK
+            address(condition)    // AFTER_HOOK
         ));
         
         MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
@@ -267,7 +243,7 @@ contract EscrowPeriodConditionTest is Test {
         AuthCaptureEscrow.PaymentInfo memory authInfo = _toAuthCapturePaymentInfo(paymentInfo);
 
         // Try to release without authorizing through the operator
-        vm.expectRevert(ConditionNotMet.selector);
+        vm.expectRevert(NotAuthorized.selector);
         freshOperator.release(authInfo, PAYMENT_AMOUNT);
     }
 
@@ -278,10 +254,10 @@ contract EscrowPeriodConditionTest is Test {
 
         // Still within escrow period - release by non-payer should fail
         vm.prank(receiver);
-        vm.expectRevert(ConditionNotMet.selector);
+        vm.expectRevert(EscrowPeriodNotPassed.selector);
         operator.release(paymentInfo, PAYMENT_AMOUNT);
 
-        // But payer can bypass (PayerOnly fallback allows it)
+        // But payer can bypass (PayerBypassable modifier)
         vm.prank(payer);
         operator.release(paymentInfo, PAYMENT_AMOUNT);
     }
@@ -291,11 +267,11 @@ contract EscrowPeriodConditionTest is Test {
 
         // Non-payer cannot release during escrow period
         vm.prank(receiver);
-        vm.expectRevert(ConditionNotMet.selector);
+        vm.expectRevert(EscrowPeriodNotPassed.selector);
         operator.release(paymentInfo, PAYMENT_AMOUNT);
 
         vm.prank(arbiter);
-        vm.expectRevert(ConditionNotMet.selector);
+        vm.expectRevert(EscrowPeriodNotPassed.selector);
         operator.release(paymentInfo, PAYMENT_AMOUNT);
     }
 
@@ -331,8 +307,6 @@ contract EscrowPeriodConditionFreezeTest is Test {
     MockERC20 public token;
     MockEscrow public escrow;
     MockFreezePolicy public freezePolicy;
-    PayerOnly public payerOnly;
-    ReceiverOrArbiter public receiverOrArbiter;
 
     address public owner;
     address public protocolFeeRecipient;
@@ -361,14 +335,10 @@ contract EscrowPeriodConditionFreezeTest is Test {
         token = new MockERC20("Test Token", "TEST");
         escrow = new MockEscrow();
         freezePolicy = new MockFreezePolicy();
-        
-        // Deploy default conditions
-        payerOnly = new PayerOnly();
-        receiverOrArbiter = new ReceiverOrArbiter();
 
         // Deploy condition factory and condition WITH freeze policy
         conditionFactory = new EscrowPeriodConditionFactory();
-        condition = EscrowPeriodCondition(conditionFactory.deployCondition(ESCROW_PERIOD, address(freezePolicy), address(payerOnly), address(payerOnly)));
+        condition = EscrowPeriodCondition(conditionFactory.deployCondition(ESCROW_PERIOD, address(freezePolicy)));
 
         // Deploy operator factory
         operatorFactory = new ArbitrationOperatorFactory(
@@ -382,14 +352,8 @@ contract EscrowPeriodConditionFreezeTest is Test {
         // Deploy operator via factory with the escrow period condition
         operator = ArbitrationOperator(operatorFactory.deployOperator(
             arbiter,
-            address(0),              // CAN_AUTHORIZE: anyone
-            address(condition),      // NOTE_AUTHORIZE: records auth time
-            address(condition),      // CAN_RELEASE: checks escrow period
-            address(0),              // NOTE_RELEASE: no-op
-            address(receiverOrArbiter), // CAN_REFUND_IN_ESCROW
-            address(0),              // NOTE_REFUND_IN_ESCROW: no-op
-            address(0),              // CAN_REFUND_POST_ESCROW: anyone
-            address(0)               // NOTE_REFUND_POST_ESCROW: no-op
+            address(condition),   // BEFORE_HOOK
+            address(condition)    // AFTER_HOOK
         ));
 
         // Setup balances
@@ -469,7 +433,7 @@ contract EscrowPeriodConditionFreezeTest is Test {
 
         // Release should fail due to freeze (non-payer)
         vm.prank(receiver);
-        vm.expectRevert(ConditionNotMet.selector);
+        vm.expectRevert(FundsFrozen.selector);
         operator.release(paymentInfo, PAYMENT_AMOUNT);
     }
 
@@ -495,10 +459,10 @@ contract EscrowPeriodConditionFreezeTest is Test {
 
         // Release via condition fails (non-payer)
         vm.prank(receiver);
-        vm.expectRevert(ConditionNotMet.selector);
+        vm.expectRevert(FundsFrozen.selector);
         operator.release(paymentInfo, PAYMENT_AMOUNT);
 
-        // But payer can bypass via PayerOnly fallback
+        // But payer can bypass via PayerBypassable modifier
         vm.prank(payer);
         operator.release(paymentInfo, PAYMENT_AMOUNT);
     }
@@ -624,8 +588,6 @@ contract PayerFreezePolicyTest is Test {
     MockERC20 public token;
     MockEscrow public escrow;
     PayerFreezePolicy public payerFreezePolicy;
-    PayerOnly public payerOnly;
-    ReceiverOrArbiter public receiverOrArbiter;
 
     address public owner;
     address public protocolFeeRecipient;
@@ -650,14 +612,10 @@ contract PayerFreezePolicyTest is Test {
         token = new MockERC20("Test Token", "TEST");
         escrow = new MockEscrow();
         payerFreezePolicy = new PayerFreezePolicy();
-        
-        // Deploy default conditions
-        payerOnly = new PayerOnly();
-        receiverOrArbiter = new ReceiverOrArbiter();
 
         // Deploy condition factory and condition WITH payer freeze policy
         conditionFactory = new EscrowPeriodConditionFactory();
-        condition = EscrowPeriodCondition(conditionFactory.deployCondition(ESCROW_PERIOD, address(payerFreezePolicy), address(payerOnly), address(payerOnly)));
+        condition = EscrowPeriodCondition(conditionFactory.deployCondition(ESCROW_PERIOD, address(payerFreezePolicy)));
 
         // Deploy operator factory
         operatorFactory = new ArbitrationOperatorFactory(
@@ -671,14 +629,8 @@ contract PayerFreezePolicyTest is Test {
         // Deploy operator via factory with the escrow period condition
         operator = ArbitrationOperator(operatorFactory.deployOperator(
             arbiter,
-            address(0),              // CAN_AUTHORIZE: anyone
-            address(condition),      // NOTE_AUTHORIZE: records auth time
-            address(condition),      // CAN_RELEASE: checks escrow period
-            address(0),              // NOTE_RELEASE: no-op
-            address(receiverOrArbiter), // CAN_REFUND_IN_ESCROW
-            address(0),              // NOTE_REFUND_IN_ESCROW: no-op
-            address(0),              // CAN_REFUND_POST_ESCROW: anyone
-            address(0)               // NOTE_REFUND_POST_ESCROW: no-op
+            address(condition),   // BEFORE_HOOK
+            address(condition)    // AFTER_HOOK
         ));
 
         // Setup balances
@@ -806,8 +758,6 @@ contract NoFreezePolicyTest is Test {
     ArbitrationOperatorFactory public operatorFactory;
     MockERC20 public token;
     MockEscrow public escrow;
-    PayerOnly public payerOnly;
-    ReceiverOrArbiter public receiverOrArbiter;
 
     address public owner;
     address public protocolFeeRecipient;
@@ -831,14 +781,10 @@ contract NoFreezePolicyTest is Test {
         // Deploy mock contracts
         token = new MockERC20("Test Token", "TEST");
         escrow = new MockEscrow();
-        
-        // Deploy default conditions
-        payerOnly = new PayerOnly();
-        receiverOrArbiter = new ReceiverOrArbiter();
 
         // Deploy condition WITHOUT freeze policy (address(0))
         conditionFactory = new EscrowPeriodConditionFactory();
-        condition = EscrowPeriodCondition(conditionFactory.deployCondition(ESCROW_PERIOD, address(0), address(payerOnly), address(payerOnly)));
+        condition = EscrowPeriodCondition(conditionFactory.deployCondition(ESCROW_PERIOD, address(0)));
 
         // Deploy operator factory
         operatorFactory = new ArbitrationOperatorFactory(
@@ -852,14 +798,8 @@ contract NoFreezePolicyTest is Test {
         // Deploy operator via factory with the escrow period condition
         operator = ArbitrationOperator(operatorFactory.deployOperator(
             arbiter,
-            address(0),              // CAN_AUTHORIZE: anyone
-            address(condition),      // NOTE_AUTHORIZE: records auth time
-            address(condition),      // CAN_RELEASE: checks escrow period
-            address(0),              // NOTE_RELEASE: no-op
-            address(receiverOrArbiter), // CAN_REFUND_IN_ESCROW
-            address(0),              // NOTE_REFUND_IN_ESCROW: no-op
-            address(0),              // CAN_REFUND_POST_ESCROW: anyone
-            address(0)               // NOTE_REFUND_POST_ESCROW: no-op
+            address(condition),   // BEFORE_HOOK
+            address(condition)    // AFTER_HOOK
         ));
 
         // Setup balances

@@ -2,15 +2,13 @@
 pragma solidity ^0.8.28;
 
 import {Test, console} from "forge-std/Test.sol";
-import {ArbiterDecisionCondition} from "../src/commerce-payments/release-conditions/arbiter-decision/ArbiterDecisionCondition.sol";
+import {ArbiterDecisionCondition, NotPayerOrArbiter} from "../src/commerce-payments/release-conditions/arbiter-decision/ArbiterDecisionCondition.sol";
 import {ArbitrationOperator} from "../src/commerce-payments/operator/arbitration/ArbitrationOperator.sol";
 import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
-import {PayerOnly} from "../src/commerce-payments/release-conditions/defaults/PayerOnly.sol";
-import {ReceiverOrArbiter} from "../src/commerce-payments/release-conditions/defaults/ReceiverOrArbiter.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockEscrow} from "./mocks/MockEscrow.sol";
-import {ConditionNotMet} from "../src/commerce-payments/operator/types/Errors.sol";
+import {RELEASE} from "../src/commerce-payments/operator/types/Actions.sol";
 
 contract ArbiterDecisionConditionTest is Test {
     ArbiterDecisionCondition public condition;
@@ -18,8 +16,6 @@ contract ArbiterDecisionConditionTest is Test {
     ArbitrationOperatorFactory public operatorFactory;
     MockERC20 public token;
     MockEscrow public escrow;
-    PayerOnly public payerOnly;
-    ReceiverOrArbiter public receiverOrArbiter;
 
     address public owner;
     address public protocolFeeRecipient;
@@ -42,13 +38,9 @@ contract ArbiterDecisionConditionTest is Test {
         // Deploy mock contracts
         token = new MockERC20("Test Token", "TEST");
         escrow = new MockEscrow();
-        
-        // Deploy default conditions
-        payerOnly = new PayerOnly();
-        receiverOrArbiter = new ReceiverOrArbiter();
 
-        // Deploy condition with PayerOnly fallback
-        condition = new ArbiterDecisionCondition(address(payerOnly));
+        // Deploy condition (uses payerBypass and arbiterBypass modifiers)
+        condition = new ArbiterDecisionCondition();
 
         // Deploy operator factory
         operatorFactory = new ArbitrationOperatorFactory(
@@ -60,17 +52,11 @@ contract ArbiterDecisionConditionTest is Test {
         );
 
         // Deploy operator via factory with the arbiter decision condition
-        // CAN_RELEASE = condition (arbiter or payer via fallback)
+        // BEFORE_HOOK = condition (arbiter or payer via bypass modifiers)
         operator = ArbitrationOperator(operatorFactory.deployOperator(
             arbiter,
-            address(0),               // CAN_AUTHORIZE: anyone
-            address(0),               // NOTE_AUTHORIZE: no-op
-            address(condition),       // CAN_RELEASE: arbiter or payer
-            address(0),               // NOTE_RELEASE: no-op
-            address(receiverOrArbiter), // CAN_REFUND_IN_ESCROW
-            address(0),               // NOTE_REFUND_IN_ESCROW: no-op
-            address(0),               // CAN_REFUND_POST_ESCROW: anyone
-            address(0)                // NOTE_REFUND_POST_ESCROW: no-op
+            address(condition),  // BEFORE_HOOK: arbiter or payer
+            address(0)           // AFTER_HOOK: no-op
         ));
 
         // Setup balances
@@ -147,12 +133,12 @@ contract ArbiterDecisionConditionTest is Test {
 
         // Non-arbiter and non-payer cannot release
         vm.prank(receiver);
-        vm.expectRevert(ConditionNotMet.selector);
+        vm.expectRevert(NotPayerOrArbiter.selector);
         operator.release(paymentInfo, PAYMENT_AMOUNT);
 
         // Random address cannot release
         vm.prank(address(0x1234));
-        vm.expectRevert(ConditionNotMet.selector);
+        vm.expectRevert(NotPayerOrArbiter.selector);
         operator.release(paymentInfo, PAYMENT_AMOUNT);
     }
 
@@ -164,17 +150,17 @@ contract ArbiterDecisionConditionTest is Test {
         operator.release(paymentInfo, PAYMENT_AMOUNT);
     }
 
-    // ============ Payer Bypass Tests (via PayerOnly fallback) ============
+    // ============ Payer Bypass Tests (via payerBypass modifier) ============
 
     function test_PayerBypass_CanReleaseDirectlyViaOperator() public {
         (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorizeDirectly();
 
         // Non-arbiter cannot release
         vm.prank(receiver);
-        vm.expectRevert(ConditionNotMet.selector);
+        vm.expectRevert(NotPayerOrArbiter.selector);
         operator.release(paymentInfo, PAYMENT_AMOUNT);
 
-        // But payer can bypass via PayerOnly fallback
+        // But payer can bypass via payerBypass modifier
         vm.prank(payer);
         operator.release(paymentInfo, PAYMENT_AMOUNT);
     }
@@ -184,39 +170,41 @@ contract ArbiterDecisionConditionTest is Test {
 
         // Non-payer and non-arbiter cannot release
         vm.prank(receiver);
-        vm.expectRevert(ConditionNotMet.selector);
+        vm.expectRevert(NotPayerOrArbiter.selector);
         operator.release(paymentInfo, PAYMENT_AMOUNT);
 
         vm.prank(address(0x1234));
-        vm.expectRevert(ConditionNotMet.selector);
+        vm.expectRevert(NotPayerOrArbiter.selector);
         operator.release(paymentInfo, PAYMENT_AMOUNT);
     }
 
-    // ============ Condition Tests ============
+    // ============ Direct Hook Tests ============
 
-    function test_Condition_HasCorrectFallback() public view {
-        assertEq(address(condition.FALLBACK()), address(payerOnly));
-    }
-
-    function test_Condition_CanMethod_ReturnsTrueForPayer() public view {
+    function test_Condition_RevertsBased_ForNonPayerOrArbiter() public {
         MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
         AuthCaptureEscrow.PaymentInfo memory authInfo = _toAuthCapturePaymentInfo(paymentInfo);
         
-        assertTrue(condition.can(authInfo, PAYMENT_AMOUNT, payer));
+        // Should revert for non-payer and non-arbiter on RELEASE action
+        vm.expectRevert(NotPayerOrArbiter.selector);
+        condition.beforeAction(RELEASE, authInfo, PAYMENT_AMOUNT, receiver);
+        
+        vm.expectRevert(NotPayerOrArbiter.selector);
+        condition.beforeAction(RELEASE, authInfo, PAYMENT_AMOUNT, address(0x1234));
     }
 
-    function test_Condition_CanMethod_ReturnsTrueForArbiter() public view {
+    function test_Condition_Succeeds_ForPayer() public view {
         MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
         AuthCaptureEscrow.PaymentInfo memory authInfo = _toAuthCapturePaymentInfo(paymentInfo);
         
-        assertTrue(condition.can(authInfo, PAYMENT_AMOUNT, arbiter));
+        // Should not revert for payer (any action)
+        condition.beforeAction(RELEASE, authInfo, PAYMENT_AMOUNT, payer);
     }
 
-    function test_Condition_CanMethod_ReturnsFalseForOthers() public view {
+    function test_Condition_Succeeds_ForArbiter() public view {
         MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
         AuthCaptureEscrow.PaymentInfo memory authInfo = _toAuthCapturePaymentInfo(paymentInfo);
         
-        assertFalse(condition.can(authInfo, PAYMENT_AMOUNT, receiver));
-        assertFalse(condition.can(authInfo, PAYMENT_AMOUNT, address(0x1234)));
+        // Should not revert for arbiter (any action)
+        condition.beforeAction(RELEASE, authInfo, PAYMENT_AMOUNT, arbiter);
     }
 }

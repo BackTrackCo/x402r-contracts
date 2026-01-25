@@ -29,7 +29,7 @@ contract DeployEscrowPeriodCondition is Script {
         console.log("\n=== Next Steps ===");
         console.log("Use the factory to deploy condition instances on-demand:");
         console.log("CONDITION_FACTORY_ADDRESS=", address(factory));
-        console.log("\nExample: factory.deployCondition(escrowPeriod, freezePolicy, canBypass, noteBypass)");
+        console.log("\nExample: factory.deployCondition(escrowPeriod, freezePolicy)");
 
         vm.stopBroadcast();
     }

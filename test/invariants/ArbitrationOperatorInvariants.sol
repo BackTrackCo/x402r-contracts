@@ -3,8 +3,6 @@ pragma solidity ^0.8.28;
 
 import {ArbitrationOperator} from "../../src/commerce-payments/operator/arbitration/ArbitrationOperator.sol";
 import {ArbitrationOperatorFactory} from "../../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
-import {PayerOnly} from "../../src/commerce-payments/release-conditions/defaults/PayerOnly.sol";
-import {ReceiverOrArbiter} from "../../src/commerce-payments/release-conditions/defaults/ReceiverOrArbiter.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockEscrow} from "../mocks/MockEscrow.sol";
@@ -27,8 +25,6 @@ contract ArbitrationOperatorInvariants {
     MockERC20 public token;
     MockEscrow public escrow;
     MockReleaseCondition public releaseCondition;
-    PayerOnly public payerOnly;
-    ReceiverOrArbiter public receiverOrArbiter;
 
     uint256 public constant MAX_TOTAL_FEE_RATE = 50; // 0.5%
     uint256 public constant PROTOCOL_FEE_PERCENTAGE = 25; // 25%
@@ -59,8 +55,6 @@ contract ArbitrationOperatorInvariants {
         token = new MockERC20("Test", "TST");
         escrow = new MockEscrow();
         releaseCondition = new MockReleaseCondition();
-        payerOnly = new PayerOnly();
-        receiverOrArbiter = new ReceiverOrArbiter();
 
         operatorFactory = new ArbitrationOperatorFactory(
             address(escrow),
@@ -70,17 +64,11 @@ contract ArbitrationOperatorInvariants {
             owner
         );
         
-        // Deploy operator with release condition
+        // Deploy operator with release condition as BEFORE_HOOK
         operator = ArbitrationOperator(operatorFactory.deployOperator(
             arbiter,
-            address(0),               // CAN_AUTHORIZE: anyone
-            address(0),               // NOTE_AUTHORIZE: no-op
-            address(releaseCondition), // CAN_RELEASE: requires approval
-            address(0),               // NOTE_RELEASE: no-op
-            address(receiverOrArbiter), // CAN_REFUND_IN_ESCROW
-            address(0),               // NOTE_REFUND_IN_ESCROW: no-op
-            address(0),               // CAN_REFUND_POST_ESCROW: anyone
-            address(0)                // NOTE_REFUND_POST_ESCROW: no-op
+            address(releaseCondition), // BEFORE_HOOK: requires approval
+            address(0)                  // AFTER_HOOK: no-op
         ));
 
         // Setup balances
@@ -134,10 +122,10 @@ contract ArbitrationOperatorInvariants {
     }
 
     /**
-     * @notice INVARIANT: CAN_RELEASE condition is set correctly
+     * @notice INVARIANT: BEFORE_HOOK is set correctly
      */
-    function echidna_can_release_set() public view returns (bool) {
-        return address(operator.CAN_RELEASE()) == address(releaseCondition);
+    function echidna_before_hook_set() public view returns (bool) {
+        return address(operator.BEFORE_HOOK()) == address(releaseCondition);
     }
 
     /**
