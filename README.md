@@ -16,14 +16,32 @@ losses incurred from using these contracts.
 
 **Source of truth:** This README. Addresses will eventually be moved to `@x402r/sdk` package.
 
+#### Core Contracts
+
 | Contract | Address |
 |----------|---------|
-| AuthCaptureEscrow | `0xb33D6502EdBbC47201cd1E53C49d703EC0a660b8` |
-| ERC3009PaymentCollector | `0xed02d3E5167BCc9582D851885A89b050AB816a56` |
-| EscrowPeriodConditionFactory | `0xc9BbA6A2CF9838e7Dd8c19BC8B3BAC620B9D8178` |
-| ArbitrationOperatorFactory | `0x46C44071BDf9753482400B76d88A5850318b776F` |
-| PayerFreezePolicy | `0x2714EA3e839Ac50F52B2e2a5788F614cACeE5316` |
-| RefundRequest | `0x26A3d27139b442Be5ECc10c8608c494627B660BF` |
+| AuthCaptureEscrow | [`0xb33D6502EdBbC47201cd1E53C49d703EC0a660b8`](https://sepolia.basescan.org/address/0xb33D6502EdBbC47201cd1E53C49d703EC0a660b8) |
+| ERC3009PaymentCollector | [`0xed02d3E5167BCc9582D851885A89b050AB816a56`](https://sepolia.basescan.org/address/0xed02d3E5167BCc9582D851885A89b050AB816a56) |
+| RefundRequest | [`0x26A3d27139b442Be5ECc10c8608c494627B660BF`](https://sepolia.basescan.org/address/0x26A3d27139b442Be5ECc10c8608c494627B660BF) |
+
+#### Factories
+
+| Contract | Address |
+|----------|---------|
+| ArbitrationOperatorFactory | [`0x46C44071BDf9753482400B76d88A5850318b776F`](https://sepolia.basescan.org/address/0x46C44071BDf9753482400B76d88A5850318b776F) |
+| EscrowPeriodConditionFactory | [`0xc9BbA6A2CF9838e7Dd8c19BC8B3BAC620B9D8178`](https://sepolia.basescan.org/address/0xc9BbA6A2CF9838e7Dd8c19BC8B3BAC620B9D8178) |
+| FreezePolicyFactory | [`0x536439b00002CB3c0141391A92aFBB3e1E3f8604`](https://sepolia.basescan.org/address/0x536439b00002CB3c0141391A92aFBB3e1E3f8604) |
+
+#### Condition Singletons (for use with FreezePolicyFactory)
+
+| Contract | Address |
+|----------|---------|
+| PayerCondition | [`0xDc0D800007ceACFf1299b926Ce22B4d4edCE6Ce7`](https://sepolia.basescan.org/address/0xDc0D800007ceACFf1299b926Ce22B4d4edCE6Ce7) |
+| ReceiverCondition | [`0x138Bf828643350AA3692aedDE8b2254eDF4D07EF`](https://sepolia.basescan.org/address/0x138Bf828643350AA3692aedDE8b2254eDF4D07EF) |
+| ArbiterCondition | [`0x32471D31910a009273A812dE0894d9f0ADef4834`](https://sepolia.basescan.org/address/0x32471D31910a009273A812dE0894d9f0ADef4834) |
+| AlwaysTrueCondition | [`0xe2659dc0d716B1226DF6a09A5f47862cd1ff6733`](https://sepolia.basescan.org/address/0xe2659dc0d716B1226DF6a09A5f47862cd1ff6733) |
+
+**USDC (Base Sepolia):** [`0x036CbD53842c5426634e7929541eC2318f3dCF7e`](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e)
 
 ### Project Contracts
 
@@ -189,39 +207,31 @@ The commerce-payments contracts provide refund functionality for Base Commerce P
 
 #### Freeze Policy Options
 
-The `EscrowPeriodCondition` contract supports an optional freeze policy via the `FREEZE_POLICY` parameter. This determines who can freeze/unfreeze payments during the escrow period:
+The `EscrowPeriodRecorder` contract supports an optional freeze policy via the `FREEZE_POLICY` parameter. This determines who can freeze/unfreeze payments during the escrow period.
 
-**Options:**
+**FreezePolicy** uses `ICondition` contracts for authorization:
 
-1. **`address(0)` (No Freeze Policy)** - Default
-   - Freeze/unfreeze functionality is disabled
-   - Payments cannot be frozen once authorized
-   - Use when freeze functionality is not needed
+| Condition | Description |
+|-----------|-------------|
+| `PayerCondition` | Allows the payment's payer |
+| `ReceiverCondition` | Allows the payment's receiver |
+| `ArbiterCondition` | Allows the operator's arbiter |
+| `AlwaysTrueCondition` | Allows anyone |
 
-2. **`PayerFreezePolicy`** - Payer-only freeze
-   - Only the payer can freeze/unfreeze their own payments
-   - Deploy `PayerFreezePolicy` contract first, then use its address
-   - Useful for buyer protection scenarios
+**Example:**
 
-3. **Custom `IFreezePolicy` Implementation**
-   - Implement the `IFreezePolicy` interface with custom authorization logic
-   - Can define any freeze/unfreeze rules (e.g., arbiter-only, multi-sig, time-based)
-   - See `src/commerce-payments/conditions/escrow-period/types/IFreezePolicy.sol` for interface
+```solidity
+// Payer freeze/unfreeze, 3-day duration
+freezePolicyFactory.deploy(payerCondition, payerCondition, 3 days);
 
-**Example: Deploying with PayerFreezePolicy**
+// Payer freeze, Arbiter unfreeze, permanent
+freezePolicyFactory.deploy(payerCondition, arbiterCondition, 0);
 
-```bash
-# 1. Deploy PayerFreezePolicy (or use existing)
-forge script script/DeployPayerFreezePolicy.s.sol:DeployPayerFreezePolicy --rpc-url $RPC_URL --broadcast
-
-# 2. Set FREEZE_POLICY to the deployed address
-export FREEZE_POLICY=0x...
-
-# 3. Deploy EscrowPeriodCondition with freeze policy
-forge script script/DeployEscrowPeriodCondition.s.sol:DeployEscrowPeriodCondition --rpc-url $RPC_URL --broadcast
+// Anyone freeze, Receiver unfreeze, 7 days
+freezePolicyFactory.deploy(alwaysTrueCondition, receiverCondition, 7 days);
 ```
 
-**Note:** If `FREEZE_POLICY` is not set or is `address(0)`, freeze/unfreeze calls will revert with `NoFreezePolicy()` error.
+**Note:** If `FREEZE_POLICY` is `address(0)` when deploying EscrowPeriodRecorder, freeze/unfreeze calls will revert with `NoFreezePolicy()` error.
 
 #### ArbitrationOperatorFactory API
 
