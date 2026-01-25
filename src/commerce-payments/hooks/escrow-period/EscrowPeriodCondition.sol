@@ -2,9 +2,9 @@
 // CONTRACTS UNAUDITED: USE AT YOUR OWN RISK
 pragma solidity ^0.8.28;
 
-import {IBeforeHook} from "../../operator/types/IBeforeHook.sol";
-import {IAfterHook} from "../../operator/types/IAfterHook.sol";
-import {AUTHORIZE, RELEASE} from "../../operator/types/Actions.sol";
+import {IBeforeHook} from "../types/IBeforeHook.sol";
+import {IAfterHook} from "../types/IAfterHook.sol";
+import {AUTHORIZE, RELEASE} from "../types/Actions.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {EscrowPeriodConditionAccess} from "./EscrowPeriodConditionAccess.sol";
 import {
@@ -81,7 +81,7 @@ contract EscrowPeriodCondition is IBeforeHook, IAfterHook, EscrowPeriodCondition
      * @dev Routes based on action parameter. Only AUTHORIZE is handled.
      * @param action The action that occurred
      * @param paymentInfo PaymentInfo struct
-     * @param amount Amount (unused for AUTHORIZE)
+     * @param amount Amount (unused)
      * @param caller The address that called authorize (unused)
      */
     function afterAction(
@@ -91,16 +91,26 @@ contract EscrowPeriodCondition is IBeforeHook, IAfterHook, EscrowPeriodCondition
         address caller
     ) external override onlyOperator(paymentInfo.operator) {
         if (action == AUTHORIZE) {
-            AuthCaptureEscrow escrow = IArbitrationOperator(paymentInfo.operator).ESCROW();
-            bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
-            authorizationTimes[paymentInfoHash] = block.timestamp;
-
-            emit PaymentAuthorized(paymentInfo, block.timestamp);
+            _afterAuthorize(paymentInfo);
         }
         // Other actions: no-op
 
         // Silence unused variable warnings
         (amount, caller);
+    }
+
+    /**
+     * @notice Internal authorize handler - records authorization time
+     * @param paymentInfo PaymentInfo struct
+     */
+    function _afterAuthorize(
+        AuthCaptureEscrow.PaymentInfo calldata paymentInfo
+    ) internal {
+        AuthCaptureEscrow escrow = IArbitrationOperator(paymentInfo.operator).ESCROW();
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+        authorizationTimes[paymentInfoHash] = block.timestamp;
+
+        emit PaymentAuthorized(paymentInfo, block.timestamp);
     }
 
     // ============ IBeforeHook Implementation ============

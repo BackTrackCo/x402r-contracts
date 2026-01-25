@@ -2,14 +2,14 @@
 pragma solidity ^0.8.28;
 
 import {Test, console} from "forge-std/Test.sol";
-import {EscrowPeriodCondition} from "../src/commerce-payments/release-conditions/escrow-period/EscrowPeriodCondition.sol";
-import {EscrowPeriodConditionFactory} from "../src/commerce-payments/release-conditions/escrow-period/EscrowPeriodConditionFactory.sol";
+import {EscrowPeriodCondition} from "../src/commerce-payments/hooks/escrow-period/EscrowPeriodCondition.sol";
+import {EscrowPeriodConditionFactory} from "../src/commerce-payments/hooks/escrow-period/EscrowPeriodConditionFactory.sol";
 import {ArbitrationOperator} from "../src/commerce-payments/operator/arbitration/ArbitrationOperator.sol";
 import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockEscrow} from "./mocks/MockEscrow.sol";
-import {InvalidEscrowPeriod, EscrowPeriodNotPassed, NotAuthorized} from "../src/commerce-payments/release-conditions/escrow-period/types/Errors.sol";
+import {InvalidEscrowPeriod, EscrowPeriodNotPassed, NotAuthorized} from "../src/commerce-payments/hooks/escrow-period/types/Errors.sol";
 
 contract EscrowPeriodConditionTest is Test {
     EscrowPeriodCondition public condition;
@@ -289,7 +289,7 @@ contract EscrowPeriodConditionTest is Test {
 // ============ Freeze Policy Tests ============
 
 import {MockFreezePolicy} from "./mocks/MockFreezePolicy.sol";
-import {PayerFreezePolicy} from "../src/commerce-payments/release-conditions/escrow-period/PayerFreezePolicy.sol";
+import {PayerFreezePolicy} from "../src/commerce-payments/hooks/escrow-period/PayerFreezePolicy.sol";
 import {
     FundsFrozen,
     EscrowPeriodExpired,
@@ -297,7 +297,7 @@ import {
     AlreadyFrozen,
     NotFrozen,
     NoFreezePolicy
-} from "../src/commerce-payments/release-conditions/escrow-period/types/Errors.sol";
+} from "../src/commerce-payments/hooks/escrow-period/types/Errors.sol";
 
 contract EscrowPeriodConditionFreezeTest is Test {
     EscrowPeriodCondition public condition;

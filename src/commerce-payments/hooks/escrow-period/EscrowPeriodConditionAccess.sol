@@ -3,18 +3,18 @@
 pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {ArbitrationOperatorAccess} from "../../operator/arbitration/ArbitrationOperatorAccess.sol";
+import {HookAccess} from "../types/HookAccess.sol";
 import {IFreezePolicy} from "./types/IFreezePolicy.sol";
 import {NoFreezePolicy, UnauthorizedFreeze} from "./types/Errors.sol";
 
 /**
  * @title EscrowPeriodConditionAccess
  * @notice Stateless access control modifiers for escrow period operations
- * @dev Extends ArbitrationOperatorAccess for common modifiers (onlyOperator, onlyPayer, etc.)
+ * @dev Extends HookAccess for common hook modifiers (onlyOperator, payerBypass, etc.)
  *      Adds freeze policy-specific modifiers.
  *      Reusable across EscrowPeriodCondition and related contracts.
  */
-abstract contract EscrowPeriodConditionAccess is ArbitrationOperatorAccess {
+abstract contract EscrowPeriodConditionAccess is HookAccess {
 
     // ============ Freeze Policy Modifiers ============
 

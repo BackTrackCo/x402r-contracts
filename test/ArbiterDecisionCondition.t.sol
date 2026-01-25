@@ -2,13 +2,13 @@
 pragma solidity ^0.8.28;
 
 import {Test, console} from "forge-std/Test.sol";
-import {ArbiterDecisionCondition, NotPayerOrArbiter} from "../src/commerce-payments/release-conditions/arbiter-decision/ArbiterDecisionCondition.sol";
+import {ArbiterDecisionCondition, NotPayerOrArbiter} from "../src/commerce-payments/hooks/arbiter-decision/ArbiterDecisionCondition.sol";
 import {ArbitrationOperator} from "../src/commerce-payments/operator/arbitration/ArbitrationOperator.sol";
 import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockEscrow} from "./mocks/MockEscrow.sol";
-import {RELEASE} from "../src/commerce-payments/operator/types/Actions.sol";
+import {RELEASE} from "../src/commerce-payments/hooks/types/Actions.sol";
 
 contract ArbiterDecisionConditionTest is Test {
     ArbiterDecisionCondition public condition;

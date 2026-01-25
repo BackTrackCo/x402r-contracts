@@ -16,9 +16,9 @@ import {
     ETHTransferFailed
 } from "../types/Errors.sol";
 import {IOperator} from "../types/IOperator.sol";
-import {IBeforeHook} from "../types/IBeforeHook.sol";
-import {IAfterHook} from "../types/IAfterHook.sol";
-import {AUTHORIZE, RELEASE, REFUND_IN_ESCROW, REFUND_POST_ESCROW} from "../types/Actions.sol";
+import {IBeforeHook} from "../../hooks/types/IBeforeHook.sol";
+import {IAfterHook} from "../../hooks/types/IAfterHook.sol";
+import {AUTHORIZE, RELEASE, REFUND_IN_ESCROW, REFUND_POST_ESCROW} from "../../hooks/types/Actions.sol";
 import {PaymentState} from "../types/Types.sol";
 import {
     AuthorizationCreated,

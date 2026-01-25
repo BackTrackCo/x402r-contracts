@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {IBeforeHook} from "../../src/commerce-payments/operator/types/IBeforeHook.sol";
-import {RELEASE} from "../../src/commerce-payments/operator/types/Actions.sol";
+import {IBeforeHook} from "../../src/commerce-payments/hooks/types/IBeforeHook.sol";
+import {RELEASE} from "../../src/commerce-payments/hooks/types/Actions.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
 /// @notice Release conditions are not met

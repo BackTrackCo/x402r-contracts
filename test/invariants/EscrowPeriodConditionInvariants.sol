@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {EscrowPeriodCondition} from "../../src/commerce-payments/release-conditions/escrow-period/EscrowPeriodCondition.sol";
-import {EscrowPeriodConditionFactory} from "../../src/commerce-payments/release-conditions/escrow-period/EscrowPeriodConditionFactory.sol";
+import {EscrowPeriodCondition} from "../../src/commerce-payments/hooks/escrow-period/EscrowPeriodCondition.sol";
+import {EscrowPeriodConditionFactory} from "../../src/commerce-payments/hooks/escrow-period/EscrowPeriodConditionFactory.sol";
 import {ArbitrationOperator} from "../../src/commerce-payments/operator/arbitration/ArbitrationOperator.sol";
 import {ArbitrationOperatorFactory} from "../../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
-import {PayerFreezePolicy} from "../../src/commerce-payments/release-conditions/escrow-period/PayerFreezePolicy.sol";
+import {PayerFreezePolicy} from "../../src/commerce-payments/hooks/escrow-period/PayerFreezePolicy.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockEscrow} from "../mocks/MockEscrow.sol";
