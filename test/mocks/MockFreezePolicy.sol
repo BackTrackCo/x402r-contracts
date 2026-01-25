@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {IFreezePolicy} from "../../src/commerce-payments/conditions/escrow-period/types/IFreezePolicy.sol";
+import {IFreezePolicy} from "../../src/commerce-payments/conditions/escrow-period/freeze-policy/IFreezePolicy.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
 /**
  * @title MockFreezePolicy
  * @notice Mock implementation of IFreezePolicy for testing
- * @dev Always allows freeze/unfreeze - useful for testing freeze mechanics
+ * @dev Configurable freeze/unfreeze permissions and duration
  */
 contract MockFreezePolicy is IFreezePolicy {
     bool public allowFreeze = true;
     bool public allowUnfreeze = true;
+    uint256 public freezeDuration = 0; // 0 = permanent
 
     function setAllowFreeze(bool _allow) external {
         allowFreeze = _allow;
@@ -21,11 +22,16 @@ contract MockFreezePolicy is IFreezePolicy {
         allowUnfreeze = _allow;
     }
 
+    function setFreezeDuration(uint256 _duration) external {
+        freezeDuration = _duration;
+    }
+
     function canFreeze(
         AuthCaptureEscrow.PaymentInfo calldata,
         address
-    ) external view override returns (bool) {
-        return allowFreeze;
+    ) external view override returns (bool allowed, uint256 duration) {
+        allowed = allowFreeze;
+        duration = freezeDuration;
     }
 
     function canUnfreeze(

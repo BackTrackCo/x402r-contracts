@@ -2,7 +2,7 @@
 // CONTRACTS UNAUDITED: USE AT YOUR OWN RISK
 pragma solidity ^0.8.28;
 
-import {IFreezePolicy} from "./types/IFreezePolicy.sol";
+import {IFreezePolicy} from "./IFreezePolicy.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
 /**
@@ -10,16 +10,25 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
  * @notice IFreezePolicy implementation that allows only the payer to freeze/unfreeze.
  * @dev Stateless policy contract - freeze state is owned by EscrowPeriodRecorder.
  *      Only determines authorization: the payer can freeze/unfreeze their own payments.
+ *      Freeze duration is configurable at deployment.
  */
 contract PayerFreezePolicy is IFreezePolicy {
+    /// @notice Duration that payer freezes last (0 = permanent until unfrozen)
+    uint256 public immutable FREEZE_DURATION;
+
+    constructor(uint256 _freezeDuration) {
+        FREEZE_DURATION = _freezeDuration;
+    }
+
     /// @inheritdoc IFreezePolicy
     function canFreeze(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, address caller)
         external
-        pure
+        view
         override
-        returns (bool)
+        returns (bool allowed, uint256 duration)
     {
-        return caller == paymentInfo.payer;
+        allowed = caller == paymentInfo.payer;
+        duration = FREEZE_DURATION;
     }
 
     /// @inheritdoc IFreezePolicy

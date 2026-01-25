@@ -6,7 +6,7 @@ import {AuthCaptureEscrow} from "../lib/commerce-payments/src/AuthCaptureEscrow.
 import {ERC3009PaymentCollector} from "../lib/commerce-payments/src/collectors/ERC3009PaymentCollector.sol";
 import {EscrowPeriodConditionFactory} from "../src/commerce-payments/conditions/escrow-period/EscrowPeriodConditionFactory.sol";
 import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
-import {PayerFreezePolicy} from "../src/commerce-payments/conditions/escrow-period/PayerFreezePolicy.sol";
+import {PayerFreezePolicy} from "../src/commerce-payments/conditions/escrow-period/freeze-policy/PayerFreezePolicy.sol";
 import {RefundRequest} from "../src/commerce-payments/requests/refund/RefundRequest.sol";
 
 /**
@@ -96,7 +96,7 @@ contract DeployAll is Script {
 
         // Step 5: Deploy PayerFreezePolicy
         console.log("\n=== Step 5: Deploying PayerFreezePolicy ===");
-        PayerFreezePolicy payerFreezePolicyContract = new PayerFreezePolicy();
+        PayerFreezePolicy payerFreezePolicyContract = new PayerFreezePolicy(3 days);
         payerFreezePolicy = address(payerFreezePolicyContract);
         console.log("PayerFreezePolicy:", payerFreezePolicy);
 

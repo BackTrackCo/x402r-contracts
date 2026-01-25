@@ -42,6 +42,14 @@ contract ArbitrationOperatorTest is Test {
 
     event RefundExecuted(AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed payer, uint256 amount);
 
+    event ChargeExecuted(
+        bytes32 indexed paymentInfoHash,
+        address indexed payer,
+        address indexed receiver,
+        uint256 amount,
+        uint256 timestamp
+    );
+
     function setUp() public {
         owner = address(this);
         protocolFeeRecipient = makeAddr("protocolFeeRecipient");
@@ -334,6 +342,88 @@ contract ArbitrationOperatorTest is Test {
 
         vm.expectRevert(InvalidOperator.selector);
         operator.authorize(_toAuthCapturePaymentInfo(paymentInfo), PAYMENT_AMOUNT, address(0), "");
+    }
+
+    // ============ Charge Tests ============
+
+    function test_Charge_Success() public {
+        MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+        paymentInfo.salt = 99999; // Different salt to avoid collision with authorize tests
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+
+        uint256 receiverBalanceBefore = token.balanceOf(receiver);
+        uint256 fee = (PAYMENT_AMOUNT * MAX_TOTAL_FEE_RATE) / 10000;
+
+        vm.expectEmit(true, true, true, true, address(operator));
+        emit ChargeExecuted(paymentInfoHash, payer, receiver, PAYMENT_AMOUNT, block.timestamp);
+
+        operator.charge(_toAuthCapturePaymentInfo(paymentInfo), PAYMENT_AMOUNT, address(0), "");
+
+        // Check payment was recorded in operator
+        assertTrue(operator.paymentExists(paymentInfoHash));
+
+        // Check receiver got tokens minus fee (charge goes directly to receiver)
+        assertEq(token.balanceOf(receiver), receiverBalanceBefore + PAYMENT_AMOUNT - fee);
+
+        // Check escrow state - charge() goes directly to receiver, so capturable=0, refundable=amount
+        (bool hasCollected, uint120 capturable, uint120 refundable) = escrow.paymentState(paymentInfoHash);
+        assertTrue(hasCollected);
+        assertEq(capturable, 0); // No escrow hold
+        assertEq(refundable, PAYMENT_AMOUNT); // Can be refunded
+    }
+
+    function test_Charge_RevertsOnInvalidOperator() public {
+        MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+        paymentInfo.operator = address(0x1234); // Wrong operator
+
+        vm.expectRevert(InvalidOperator.selector);
+        operator.charge(_toAuthCapturePaymentInfo(paymentInfo), PAYMENT_AMOUNT, address(0), "");
+    }
+
+    function test_Charge_RevertsOnInvalidFeeBps() public {
+        MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+        paymentInfo.minFeeBps = 0; // Wrong fee
+
+        vm.expectRevert();
+        operator.charge(_toAuthCapturePaymentInfo(paymentInfo), PAYMENT_AMOUNT, address(0), "");
+    }
+
+    function test_Charge_RevertsOnInvalidFeeReceiver() public {
+        MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+        paymentInfo.feeReceiver = address(0x1234); // Wrong fee receiver
+
+        vm.expectRevert();
+        operator.charge(_toAuthCapturePaymentInfo(paymentInfo), PAYMENT_AMOUNT, address(0), "");
+    }
+
+    function test_Charge_RecordsPayerAndReceiverPayments() public {
+        MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+        paymentInfo.salt = 88888;
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+
+        operator.charge(_toAuthCapturePaymentInfo(paymentInfo), PAYMENT_AMOUNT, address(0), "");
+
+        // Check payer payments tracking
+        bytes32[] memory payerPayments = operator.getPayerPayments(payer);
+        bool found = false;
+        for (uint256 i = 0; i < payerPayments.length; i++) {
+            if (payerPayments[i] == paymentInfoHash) {
+                found = true;
+                break;
+            }
+        }
+        assertTrue(found, "Payment should be tracked for payer");
+
+        // Check receiver payments tracking
+        bytes32[] memory receiverPayments = operator.getReceiverPayments(receiver);
+        found = false;
+        for (uint256 i = 0; i < receiverPayments.length; i++) {
+            if (receiverPayments[i] == paymentInfoHash) {
+                found = true;
+                break;
+            }
+        }
+        assertTrue(found, "Payment should be tracked for receiver");
     }
 
     // ============ Release Tests ============

@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {IRecorder} from "../IRecorder.sol";
-import {IFreezePolicy} from "./types/IFreezePolicy.sol";
+import {IFreezePolicy} from "./freeze-policy/IFreezePolicy.sol";
 import {
     InvalidEscrowPeriod,
     FundsFrozen,
@@ -37,6 +37,16 @@ interface IArbitrationOperator {
  *        freeze/unfreeze payments. A malicious policy could deny legitimate freezes or allow
  *        unauthorized freezes. Operators should audit the policy implementation before deployment.
  *      - Timestamp: Uses block.timestamp for time-based escrow periods.
+ *
+ * SECURITY NOTE - Freeze/Release Race Condition:
+ *      At the exact moment the escrow period expires (block.timestamp == authTime + ESCROW_PERIOD):
+ *      - freeze() will revert with EscrowPeriodExpired
+ *      - EscrowPeriodCondition.check() will return true (release allowed)
+ *
+ *      This is BY DESIGN: freeze is only available during the escrow period to give the payer
+ *      time to dispute. Once the period expires, the receiver should be able to release.
+ *      The ~12 second block time granularity makes the race window negligible compared to
+ *      typical 7-day escrow periods. Payers should freeze well before expiry if needed.
  */
 contract EscrowPeriodRecorder is IRecorder {
     /// @notice Duration of the escrow period in seconds
@@ -49,9 +59,9 @@ contract EscrowPeriodRecorder is IRecorder {
     /// @dev Key: paymentInfoHash
     mapping(bytes32 => uint256) public authorizationTimes;
 
-    /// @notice Tracks frozen payments
-    /// @dev Key: paymentInfoHash
-    mapping(bytes32 => bool) public frozen;
+    /// @notice Tracks when freeze expires for each payment (0 = not frozen)
+    /// @dev Key: paymentInfoHash, Value: timestamp when freeze expires
+    mapping(bytes32 => uint256) public frozenUntil;
 
     constructor(uint256 _escrowPeriod, address _freezePolicy) {
         if (_escrowPeriod == 0) revert InvalidEscrowPeriod();
@@ -81,15 +91,16 @@ contract EscrowPeriodRecorder is IRecorder {
 
     /**
      * @notice Freeze a payment to block release
-     * @dev Only callable during escrow period. Authorization checked via FREEZE_POLICY.
+     * @dev Only callable during escrow period. Authorization and duration from FREEZE_POLICY.
      * @param paymentInfo PaymentInfo struct for the payment to freeze
      */
     function freeze(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external {
         // Check freeze policy exists
         if (address(FREEZE_POLICY) == address(0)) revert NoFreezePolicy();
 
-        // Check authorization via policy
-        if (!FREEZE_POLICY.canFreeze(paymentInfo, msg.sender)) revert UnauthorizedFreeze();
+        // Check authorization via policy and get freeze duration
+        (bool allowed, uint256 freezeDuration) = FREEZE_POLICY.canFreeze(paymentInfo, msg.sender);
+        if (!allowed) revert UnauthorizedFreeze();
 
         AuthCaptureEscrow escrow = IArbitrationOperator(paymentInfo.operator).ESCROW();
         bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
@@ -100,9 +111,17 @@ contract EscrowPeriodRecorder is IRecorder {
             revert EscrowPeriodExpired();
         }
 
-        if (frozen[paymentInfoHash]) revert AlreadyFrozen();
+        if (frozenUntil[paymentInfoHash] > block.timestamp) revert AlreadyFrozen();
 
-        frozen[paymentInfoHash] = true;
+        // Calculate freeze expiration based on policy-provided duration
+        uint256 freezeExpiry;
+        if (freezeDuration == 0) {
+            // Permanent freeze (until manually unfrozen)
+            freezeExpiry = type(uint256).max;
+        } else {
+            freezeExpiry = block.timestamp + freezeDuration;
+        }
+        frozenUntil[paymentInfoHash] = freezeExpiry;
 
         emit PaymentFrozen(paymentInfo, msg.sender);
     }
@@ -123,9 +142,9 @@ contract EscrowPeriodRecorder is IRecorder {
         AuthCaptureEscrow escrow = IArbitrationOperator(paymentInfo.operator).ESCROW();
         bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
 
-        if (!frozen[paymentInfoHash]) revert NotFrozen();
+        if (frozenUntil[paymentInfoHash] <= block.timestamp) revert NotFrozen();
 
-        frozen[paymentInfoHash] = false;
+        frozenUntil[paymentInfoHash] = 0;
 
         emit PaymentUnfrozen(paymentInfo, msg.sender);
     }
@@ -143,13 +162,13 @@ contract EscrowPeriodRecorder is IRecorder {
     }
 
     /**
-     * @notice Check if a payment is frozen
+     * @notice Check if a payment is currently frozen (not expired)
      * @param paymentInfo PaymentInfo struct
-     * @return True if the payment is frozen
+     * @return True if the payment is frozen and freeze hasn't expired
      */
     function isFrozen(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external view returns (bool) {
         AuthCaptureEscrow escrow = IArbitrationOperator(paymentInfo.operator).ESCROW();
-        return frozen[escrow.getHash(paymentInfo)];
+        return frozenUntil[escrow.getHash(paymentInfo)] > block.timestamp;
     }
 
     /**

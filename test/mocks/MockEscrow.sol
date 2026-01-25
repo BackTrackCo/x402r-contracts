@@ -80,6 +80,44 @@ contract MockEscrow {
         emit PaymentAuthorized(paymentInfoHash, paymentInfo, amount, tokenCollector);
     }
 
+    function charge(
+        PaymentInfo calldata paymentInfo,
+        uint256 amount,
+        address tokenCollector,
+        bytes calldata, /* collectorData */
+        uint16 feeBps,
+        address feeReceiver
+    ) external {
+        if (msg.sender != paymentInfo.operator) revert InvalidSender(msg.sender, paymentInfo.operator);
+        if (amount == 0) revert ZeroAmount();
+
+        bytes32 paymentInfoHash = getHash(paymentInfo);
+        if (paymentState[paymentInfoHash].hasCollectedPayment) revert PaymentAlreadyCollected(paymentInfoHash);
+
+        // Transfer tokens from payer to this contract (then immediately out)
+        paymentInfo.token.safeTransferFrom(paymentInfo.payer, address(this), amount);
+
+        // Calculate fee and transfer to receiver immediately
+        uint256 feeAmount = (amount * feeBps) / 10000;
+        uint256 receiverAmount = amount - feeAmount;
+
+        if (feeAmount > 0 && feeReceiver != address(0)) {
+            paymentInfo.token.safeTransfer(feeReceiver, feeAmount);
+        }
+        if (receiverAmount > 0) {
+            paymentInfo.token.safeTransfer(paymentInfo.receiver, receiverAmount);
+        }
+
+        // Set state: no capturable (already transferred), but refundable for post-capture refunds
+        paymentState[paymentInfoHash] = PaymentState({
+            hasCollectedPayment: true,
+            capturableAmount: 0,
+            refundableAmount: uint120(amount)
+        });
+
+        emit PaymentAuthorized(paymentInfoHash, paymentInfo, amount, tokenCollector);
+    }
+
     function capture(
         PaymentInfo calldata paymentInfo,
         uint256 amount,

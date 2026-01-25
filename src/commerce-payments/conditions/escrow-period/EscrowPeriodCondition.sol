@@ -41,23 +41,19 @@ contract EscrowPeriodCondition is ICondition {
     /**
      * @notice Check if funds can be released (escrow period passed and not frozen)
      * @param paymentInfo PaymentInfo struct
-     * @param caller The address attempting the release (not used, for interface compatibility)
      * @return allowed True if escrow period has passed and payment is not frozen
      */
-    function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, address caller)
+    function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, address)
         external
         view
         override
         returns (bool allowed)
     {
-        // Suppress unused parameter warning
-        caller;
-
         AuthCaptureEscrow escrow = IArbitrationOperator(paymentInfo.operator).ESCROW();
         bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
 
-        // Check if frozen
-        if (RECORDER.frozen(paymentInfoHash)) {
+        // Check if frozen (and freeze hasn't expired)
+        if (RECORDER.frozenUntil(paymentInfoHash) > block.timestamp) {
             return false;
         }
 

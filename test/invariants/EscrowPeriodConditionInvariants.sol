@@ -6,7 +6,7 @@ import {EscrowPeriodRecorder} from "../../src/commerce-payments/conditions/escro
 import {EscrowPeriodConditionFactory} from "../../src/commerce-payments/conditions/escrow-period/EscrowPeriodConditionFactory.sol";
 import {ArbitrationOperator} from "../../src/commerce-payments/operator/arbitration/ArbitrationOperator.sol";
 import {ArbitrationOperatorFactory} from "../../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
-import {PayerFreezePolicy} from "../../src/commerce-payments/conditions/escrow-period/PayerFreezePolicy.sol";
+import {PayerFreezePolicy} from "../../src/commerce-payments/conditions/escrow-period/freeze-policy/PayerFreezePolicy.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockEscrow} from "../mocks/MockEscrow.sol";
@@ -29,6 +29,7 @@ contract EscrowPeriodConditionInvariants {
     uint256 public constant MAX_TOTAL_FEE_RATE = 50;
     uint256 public constant PROTOCOL_FEE_PERCENTAGE = 25;
     uint256 public constant ESCROW_PERIOD = 7 days;
+    uint256 public constant FREEZE_DURATION = 3 days;
 
     address public owner;
     address public protocolFeeRecipient;
@@ -55,7 +56,7 @@ contract EscrowPeriodConditionInvariants {
         // Deploy contracts
         token = new MockERC20("Test", "TST");
         escrow = new MockEscrow();
-        freezePolicy = new PayerFreezePolicy();
+        freezePolicy = new PayerFreezePolicy(FREEZE_DURATION);
 
         conditionFactory = new EscrowPeriodConditionFactory();
         (address recorderAddr, address conditionAddr) = conditionFactory.deploy(ESCROW_PERIOD, address(freezePolicy));

@@ -5,7 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {EscrowPeriodCondition} from "../src/commerce-payments/conditions/escrow-period/EscrowPeriodCondition.sol";
 import {EscrowPeriodRecorder} from "../src/commerce-payments/conditions/escrow-period/EscrowPeriodRecorder.sol";
 import {EscrowPeriodConditionFactory} from "../src/commerce-payments/conditions/escrow-period/EscrowPeriodConditionFactory.sol";
-import {PayerFreezePolicy} from "../src/commerce-payments/conditions/escrow-period/PayerFreezePolicy.sol";
+import {PayerFreezePolicy} from "../src/commerce-payments/conditions/escrow-period/freeze-policy/PayerFreezePolicy.sol";
 import {ArbitrationOperator} from "../src/commerce-payments/operator/arbitration/ArbitrationOperator.sol";
 import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
 import {ConditionNotMet} from "../src/commerce-payments/operator/types/Errors.sol";
@@ -340,6 +340,7 @@ contract EscrowPeriodConditionFreezeTest is Test {
     uint256 public constant INITIAL_BALANCE = 1000000 * 10 ** 18;
     uint256 public constant PAYMENT_AMOUNT = 1000 * 10 ** 18;
     uint256 public constant ESCROW_PERIOD = 7 days;
+    uint256 public constant FREEZE_DURATION = 14 days; // Longer than escrow period so freeze can block release
 
     function setUp() public {
         owner = address(this);
@@ -352,8 +353,8 @@ contract EscrowPeriodConditionFreezeTest is Test {
         token = new MockERC20("Test Token", "TEST");
         escrow = new MockEscrow();
 
-        // Deploy freeze policy
-        freezePolicy = new PayerFreezePolicy();
+        // Deploy freeze policy with 3 day freeze duration
+        freezePolicy = new PayerFreezePolicy(FREEZE_DURATION);
 
         // Deploy condition factory with freeze policy
         conditionFactory = new EscrowPeriodConditionFactory();
@@ -510,11 +511,26 @@ contract EscrowPeriodConditionFreezeTest is Test {
         vm.prank(payer);
         recorder.freeze(paymentInfo);
 
-        // Fast forward past escrow period
+        // Fast forward past escrow period but WITHIN freeze duration
+        // Escrow period is 7 days, freeze duration is 14 days
         vm.warp(block.timestamp + ESCROW_PERIOD + 1);
 
-        // Condition should return false for frozen payment (but payer can still release via OrCondition)
+        // Condition should return false because freeze is still active
         assertFalse(condition.check(paymentInfo, receiver));
+    }
+
+    function test_FrozenPayment_ExpiresAfterDuration() public {
+        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorizeViaOperator();
+
+        // Freeze the payment
+        vm.prank(payer);
+        recorder.freeze(paymentInfo);
+
+        // Fast forward past both escrow period AND freeze duration
+        vm.warp(block.timestamp + FREEZE_DURATION + 1);
+
+        // Condition should return true because freeze has expired and escrow period passed
+        assertTrue(condition.check(paymentInfo, receiver));
     }
 
     function test_FrozenPayment_PayerCanStillRelease() public {
