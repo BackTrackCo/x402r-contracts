@@ -51,12 +51,4 @@ abstract contract RefundRequestAccess {
         _;
     }
 
-    // ============ Escrow State Helpers ============
-
-    function isInEscrow(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) public view returns (bool) {
-        ArbitrationOperator operator = ArbitrationOperator(paymentInfo.operator);
-        bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
-        (, uint120 capturableAmount,) = operator.ESCROW().paymentState(paymentInfoHash);
-        return capturableAmount > 0;
-    }
 }

@@ -11,6 +11,7 @@ error NotReceiver();
 error NotPayer();
 error NotArbiter();
 error NotReceiverOrArbiter();
+error OnlyOperator();
 
 // ============ Payment State Errors ============
 error PaymentDoesNotExist();

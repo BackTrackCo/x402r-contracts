@@ -3,12 +3,17 @@ pragma solidity ^0.8.23;
 
 import {Script, console} from "forge-std/Script.sol";
 import {ArbitrationOperator} from "../src/commerce-payments/operator/arbitration/ArbitrationOperator.sol";
+import {PayerOnly} from "../src/commerce-payments/release-conditions/defaults/PayerOnly.sol";
+import {ReceiverOrArbiter} from "../src/commerce-payments/release-conditions/defaults/ReceiverOrArbiter.sol";
 
 /**
  * @title DeployArbitrationOperator
  * @notice Deploys the ArbitrationOperator contract for x402r/Chamba
- * @dev This script deploys the ArbitrationOperator contract that wraps Base Commerce Payments
- *      with condition-based release for universal execution protocol.
+ * @dev This script deploys the ArbitrationOperator contract with the pull model architecture.
+ *      Uses 8 condition slots for flexible policy configuration.
+ *
+ *      NOTE: For production deployments, prefer using ArbitrationOperatorFactory which handles
+ *      deterministic addresses and reusable default conditions. This script is for manual deployments.
  *
  *      Environment variables:
  *      - ESCROW_ADDRESS: Base Commerce Payments escrow contract address (required)
@@ -17,26 +22,8 @@ import {ArbitrationOperator} from "../src/commerce-payments/operator/arbitration
  *      - PROTOCOL_FEE_PERCENTAGE: Protocol fee percentage 0-100 (default: 25 = 25%)
  *      - ARBITER_ADDRESS: Address of the arbiter for dispute resolution (required)
  *      - OWNER_ADDRESS: Owner of the operator contract (required)
- *      - RELEASE_CONDITION: Release condition contract address (required)
- *
- * ESCROW PERIOD SECURITY GUIDELINES:
- *      When deploying with EscrowPeriodCondition, use appropriate minimum escrow periods:
- *
- *      L1 (Ethereum Mainnet):
- *      - MINIMUM: 5 minutes (300 seconds)
- *      - RECOMMENDED: 15+ minutes for high-value transactions
- *      - REASON: Miners can manipulate block.timestamp by ~15 seconds. Short periods
- *                increase risk of timestamp manipulation affecting freeze/release windows.
- *
- *      L2 (Base, Optimism, Arbitrum, etc.):
- *      - MINIMUM: 30 seconds
- *      - RECOMMENDED: 5+ minutes for high-value transactions
- *      - REASON: Sequencer controls timestamps and is already trusted for tx ordering.
- *                Shorter periods acceptable given existing sequencer trust model.
- *
- *      For EscrowPeriodConditionFactory deployment, set ESCROW_PERIOD env variable:
- *      - ESCROW_PERIOD=300    (5 minutes - L1 minimum)
- *      - ESCROW_PERIOD=604800 (7 days - dispute resolution use case)
+ *      - CAN_RELEASE: CAN_RELEASE condition contract address (optional, uses PayerOnly if not set)
+ *      - CAN_REFUND_IN_ESCROW: CAN_REFUND_IN_ESCROW condition contract (optional, uses ReceiverOrArbiter if not set)
  */
 contract DeployArbitrationOperator is Script {
     function run() public {
@@ -45,26 +32,42 @@ contract DeployArbitrationOperator is Script {
         address protocolFeeRecipient = vm.envAddress("PROTOCOL_FEE_RECIPIENT");
         address arbiter = vm.envAddress("ARBITER_ADDRESS");
         address owner = vm.envAddress("OWNER_ADDRESS");
-        address releaseCondition = vm.envAddress("RELEASE_CONDITION");
+        
+        // Optional condition overrides
+        address canRelease = vm.envOr("CAN_RELEASE", address(0));
+        address canRefundInEscrow = vm.envOr("CAN_REFUND_IN_ESCROW", address(0));
 
         // Get fee configuration from environment variables or use defaults
-        // Default: 5 basis points (0.05%) total fee rate
         uint256 maxTotalFeeRate = vm.envOr("MAX_TOTAL_FEE_RATE", uint256(5));
-        // Default: 25% protocol fee (arbiter gets 75%)
         uint256 protocolFeePercentage = vm.envOr("PROTOCOL_FEE_PERCENTAGE", uint256(25));
 
         vm.startBroadcast();
 
-        console.log("=== Deploying ArbitrationOperator ===");
+        console.log("=== Deploying ArbitrationOperator (Pull Model) ===");
         console.log("Escrow address:", escrow);
         console.log("Protocol fee recipient:", protocolFeeRecipient);
         console.log("Max total fee rate (basis points):", maxTotalFeeRate);
         console.log("Protocol fee percentage:", protocolFeePercentage);
         console.log("Arbiter:", arbiter);
         console.log("Owner:", owner);
-        console.log("Release condition:", releaseCondition);
 
-        // Deploy ArbitrationOperator
+        // Deploy default conditions if not provided
+        PayerOnly payerOnly;
+        ReceiverOrArbiter receiverOrArbiter;
+        
+        if (canRelease == address(0)) {
+            payerOnly = new PayerOnly();
+            canRelease = address(payerOnly);
+            console.log("Deployed PayerOnly:", canRelease);
+        }
+        
+        if (canRefundInEscrow == address(0)) {
+            receiverOrArbiter = new ReceiverOrArbiter();
+            canRefundInEscrow = address(receiverOrArbiter);
+            console.log("Deployed ReceiverOrArbiter:", canRefundInEscrow);
+        }
+
+        // Deploy ArbitrationOperator with 8 condition slots
         ArbitrationOperator operator = new ArbitrationOperator(
             escrow,
             protocolFeeRecipient,
@@ -72,7 +75,14 @@ contract DeployArbitrationOperator is Script {
             protocolFeePercentage,
             arbiter,
             owner,
-            releaseCondition
+            address(0),         // CAN_AUTHORIZE: anyone can authorize
+            address(0),         // NOTE_AUTHORIZE: no tracking
+            canRelease,         // CAN_RELEASE: payer only (or custom)
+            address(0),         // NOTE_RELEASE: no tracking
+            canRefundInEscrow,  // CAN_REFUND_IN_ESCROW: receiver or arbiter
+            address(0),         // NOTE_REFUND_IN_ESCROW: no tracking
+            address(0),         // CAN_REFUND_POST_ESCROW: anyone
+            address(0)          // NOTE_REFUND_POST_ESCROW: no tracking
         );
 
         console.log("\n=== Deployment Summary ===");
@@ -84,7 +94,8 @@ contract DeployArbitrationOperator is Script {
         console.log("Max total fee rate:", operator.MAX_TOTAL_FEE_RATE());
         console.log("Protocol fee percentage:", operator.PROTOCOL_FEE_PERCENTAGE());
         console.log("Max arbiter fee rate:", operator.MAX_ARBITER_FEE_RATE());
-        console.log("Release condition:", address(operator.RELEASE_CONDITION()));
+        console.log("CAN_RELEASE:", address(operator.CAN_RELEASE()));
+        console.log("CAN_REFUND_IN_ESCROW:", address(operator.CAN_REFUND_IN_ESCROW()));
         console.log("Fees enabled:", operator.feesEnabled());
         console.log("\n=== Configuration ===");
         console.log("OPERATOR_ADDRESS=", address(operator));

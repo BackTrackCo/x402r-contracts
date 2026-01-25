@@ -2,39 +2,55 @@
 // CONTRACTS UNAUDITED: USE AT YOUR OWN RISK
 pragma solidity ^0.8.28;
 
-import {IReleaseCondition} from "../../operator/types/IReleaseCondition.sol";
-import {ArbitrationOperator} from "../../operator/arbitration/ArbitrationOperator.sol";
-import {ArbitrationOperatorAccess} from "../../operator/arbitration/ArbitrationOperatorAccess.sol";
+import {ICanCondition} from "../../operator/types/ICanCondition.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
+
+// Forward declaration for reading arbiter
+interface IArbitrationOperator {
+    function ARBITER() external view returns (address);
+}
 
 /**
  * @title ArbiterDecisionCondition
- * @notice Release condition where only the arbiter can release funds via this contract.
- *         Payer can bypass by calling operator.release() directly.
+ * @notice Release condition where arbiter or payer (via FALLBACK) can release funds.
+ *         Implements ICanCondition for the CAN_RELEASE slot.
+ *
+ * @dev Pull Model Architecture:
+ *      - Payer bypass via FALLBACK (e.g., PayerOnly)
+ *      - Arbiter can always release
+ *      - Reads arbiter from the operator via paymentInfo.operator.ARBITER()
+ *
+ *      Operator Configuration:
+ *      CAN_RELEASE = arbiterDecisionCondition  // wraps PayerOnly, adds arbiter
  */
-contract ArbiterDecisionCondition is IReleaseCondition, ArbitrationOperatorAccess, ERC165 {
-    /**
-     * @notice Release funds by calling the operator
-     * @dev Only arbiter can call this. Payer can bypass by calling operator.release() directly.
-     * @param paymentInfo PaymentInfo struct
-     * @param amount Amount to release
-     */
-    function release(
-        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
-        uint256 amount
-    ) external override onlyArbiter(ArbitrationOperator(paymentInfo.operator).ARBITER()) {
-        ArbitrationOperator(paymentInfo.operator).release(paymentInfo, amount);
+contract ArbiterDecisionCondition is ICanCondition {
+    /// @notice Fallback condition for payer bypass (e.g., PayerOnly)
+    ICanCondition public immutable FALLBACK;
+
+    constructor(address _fallback) {
+        FALLBACK = ICanCondition(_fallback);
     }
 
     /**
-     * @notice Checks if the contract supports an interface
-     * @param interfaceId The interface ID to check
-     * @return True if the interface is supported
+     * @notice Check if release is allowed
+     * @dev Payer bypass via FALLBACK. Arbiter can also release.
+     * @param paymentInfo PaymentInfo struct
+     * @param amount Amount to release
+     * @param caller The address attempting to release
+     * @return True if release is allowed
      */
-    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
-        return
-            interfaceId == type(IReleaseCondition).interfaceId ||
-            super.supportsInterface(interfaceId);
+    function can(
+        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
+        uint256 amount,
+        address caller
+    ) external view override returns (bool) {
+        // Payer bypass via fallback (e.g., PayerOnly)
+        if (address(FALLBACK) != address(0) && FALLBACK.can(paymentInfo, amount, caller)) {
+            return true;
+        }
+        
+        // Arbiter can also release
+        address arbiter = IArbitrationOperator(paymentInfo.operator).ARBITER();
+        return caller == arbiter;
     }
 }

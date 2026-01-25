@@ -7,20 +7,18 @@ import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {ArbitrationOperatorAccess} from "./ArbitrationOperatorAccess.sol";
 import {ZeroAddress, ZeroAmount} from "../../types/Errors.sol";
-import {ZeroEscrow, ZeroArbiter} from "../types/Errors.sol";
+import {ZeroEscrow, ZeroArbiter, ConditionNotMet} from "../types/Errors.sol";
 import {
     TotalFeeRateExceedsMax,
     InvalidAuthorizationExpiry,
     InvalidFeeBps,
     InvalidFeeReceiver,
-    UnauthorizedCaller,
     ETHTransferFailed
 } from "../types/Errors.sol";
 import {IOperator} from "../types/IOperator.sol";
-import {IReleaseCondition} from "../types/IReleaseCondition.sol";
-import {IAuthorizable} from "../types/IAuthorizable.sol";
+import {ICanCondition} from "../types/ICanCondition.sol";
+import {INoteCondition} from "../types/INoteCondition.sol";
 import {PaymentState} from "../types/Types.sol";
-import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {
     AuthorizationCreated,
     ReleaseExecuted,
@@ -35,15 +33,18 @@ import {
  *         Anyone (agents, robots, humans) can post jobs, anyone can execute them, payment held in escrow
  *         until verification via release condition contract.
  *
- * @dev Key features:
- *      - Release controlled by external IReleaseCondition contract (verification logic)
- *      - Immutable arbiter config for dispute resolution
- *      - Arbiter OR receiver can trigger refunds via partialVoid
- *      - Uses PaymentInfo struct from Base Commerce Payments for x402-escrow compatibility
- *      - Escrow is source of truth; operator stores PaymentInfo for indexing only
+ * @dev Pull Model Architecture:
+ *      - Operator controls flow, conditions are optional policy plugins
+ *      - 8 condition slots: 4 CAN_* slots (checks) and 4 NOTE_* slots (notifications)
+ *      - address(0) = default behavior (AlwaysAllow for CAN_*, NoOp for NOTE_*)
+ *      - Conditions can implement ICanCondition, INoteCondition, or both
  *
- * ARCHITECTURE: Implements IOperator. Release conditions call into this contract:
- *        User -> IReleaseCondition.release() -> IOperator.release() -> ESCROW.capture()
+ *      Flow for each action:
+ *      User -> operator.action() -> [CAN_ACTION?] -> escrow -> [NOTE_ACTION?]
+ *
+ * ARCHITECTURE: Implements IOperator. Users call operator methods directly:
+ *        User -> operator.authorize() -> escrow.authorize()
+ *        User -> operator.release() -> escrow.capture()
  */
 contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
 
@@ -62,12 +63,19 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
     uint256 public immutable PROTOCOL_FEE_PERCENTAGE;
     uint256 public immutable MAX_ARBITER_FEE_RATE;
 
-    // Release condition contract - controls when funds can be released (verification logic)
-    IReleaseCondition public immutable RELEASE_CONDITION;
+    // ============ Condition Slots ============
+    // address(0) = default behavior (AlwaysAllow for CAN_*, NoOp for NOTE_*)
+    ICanCondition public immutable CAN_AUTHORIZE;
+    INoteCondition public immutable NOTE_AUTHORIZE;
+    ICanCondition public immutable CAN_RELEASE;
+    INoteCondition public immutable NOTE_RELEASE;
+    ICanCondition public immutable CAN_REFUND_IN_ESCROW;
+    INoteCondition public immutable NOTE_REFUND_IN_ESCROW;
+    ICanCondition public immutable CAN_REFUND_POST_ESCROW;
+    INoteCondition public immutable NOTE_REFUND_POST_ESCROW;
 
     address public immutable protocolFeeRecipient;
     bool public feesEnabled;
-    bool public immutable AUTHORIZATION_RESTRICTED;
 
     constructor(
         address _escrow,
@@ -76,7 +84,14 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         uint256 _protocolFeePercentage,
         address _arbiter,
         address _owner,
-        address _releaseCondition
+        address _canAuthorize,
+        address _noteAuthorize,
+        address _canRelease,
+        address _noteRelease,
+        address _canRefundInEscrow,
+        address _noteRefundInEscrow,
+        address _canRefundPostEscrow,
+        address _noteRefundPostEscrow
     ) {
         if (_escrow == address(0)) revert ZeroEscrow();
         if (_arbiter == address(0)) revert ZeroArbiter();
@@ -84,7 +99,6 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         ARBITER = _arbiter;
         if (_protocolFeeRecipient == address(0)) revert ZeroAddress();
         if (_owner == address(0)) revert ZeroAddress();
-        if (_releaseCondition == address(0)) revert ZeroAddress();
         _initializeOwner(_owner);
         if (_maxTotalFeeRate == 0) revert ZeroAmount();
         if (_protocolFeePercentage > 100) revert TotalFeeRateExceedsMax();
@@ -95,17 +109,16 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         MAX_TOTAL_FEE_RATE = _maxTotalFeeRate;
         PROTOCOL_FEE_PERCENTAGE = _protocolFeePercentage;
         MAX_ARBITER_FEE_RATE = (_maxTotalFeeRate * (100 - _protocolFeePercentage)) / 100;
-        RELEASE_CONDITION = IReleaseCondition(_releaseCondition);
 
-        // Check if condition supports IAuthorizable to see if we should restrict authorization
-        bool restricted = false;
-        try IERC165(_releaseCondition).supportsInterface(type(IAuthorizable).interfaceId) returns (bool supported) {
-            restricted = supported;
-        } catch {
-            // If it doesn't support ERC165, assume not restricted
-            restricted = false;
-        }
-        AUTHORIZATION_RESTRICTED = restricted;
+        // Set condition slots (address(0) = default behavior)
+        CAN_AUTHORIZE = ICanCondition(_canAuthorize);
+        NOTE_AUTHORIZE = INoteCondition(_noteAuthorize);
+        CAN_RELEASE = ICanCondition(_canRelease);
+        NOTE_RELEASE = INoteCondition(_noteRelease);
+        CAN_REFUND_IN_ESCROW = ICanCondition(_canRefundInEscrow);
+        NOTE_REFUND_IN_ESCROW = INoteCondition(_noteRefundInEscrow);
+        CAN_REFUND_POST_ESCROW = ICanCondition(_canRefundPostEscrow);
+        NOTE_REFUND_POST_ESCROW = INoteCondition(_noteRefundPostEscrow);
     }
 
     // ============ Owner Functions ============
@@ -122,8 +135,7 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
 
     /**
      * @notice Authorize payment via Base Commerce Payments escrow
-     * @dev Uses exact same interface as AuthCaptureEscrow.authorize()
-     *      Funds held in escrow until RELEASE_CONDITION.canRelease() returns true.
+     * @dev Pull model: checks CAN_AUTHORIZE, performs authorization, then notifies NOTE_AUTHORIZE
      * @param paymentInfo PaymentInfo struct with required values:
      *        - operator == address(this)
      *        - authorizationExpiry == type(uint48).max
@@ -140,8 +152,9 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         bytes calldata collectorData
     ) external validOperator(paymentInfo) {
         // ============ CHECKS ============
-        if (AUTHORIZATION_RESTRICTED && msg.sender != address(RELEASE_CONDITION)) {
-            revert UnauthorizedCaller();
+        // Check CAN_AUTHORIZE condition (address(0) = always allow)
+        if (address(CAN_AUTHORIZE) != address(0)) {
+            if (!CAN_AUTHORIZE.can(paymentInfo, amount, msg.sender)) revert ConditionNotMet();
         }
         if (paymentInfo.authorizationExpiry != type(uint48).max) revert InvalidAuthorizationExpiry();
         if (paymentInfo.minFeeBps != MAX_TOTAL_FEE_RATE || paymentInfo.maxFeeBps != MAX_TOTAL_FEE_RATE) {
@@ -159,6 +172,11 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         // ============ INTERACTIONS ============
         ESCROW.authorize(paymentInfo, amount, tokenCollector, collectorData);
 
+        // Notify NOTE_AUTHORIZE condition (address(0) = no-op)
+        if (address(NOTE_AUTHORIZE) != address(0)) {
+            NOTE_AUTHORIZE.note(paymentInfo, amount, msg.sender);
+        }
+
         emit AuthorizationCreated(
             paymentInfoHash,
             paymentInfo.payer,
@@ -170,45 +188,73 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
 
     /**
      * @notice Release funds to receiver
-     * @dev Can be called by:
-     *      1. RELEASE_CONDITION contract (validates conditions first)
-     *      2. Payer directly (bypasses release condition - payer waives protection)
+     * @dev Pull model: checks CAN_RELEASE, performs capture, then notifies NOTE_RELEASE.
+     *      Payer bypass is now handled via the CAN_RELEASE condition (e.g., PayerOnly fallback).
      * @param paymentInfo PaymentInfo struct
      * @param amount Amount to release
      */
     function release(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint256 amount
-    ) external validOperator(paymentInfo) onlyAuthorizedOrPayer(paymentInfo, address(RELEASE_CONDITION)) {
+    ) external validOperator(paymentInfo) {
+        // ============ CHECKS ============
+        // Check CAN_RELEASE condition (address(0) = always allow)
+        if (address(CAN_RELEASE) != address(0)) {
+            if (!CAN_RELEASE.can(paymentInfo, amount, msg.sender)) revert ConditionNotMet();
+        }
+
         uint16 feeBps = uint16(MAX_TOTAL_FEE_RATE);
         address feeReceiver = address(this);
 
+        // ============ EFFECTS ============
+        // Emit event before external calls (CEI pattern)
+        emit ReleaseExecuted(paymentInfo, amount, block.timestamp);
+
+        // ============ INTERACTIONS ============
         // Forward to escrow - escrow validates payment exists
         ESCROW.capture(paymentInfo, amount, feeBps, feeReceiver);
 
-        emit ReleaseExecuted(paymentInfo, amount, block.timestamp);
+        // Notify NOTE_RELEASE condition (address(0) = no-op)
+        if (address(NOTE_RELEASE) != address(0)) {
+            NOTE_RELEASE.note(paymentInfo, amount, msg.sender);
+        }
     }
 
     /**
      * @notice Refund funds while still in escrow (before capture)
-     * @dev Only arbiter OR receiver can call. Returns escrowed funds to payer.
+     * @dev Pull model: checks CAN_REFUND_IN_ESCROW, performs partialVoid, then notifies.
+     *      Typically receiver or arbiter can call (controlled via condition).
      * @param paymentInfo PaymentInfo struct
      * @param amount Amount to return to payer
      */
     function refundInEscrow(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint120 amount
-    ) external validOperator(paymentInfo) onlyReceiverOrArbiter(paymentInfo, ARBITER) {
+    ) external validOperator(paymentInfo) {
+        // ============ CHECKS ============
+        // Check CAN_REFUND_IN_ESCROW condition (address(0) = always allow)
+        if (address(CAN_REFUND_IN_ESCROW) != address(0)) {
+            if (!CAN_REFUND_IN_ESCROW.can(paymentInfo, amount, msg.sender)) revert ConditionNotMet();
+        }
+
+        // ============ EFFECTS ============
+        // Emit event before external calls (CEI pattern)
+        emit RefundExecuted(paymentInfo, paymentInfo.payer, amount);
+
+        // ============ INTERACTIONS ============
         // Forward to escrow's partialVoid - escrow validates payment exists
         ESCROW.partialVoid(paymentInfo, amount);
 
-        // Compute hash only for event
-        emit RefundExecuted(paymentInfo, paymentInfo.payer, amount);
+        // Notify NOTE_REFUND_IN_ESCROW condition (address(0) = no-op)
+        if (address(NOTE_REFUND_IN_ESCROW) != address(0)) {
+            NOTE_REFUND_IN_ESCROW.note(paymentInfo, amount, msg.sender);
+        }
     }
 
     /**
      * @notice Refund captured funds back to payer (after capture/release)
-     * @dev Permission is enforced by the token collector (e.g., receiver must have approved it,
+     * @dev Pull model: checks CAN_REFUND_POST_ESCROW, performs refund, then notifies.
+     *      Permission is enforced by the token collector (e.g., receiver must have approved it,
      *      or collectorData contains receiver's signature). Anyone can call, but refund only
      *      succeeds if the token collector can source the funds.
      * @param paymentInfo PaymentInfo struct
@@ -222,10 +268,24 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         address tokenCollector,
         bytes calldata collectorData
     ) external validOperator(paymentInfo) {
+        // ============ CHECKS ============
+        // Check CAN_REFUND_POST_ESCROW condition (address(0) = always allow)
+        if (address(CAN_REFUND_POST_ESCROW) != address(0)) {
+            if (!CAN_REFUND_POST_ESCROW.can(paymentInfo, amount, msg.sender)) revert ConditionNotMet();
+        }
+
+        // ============ EFFECTS ============
+        // Emit event before external calls (CEI pattern)
+        emit RefundExecuted(paymentInfo, paymentInfo.payer, uint120(amount));
+
+        // ============ INTERACTIONS ============
         // Forward to escrow's refund - token collector enforces permission
         ESCROW.refund(paymentInfo, amount, tokenCollector, collectorData);
 
-        emit RefundExecuted(paymentInfo, paymentInfo.payer, uint120(amount));
+        // Notify NOTE_REFUND_POST_ESCROW condition (address(0) = no-op)
+        if (address(NOTE_REFUND_POST_ESCROW) != address(0)) {
+            NOTE_REFUND_POST_ESCROW.note(paymentInfo, amount, msg.sender);
+        }
     }
 
     /**
@@ -233,6 +293,7 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
      * @param token The token address to distribute fees for
      */
     function distributeFees(address token) external {
+        // ============ CHECKS ============
         if (token == address(0)) revert ZeroAddress();
         uint256 balance = SafeTransferLib.balanceOf(token, address(this));
         if (balance == 0) return;
@@ -247,6 +308,11 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
             arbiterAmount = balance;
         }
 
+        // ============ EFFECTS ============
+        // Emit event before external calls (CEI pattern)
+        emit FeesDistributed(token, protocolAmount, arbiterAmount);
+
+        // ============ INTERACTIONS ============
         if (protocolAmount > 0) {
             SafeTransferLib.safeTransfer(token, protocolFeeRecipient, protocolAmount);
         }
@@ -254,8 +320,6 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         if (arbiterAmount > 0) {
             SafeTransferLib.safeTransfer(token, ARBITER, arbiterAmount);
         }
-
-        emit FeesDistributed(token, protocolAmount, arbiterAmount);
     }
 
     /// @notice Rescue any ETH accidentally sent to this contract

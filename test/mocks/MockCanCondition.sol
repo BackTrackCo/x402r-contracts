@@ -4,19 +4,25 @@ pragma solidity ^0.8.28;
 import {ICanCondition} from "../../src/commerce-payments/operator/types/ICanCondition.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
-/// @notice Release conditions are not met
-error ReleaseLocked();
-
 /**
- * @title MockReleaseCondition
- * @notice Mock release condition for testing - allows manual approval of releases
- * @dev Implements ICanCondition for the pull model architecture
+ * @title MockCanCondition
+ * @notice Configurable ICanCondition mock for testing
+ * @dev Allows setting return value for can() and tracking specific payment approvals
  */
-contract MockReleaseCondition is ICanCondition {
+contract MockCanCondition is ICanCondition {
+    bool public defaultCanResult = true;
     mapping(bytes32 => bool) public approved;
 
     /**
-     * @notice Approve a payment for release
+     * @notice Set the default return value for can()
+     * @param result The value to return
+     */
+    function setDefaultCanResult(bool result) external {
+        defaultCanResult = result;
+    }
+
+    /**
+     * @notice Approve a specific payment
      * @param paymentInfoHash The payment to approve
      */
     function approve(bytes32 paymentInfoHash) external {
@@ -41,9 +47,9 @@ contract MockReleaseCondition is ICanCondition {
     }
 
     /**
-     * @notice Check if release is allowed (pull model)
-     * @param paymentInfo PaymentInfo struct
-     * @return True if release is approved
+     * @notice Check if the action is allowed
+     * @param paymentInfo The PaymentInfo struct
+     * @return True if the action is allowed
      */
     function can(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
@@ -51,6 +57,7 @@ contract MockReleaseCondition is ICanCondition {
         address /* caller */
     ) external view override returns (bool) {
         bytes32 paymentInfoHash = keccak256(abi.encode(paymentInfo));
-        return approved[paymentInfoHash];
+        if (approved[paymentInfoHash]) return true;
+        return defaultCanResult;
     }
 }

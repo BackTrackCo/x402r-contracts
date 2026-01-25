@@ -7,16 +7,16 @@ import {
     NotReceiver,
     NotPayer,
     NotArbiter,
-    NotReceiverOrArbiter,
-    InvalidOperator
+    InvalidOperator,
+    OnlyOperator
 } from "../../types/Errors.sol";
-import {UnauthorizedCaller} from "../types/Errors.sol";
 
 /**
  * @title ArbitrationOperatorAccess
  * @notice Stateless access control modifiers for payment operations
  * @dev Modifiers read directly from PaymentInfo struct and passed parameters - no state dependencies.
  *      Reusable across ArbitrationOperator, RefundRequest, and release conditions.
+ *      Note: Most access control is now handled via ICanCondition slots in the operator.
  */
 abstract contract ArbitrationOperatorAccess {
 
@@ -53,32 +53,6 @@ abstract contract ArbitrationOperatorAccess {
         _;
     }
 
-    // ============ Combined Modifiers ============
-
-    /**
-     * @notice Modifier to check if sender is receiver or arbiter
-     * @param paymentInfo The PaymentInfo struct
-     * @param arbiter The arbiter address
-     */
-    modifier onlyReceiverOrArbiter(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, address arbiter) {
-        if (msg.sender != paymentInfo.receiver && msg.sender != arbiter) {
-            revert NotReceiverOrArbiter();
-        }
-        _;
-    }
-
-    /**
-     * @notice Modifier to check if sender is an authorized address or the payer
-     * @param paymentInfo The PaymentInfo struct
-     * @param authorized The authorized address (e.g., release condition contract)
-     */
-    modifier onlyAuthorizedOrPayer(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, address authorized) {
-        if (msg.sender != authorized && msg.sender != paymentInfo.payer) {
-            revert UnauthorizedCaller();
-        }
-        _;
-    }
-
     // ============ Operator Validation ============
 
     /**
@@ -87,6 +61,15 @@ abstract contract ArbitrationOperatorAccess {
      */
     modifier validOperator(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
         if (paymentInfo.operator != address(this)) revert InvalidOperator();
+        _;
+    }
+
+    /**
+     * @notice Modifier to restrict calls to the operator
+     * @param operator The operator address from PaymentInfo
+     */
+    modifier onlyOperator(address operator) {
+        if (msg.sender != operator) revert OnlyOperator();
         _;
     }
 }

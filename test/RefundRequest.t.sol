@@ -5,6 +5,8 @@ import {Test, console} from "forge-std/Test.sol";
 import {RefundRequest} from "../src/commerce-payments/requests/refund/RefundRequest.sol";
 import {ArbitrationOperator} from "../src/commerce-payments/operator/arbitration/ArbitrationOperator.sol";
 import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
+import {PayerOnly} from "../src/commerce-payments/release-conditions/defaults/PayerOnly.sol";
+import {ReceiverOrArbiter} from "../src/commerce-payments/release-conditions/defaults/ReceiverOrArbiter.sol";
 import {RequestStatus} from "../src/commerce-payments/requests/types/Types.sol";
 import {
     NotReceiver,
@@ -30,6 +32,8 @@ contract RefundRequestTest is Test {
     MockERC20 public token;
     MockEscrow public escrow;
     MockReleaseCondition public releaseCondition;
+    PayerOnly public payerOnly;
+    ReceiverOrArbiter public receiverOrArbiter;
 
     address public owner;
     address public protocolFeeRecipient;
@@ -58,6 +62,8 @@ contract RefundRequestTest is Test {
         token = new MockERC20("Test Token", "TEST");
         escrow = new MockEscrow();
         releaseCondition = new MockReleaseCondition();
+        payerOnly = new PayerOnly();
+        receiverOrArbiter = new ReceiverOrArbiter();
 
         // Deploy operator factory
         operatorFactory = new ArbitrationOperatorFactory(
@@ -68,8 +74,18 @@ contract RefundRequestTest is Test {
             owner
         );
 
-        // Deploy operator
-        operator = ArbitrationOperator(operatorFactory.deployOperator(arbiter, address(releaseCondition)));
+        // Deploy operator with release condition
+        operator = ArbitrationOperator(operatorFactory.deployOperator(
+            arbiter,
+            address(0),               // CAN_AUTHORIZE: anyone
+            address(0),               // NOTE_AUTHORIZE: no-op
+            address(releaseCondition), // CAN_RELEASE: requires approval
+            address(0),               // NOTE_RELEASE: no-op
+            address(receiverOrArbiter), // CAN_REFUND_IN_ESCROW
+            address(0),               // NOTE_REFUND_IN_ESCROW: no-op
+            address(0),               // CAN_REFUND_POST_ESCROW: anyone
+            address(0)                // NOTE_REFUND_POST_ESCROW: no-op
+        ));
 
         // Deploy refund request (no factory needed - singleton)
         refundRequest = new RefundRequest();
@@ -242,10 +258,10 @@ contract RefundRequestTest is Test {
     function test_UpdateStatus_ApproveByReceiverPostCapture() public {
         (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
 
-        // Capture to move out of escrow (push model: call release on condition contract)
+        // Approve the release and call release on operator (pull model)
         releaseCondition.approvePayment(paymentInfo);
         vm.prank(receiver);
-        releaseCondition.release(paymentInfo, PAYMENT_AMOUNT);
+        operator.release(paymentInfo, PAYMENT_AMOUNT);
 
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo);
@@ -260,10 +276,10 @@ contract RefundRequestTest is Test {
     function test_UpdateStatus_RevertsOnArbiterPostCapture() public {
         (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
 
-        // Capture to move out of escrow (push model: call release on condition contract)
+        // Approve the release and call release on operator (pull model)
         releaseCondition.approvePayment(paymentInfo);
         vm.prank(receiver);
-        releaseCondition.release(paymentInfo, PAYMENT_AMOUNT);
+        operator.release(paymentInfo, PAYMENT_AMOUNT);
 
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo);

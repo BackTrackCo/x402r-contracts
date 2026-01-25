@@ -5,11 +5,12 @@ import {Test, console} from "forge-std/Test.sol";
 import {ArbiterDecisionCondition} from "../src/commerce-payments/release-conditions/arbiter-decision/ArbiterDecisionCondition.sol";
 import {ArbitrationOperator} from "../src/commerce-payments/operator/arbitration/ArbitrationOperator.sol";
 import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
+import {PayerOnly} from "../src/commerce-payments/release-conditions/defaults/PayerOnly.sol";
+import {ReceiverOrArbiter} from "../src/commerce-payments/release-conditions/defaults/ReceiverOrArbiter.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockEscrow} from "./mocks/MockEscrow.sol";
-import {NotArbiter} from "../src/commerce-payments/types/Errors.sol";
-import {UnauthorizedCaller} from "../src/commerce-payments/operator/types/Errors.sol";
+import {ConditionNotMet} from "../src/commerce-payments/operator/types/Errors.sol";
 
 contract ArbiterDecisionConditionTest is Test {
     ArbiterDecisionCondition public condition;
@@ -17,6 +18,8 @@ contract ArbiterDecisionConditionTest is Test {
     ArbitrationOperatorFactory public operatorFactory;
     MockERC20 public token;
     MockEscrow public escrow;
+    PayerOnly public payerOnly;
+    ReceiverOrArbiter public receiverOrArbiter;
 
     address public owner;
     address public protocolFeeRecipient;
@@ -39,9 +42,13 @@ contract ArbiterDecisionConditionTest is Test {
         // Deploy mock contracts
         token = new MockERC20("Test Token", "TEST");
         escrow = new MockEscrow();
+        
+        // Deploy default conditions
+        payerOnly = new PayerOnly();
+        receiverOrArbiter = new ReceiverOrArbiter();
 
-        // Deploy condition (singleton)
-        condition = new ArbiterDecisionCondition();
+        // Deploy condition with PayerOnly fallback
+        condition = new ArbiterDecisionCondition(address(payerOnly));
 
         // Deploy operator factory
         operatorFactory = new ArbitrationOperatorFactory(
@@ -53,7 +60,18 @@ contract ArbiterDecisionConditionTest is Test {
         );
 
         // Deploy operator via factory with the arbiter decision condition
-        operator = ArbitrationOperator(operatorFactory.deployOperator(arbiter, address(condition)));
+        // CAN_RELEASE = condition (arbiter or payer via fallback)
+        operator = ArbitrationOperator(operatorFactory.deployOperator(
+            arbiter,
+            address(0),               // CAN_AUTHORIZE: anyone
+            address(0),               // NOTE_AUTHORIZE: no-op
+            address(condition),       // CAN_RELEASE: arbiter or payer
+            address(0),               // NOTE_RELEASE: no-op
+            address(receiverOrArbiter), // CAN_REFUND_IN_ESCROW
+            address(0),               // NOTE_REFUND_IN_ESCROW: no-op
+            address(0),               // CAN_REFUND_POST_ESCROW: anyone
+            address(0)                // NOTE_REFUND_POST_ESCROW: no-op
+        ));
 
         // Setup balances
         token.mint(payer, INITIAL_BALANCE);
@@ -124,39 +142,39 @@ contract ArbiterDecisionConditionTest is Test {
 
     // ============ Release Tests ============
 
-    function test_Release_RevertsIfNotArbiter() public {
+    function test_Release_RevertsIfNotArbiterOrPayer() public {
         (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorizeDirectly();
 
-        // Non-arbiter cannot release via condition
+        // Non-arbiter and non-payer cannot release
         vm.prank(receiver);
-        vm.expectRevert(NotArbiter.selector);
-        condition.release(paymentInfo, PAYMENT_AMOUNT);
+        vm.expectRevert(ConditionNotMet.selector);
+        operator.release(paymentInfo, PAYMENT_AMOUNT);
 
-        // Random address cannot release via condition
+        // Random address cannot release
         vm.prank(address(0x1234));
-        vm.expectRevert(NotArbiter.selector);
-        condition.release(paymentInfo, PAYMENT_AMOUNT);
+        vm.expectRevert(ConditionNotMet.selector);
+        operator.release(paymentInfo, PAYMENT_AMOUNT);
     }
 
     function test_Release_SucceedsForArbiter() public {
         (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorizeDirectly();
 
-        // Arbiter can release via condition
+        // Arbiter can release
         vm.prank(arbiter);
-        condition.release(paymentInfo, PAYMENT_AMOUNT);
+        operator.release(paymentInfo, PAYMENT_AMOUNT);
     }
 
-    // ============ Payer Bypass Tests (via operator.release) ============
+    // ============ Payer Bypass Tests (via PayerOnly fallback) ============
 
     function test_PayerBypass_CanReleaseDirectlyViaOperator() public {
         (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorizeDirectly();
 
-        // Non-arbiter cannot release via condition
+        // Non-arbiter cannot release
         vm.prank(receiver);
-        vm.expectRevert(NotArbiter.selector);
-        condition.release(paymentInfo, PAYMENT_AMOUNT);
+        vm.expectRevert(ConditionNotMet.selector);
+        operator.release(paymentInfo, PAYMENT_AMOUNT);
 
-        // But payer can bypass by calling operator.release() directly
+        // But payer can bypass via PayerOnly fallback
         vm.prank(payer);
         operator.release(paymentInfo, PAYMENT_AMOUNT);
     }
@@ -164,13 +182,41 @@ contract ArbiterDecisionConditionTest is Test {
     function test_PayerBypass_NonPayerCannotBypass() public {
         (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorizeDirectly();
 
-        // Non-payer cannot call operator.release() directly (except via condition)
+        // Non-payer and non-arbiter cannot release
         vm.prank(receiver);
-        vm.expectRevert(UnauthorizedCaller.selector);
+        vm.expectRevert(ConditionNotMet.selector);
         operator.release(paymentInfo, PAYMENT_AMOUNT);
 
         vm.prank(address(0x1234));
-        vm.expectRevert(UnauthorizedCaller.selector);
+        vm.expectRevert(ConditionNotMet.selector);
         operator.release(paymentInfo, PAYMENT_AMOUNT);
+    }
+
+    // ============ Condition Tests ============
+
+    function test_Condition_HasCorrectFallback() public view {
+        assertEq(address(condition.FALLBACK()), address(payerOnly));
+    }
+
+    function test_Condition_CanMethod_ReturnsTrueForPayer() public view {
+        MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+        AuthCaptureEscrow.PaymentInfo memory authInfo = _toAuthCapturePaymentInfo(paymentInfo);
+        
+        assertTrue(condition.can(authInfo, PAYMENT_AMOUNT, payer));
+    }
+
+    function test_Condition_CanMethod_ReturnsTrueForArbiter() public view {
+        MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+        AuthCaptureEscrow.PaymentInfo memory authInfo = _toAuthCapturePaymentInfo(paymentInfo);
+        
+        assertTrue(condition.can(authInfo, PAYMENT_AMOUNT, arbiter));
+    }
+
+    function test_Condition_CanMethod_ReturnsFalseForOthers() public view {
+        MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+        AuthCaptureEscrow.PaymentInfo memory authInfo = _toAuthCapturePaymentInfo(paymentInfo);
+        
+        assertFalse(condition.can(authInfo, PAYMENT_AMOUNT, receiver));
+        assertFalse(condition.can(authInfo, PAYMENT_AMOUNT, address(0x1234)));
     }
 }
