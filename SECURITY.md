@@ -167,8 +167,6 @@ operator.queueFeesEnabled(false); // Ready for next emergency
 
 ## Monitoring & Detection
 
-### On-Chain Monitoring
-
 Monitor these events for anomalies:
 
 | Event | Contract | Alert Condition |
@@ -179,30 +177,7 @@ Monitor these events for anomalies:
 | `PaymentFrozen` | EscrowPeriodRecorder | Mass freezing |
 | `FeesDistributed` | ArbitrationOperator | Unexpected distribution |
 
-### Recommended Tools
-
-- [OpenZeppelin Defender](https://defender.openzeppelin.com/) - Transaction monitoring, automated responses
-- [Tenderly](https://tenderly.co/) - Real-time alerting, transaction simulation
-- [Forta](https://forta.org/) - Threat detection bots
-- [Hypernative](https://hypernative.io/) - Pre-exploit detection
-
-### Alert Thresholds (Suggested)
-
-```yaml
-# Example Defender Sentinel configuration
-alerts:
-  - name: Large Authorization
-    condition: amount > 100000 USDC
-    action: notify_slack
-
-  - name: Rapid Releases
-    condition: releases_per_hour > 50
-    action: notify_pagerduty
-
-  - name: High Refund Rate
-    condition: refunds / releases > 0.3 (30%)
-    action: notify_email
-```
+For monitoring setup guides (OpenZeppelin Defender, Tenderly, Forta), see [docs.x402r.org/monitoring](https://docs.x402r.org/monitoring).
 
 ---
 
