@@ -15,6 +15,8 @@
 
 ### In-Scope Contracts
 
+#### Core x402r Contracts
+
 | Contract | LoC | Description |
 |----------|-----|-------------|
 | **PaymentOperator.sol** | ~600 | Core payment operator with condition/recorder slots |
@@ -27,13 +29,47 @@
 | **FreezePolicyFactory.sol** | ~120 | Factory for freeze policy instances |
 | **PayerFreezePolicy.sol** | ~60 | Freeze policy allowing only payer to freeze |
 
-**Total**: ~1,700 LoC
+**Subtotal**: ~1,700 LoC
+
+#### Base Commerce Payments Modifications
+
+| Contract | Addition | LoC | Description |
+|----------|----------|-----|-------------|
+| **AuthCaptureEscrow.sol** | `partialVoid()` function | ~20 | Custom addition: Allows partial return of escrowed funds to payer |
+
+**Addition**: 1 new function (~20 LoC)
+
+**Total In-Scope**: ~1,720 LoC
 
 ### Out of Scope
 
-- Base Commerce Payments (AuthCaptureEscrow, collectors, etc.) - External dependency
+- Base Commerce Payments core functions (authorize, capture, charge, void, reclaim) - Coinbase audited
 - Solady libraries - Audited, widely used
 - Test contracts and mocks
+
+### partialVoid() Addition Details
+
+**Function**: `partialVoid(PaymentInfo calldata paymentInfo, uint120 amount)`
+
+**Purpose**: Enable partial refunds during escrow period by returning a specified amount (rather than entire balance) to payer.
+
+**Location**: `lib/commerce-payments/src/AuthCaptureEscrow.sol:336-354`
+
+**Key Features**:
+- Only callable by operator
+- Reduces capturable amount by specified amount
+- Transfers tokens from TokenStore back to payer
+- Validates amount ≤ capturable amount
+- Uses reentrancy guard
+- Emits `PaymentPartiallyVoided` event
+
+**Use Case**: Enables `refundInEscrow()` in PaymentOperator to refund partial amounts instead of requiring full void.
+
+**Security Considerations**:
+- Amount validation (must not exceed capturable)
+- Operator-only access (via `onlySender` modifier)
+- Reentrancy protection
+- State update before external call (CEI pattern)
 
 ---
 
@@ -170,7 +206,7 @@ Coverage: 85%+ on core contracts
 1. **Unit Tests**:
    - Arithmetic edge cases (16 tests)
    - Payment indexing (15 tests)
-   - Refund requests (13 tests)
+   - Refund requests (13 tests) - **Includes partialVoid() integration via refundInEscrow()**
    - Escrow period (3 tests)
 
 2. **Attack Vectors**:
@@ -183,8 +219,10 @@ Coverage: 85%+ on core contracts
 
 4. **Integration**:
    - Full authorization → release flow
-   - Refund workflows
+   - Refund workflows (including partial refunds via partialVoid)
    - Freeze/unfreeze scenarios
+
+**Note on partialVoid()**: Tested through `refundInEscrow()` in RefundRequest tests. The function correctly calls `ESCROW.partialVoid()` and verifies token transfers.
 
 See `FUZZING.md` for fuzzing methodology.
 
@@ -335,27 +373,35 @@ See `SOLADY_VS_OZ_ANALYSIS.md` for full comparison.
 
 ### High Priority
 
-1. **Condition/Recorder System**
+1. **partialVoid() Addition (Base Commerce Payments)**
+   - ⚠️ **NEW FUNCTION** - Custom addition to Coinbase's AuthCaptureEscrow
+   - Amount validation correctness?
+   - Reentrancy despite guard?
+   - State consistency after partial void?
+   - Integration with existing void/reclaim flows?
+   - Edge case: partialVoid entire amount vs void()?
+
+2. **Condition/Recorder System**
    - Can malicious conditions brick operator?
    - Can recorder state corruption affect escrow?
    - Cross-operator interference risks?
 
-2. **Fee Distribution Logic**
+3. **Fee Distribution Logic**
    - Rounding errors in splits?
    - Fee calculation overflow risks?
    - Protocol fee evasion vectors?
 
-3. **Indexing Storage Pattern**
+4. **Indexing Storage Pattern**
    - Counter overflow risks (theoretical 2^256)?
    - Pagination edge cases?
    - Storage collision risks?
 
-4. **Freeze/Release Race Condition**
+5. **Freeze/Release Race Condition**
    - MEV exploitation at boundary?
    - Timestamp manipulation risks?
    - Front-running scenarios?
 
-5. **Refund Request State Machine**
+6. **Refund Request State Machine**
    - Invalid state transitions?
    - Authorization bypass?
    - Post-escrow refund edge cases?
@@ -377,21 +423,25 @@ See `SOLADY_VS_OZ_ANALYSIS.md` for full comparison.
 
 ## Questions for Auditors
 
-1. **Condition System**: Any security concerns with allowing arbitrary external condition contracts?
+1. **partialVoid() Addition**: Is our custom addition to AuthCaptureEscrow secure? Any edge cases with partial vs full void? Should we add additional validation?
 
-2. **Recorder System**: Can recorder reentrancy cause issues despite operator reentrancy guard?
+2. **Condition System**: Any security concerns with allowing arbitrary external condition contracts?
 
-3. **Mapping + Counter**: Any edge cases with the optimized indexing pattern?
+3. **Recorder System**: Can recorder reentrancy cause issues despite operator reentrancy guard?
 
-4. **Fee Distribution**: Is the split calculation secure against rounding exploits?
+4. **Mapping + Counter**: Any edge cases with the optimized indexing pattern?
 
-5. **Freeze Race**: Beyond documentation, any way to mitigate the MEV risk at escrow boundary?
+5. **Fee Distribution**: Is the split calculation secure against rounding exploits?
 
-6. **Solady Assembly**: Any concerns with using Solady's assembly-optimized libraries?
+6. **Freeze Race**: Beyond documentation, any way to mitigate the MEV risk at escrow boundary?
 
-7. **Immutable Design**: Any upgrade scenarios we're missing by being immutable?
+7. **Solady Assembly**: Any concerns with using Solady's assembly-optimized libraries?
 
-8. **Token Handling**: Are our weird token checks (balance verification, rebase detection) sufficient?
+8. **Immutable Design**: Any upgrade scenarios we're missing by being immutable?
+
+9. **Token Handling**: Are our weird token checks (balance verification, rebase detection) sufficient?
+
+10. **partialVoid Integration**: Does refundInEscrow() correctly integrate with partialVoid()? Any state inconsistency risks?
 
 ---
 
