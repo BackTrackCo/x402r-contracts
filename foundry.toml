@@ -3,7 +3,7 @@ src = "src"
 out = "out"
 libs = ["lib"]
 evm_version = "cancun"
-solc = "0.8.25"
+solc = "0.8.33"
 optimizer = true
 optimizer_runs = 200
 via_ir = true
@@ -11,7 +11,10 @@ via_ir = true
 # Remappings
 remappings = [
     "@aave-v3-core/=lib/aave-v3-core/contracts/",
-    "@createx/=lib/createx/src/"
+    "@createx/=lib/createx/src/",
+    "commerce-payments/=lib/commerce-payments/src/",
+    "solady/=lib/solady/src/",
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/"
 ]
 
 # Etherscan configuration
@@ -20,5 +23,11 @@ remappings = [
 [etherscan]
 base-sepolia = { key = "${ETHERSCAN_API_KEY}", url = "https://api-sepolia.basescan.org/api" }
 base = { key = "${ETHERSCAN_API_KEY}", url = "https://api.basescan.org/api" }
+
+# CI profile - used in GitHub Actions
+# Coverage threshold enforced in .github/workflows/ci.yml (currently 65%)
+[profile.ci]
+fuzz = { runs = 1000 }
+invariant = { runs = 1000 }
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

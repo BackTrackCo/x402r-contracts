@@ -1,0 +1,154 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+env:
+  FOUNDRY_PROFILE: ci
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Build contracts
+        run: forge build --sizes
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Run tests
+        run: forge test -vvv
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    needs: build
+    env:
+      # Minimum line coverage percentage for src/ files
+      # Increase this threshold as coverage improves
+      COVERAGE_THRESHOLD: 65
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Run coverage
+        run: |
+          forge coverage --report summary --report lcov --ir-minimum 2>&1 | tee coverage-output.txt
+
+      - name: Check coverage threshold
+        run: |
+          # Calculate coverage for src/commerce-payments files only
+          COVERED=0
+          TOTAL=0
+
+          while read -r line; do
+            # Extract the (covered/total) from lines column
+            NUMS=$(echo "$line" | grep -oE '\([0-9]+/[0-9]+\)' | head -1)
+            if [ -n "$NUMS" ]; then
+              C=$(echo "$NUMS" | grep -oE '^[^/]+' | tr -d '(')
+              T=$(echo "$NUMS" | grep -oE '[0-9]+\)$' | tr -d ')')
+              COVERED=$((COVERED + C))
+              TOTAL=$((TOTAL + T))
+            fi
+          done < <(grep "src/commerce-payments" coverage-output.txt)
+
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "Error: No coverage data found for src/"
+            exit 1
+          fi
+
+          # Calculate percentage
+          COVERAGE=$(echo "scale=2; $COVERED * 100 / $TOTAL" | bc)
+
+          echo "============================================"
+          echo "Source Coverage: ${COVERAGE}% ($COVERED/$TOTAL lines)"
+          echo "Threshold: ${COVERAGE_THRESHOLD}%"
+          echo "============================================"
+
+          # Compare using bc for floating point
+          PASS=$(echo "$COVERAGE >= $COVERAGE_THRESHOLD" | bc -l)
+
+          if [ "$PASS" -eq 1 ]; then
+            echo "✅ Coverage ${COVERAGE}% meets threshold ${COVERAGE_THRESHOLD}%"
+          else
+            echo "❌ Coverage ${COVERAGE}% is below threshold ${COVERAGE_THRESHOLD}%"
+            exit 1
+          fi
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./lcov.info
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  gas-snapshot:
+    name: Gas Snapshot
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Run gas snapshot
+        run: forge snapshot --check || forge snapshot
+
+      - name: Compare gas snapshot
+        if: github.event_name == 'pull_request'
+        run: |
+          if [ -f .gas-snapshot ]; then
+            forge snapshot --diff .gas-snapshot
+          fi
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Check formatting
+        run: forge fmt --check

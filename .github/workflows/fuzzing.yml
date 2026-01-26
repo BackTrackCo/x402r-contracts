@@ -1,0 +1,278 @@
+name: Echidna Fuzzing Campaign
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'src/**'
+      - 'test/**'
+      - 'foundry.toml'
+      - 'echidna.yaml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'test/**'
+      - 'foundry.toml'
+      - 'echidna.yaml'
+  schedule:
+    # Run extended campaign daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      test_limit:
+        description: 'Number of test sequences'
+        required: false
+        default: '10000'
+      seq_len:
+        description: 'Sequence length'
+        required: false
+        default: '100'
+
+jobs:
+  quick-fuzzing:
+    name: Quick Fuzzing (PRs)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Install Echidna
+        run: |
+          wget https://github.com/crytic/echidna/releases/download/v2.2.1/echidna-2.2.1-Linux.tar.gz
+          tar -xzf echidna-2.2.1-Linux.tar.gz
+          sudo mv echidna /usr/local/bin/
+          echidna --version
+
+      - name: Run quick fuzzing
+        run: |
+          echidna test/invariants/PaymentOperatorInvariants.sol \
+            --contract PaymentOperatorInvariants \
+            --test-limit 1000 \
+            --seq-len 50 \
+            --format text
+
+      - name: Check for failures
+        if: failure()
+        run: |
+          echo "::error::Fuzzing found invariant violations"
+          exit 1
+
+  standard-fuzzing:
+    name: Standard Fuzzing (Main/Develop)
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Install Echidna
+        run: |
+          wget https://github.com/crytic/echidna/releases/download/v2.2.1/echidna-2.2.1-Linux.tar.gz
+          tar -xzf echidna-2.2.1-Linux.tar.gz
+          sudo mv echidna /usr/local/bin/
+          echidna --version
+
+      - name: Determine test parameters
+        id: params
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "test_limit=${{ github.event.inputs.test_limit }}" >> $GITHUB_OUTPUT
+            echo "seq_len=${{ github.event.inputs.seq_len }}" >> $GITHUB_OUTPUT
+          else
+            echo "test_limit=10000" >> $GITHUB_OUTPUT
+            echo "seq_len=100" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run standard fuzzing
+        run: |
+          echidna test/invariants/PaymentOperatorInvariants.sol \
+            --contract PaymentOperatorInvariants \
+            --test-limit ${{ steps.params.outputs.test_limit }} \
+            --seq-len ${{ steps.params.outputs.seq_len }} \
+            --format text \
+            | tee echidna-results.txt
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: echidna-results-${{ github.sha }}
+          path: |
+            echidna-results.txt
+            echidna-corpus/
+
+      - name: Check for failures
+        if: failure()
+        run: |
+          echo "::error::Fuzzing found invariant violations"
+          cat echidna-results.txt
+          exit 1
+
+      - name: Post results to PR (if applicable)
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const results = fs.readFileSync('echidna-results.txt', 'utf8');
+            const comment = `## Echidna Fuzzing Results\n\n\`\`\`\n${results}\n\`\`\``;
+
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: comment
+            });
+
+  extended-fuzzing:
+    name: Extended Fuzzing Campaign (Nightly)
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Install Echidna
+        run: |
+          wget https://github.com/crytic/echidna/releases/download/v2.2.1/echidna-2.2.1-Linux.tar.gz
+          tar -xzf echidna-2.2.1-Linux.tar.gz
+          sudo mv echidna /usr/local/bin/
+          echidna --version
+
+      - name: Run extended fuzzing campaign
+        run: |
+          echidna test/invariants/PaymentOperatorInvariants.sol \
+            --contract PaymentOperatorInvariants \
+            --config echidna.yaml \
+            --format text \
+            | tee echidna-extended-results.txt
+
+      - name: Upload extended results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: echidna-extended-${{ github.run_number }}
+          path: |
+            echidna-extended-results.txt
+            echidna-corpus/
+          retention-days: 30
+
+      - name: Analyze coverage
+        run: |
+          echo "## Coverage Analysis" >> coverage-report.txt
+          grep "Unique instructions" echidna-extended-results.txt >> coverage-report.txt
+          grep "Corpus size" echidna-extended-results.txt >> coverage-report.txt
+          grep "Total calls" echidna-extended-results.txt >> coverage-report.txt
+          cat coverage-report.txt
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-report-${{ github.run_number }}
+          path: coverage-report.txt
+
+      - name: Check for failures
+        if: failure()
+        run: |
+          echo "::error::Extended fuzzing campaign found invariant violations"
+          cat echidna-extended-results.txt
+
+          # Send alert (customize with your notification method)
+          echo "CRITICAL: Fuzzing campaign failed on $(date)" >> fuzzing-alert.txt
+          cat echidna-extended-results.txt >> fuzzing-alert.txt
+
+      - name: Notify on failure
+        if: failure()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🚨 Extended Fuzzing Campaign Failed - ${new Date().toISOString().split('T')[0]}`,
+              body: `The nightly extended fuzzing campaign has detected invariant violations.\n\nWorkflow: ${context.workflow}\nRun: ${context.runNumber}\n\nPlease investigate immediately.`,
+              labels: ['security', 'critical', 'fuzzing']
+            });
+
+  security-properties:
+    name: Verify Security Properties
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Run Foundry tests (sanity check)
+        run: |
+          forge test --match-contract PaymentOperatorInvariants -vv
+
+      - name: Verify invariant functions exist
+        run: |
+          echo "Checking for required invariant functions..."
+
+          INVARIANTS=(
+            "echidna_no_double_spend"
+            "echidna_solvency"
+            "echidna_balance_validation_enforced"
+            "echidna_captured_monotonic"
+            "echidna_fee_not_excessive"
+            "echidna_reentrancy_protected"
+            "echidna_owner_cannot_steal_escrow"
+            "echidna_fee_recipient_balance_increases"
+            "echidna_refunded_monotonic"
+            "echidna_payment_hash_unique"
+          )
+
+          for inv in "${INVARIANTS[@]}"; do
+            if grep -q "$inv" test/invariants/PaymentOperatorInvariants.sol; then
+              echo "✓ $inv found"
+            else
+              echo "✗ $inv missing"
+              exit 1
+            fi
+          done
+
+      - name: Verify fuzzing entry points exist
+        run: |
+          ENTRY_POINTS=(
+            "authorize_fuzz"
+            "release_fuzz"
+            "refund_fuzz"
+          )
+
+          for entry in "${ENTRY_POINTS[@]}"; do
+            if grep -q "function $entry" test/invariants/PaymentOperatorInvariants.sol; then
+              echo "✓ $entry found"
+            else
+              echo "✗ $entry missing"
+              exit 1
+            fi
+          done

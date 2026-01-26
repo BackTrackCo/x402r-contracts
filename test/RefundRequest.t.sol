@@ -1,347 +1,320 @@
-// SPDX-License-Identifier: BUSL-1.1
-pragma solidity >=0.8.23 <0.9.0;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.28;
 
-import {BaseTest} from "./Base.t.sol";
-import {RefundRequest} from "../src/simple/main/requests/RefundRequest.sol";
-import {Escrow} from "../src/simple/main/escrow/Escrow.sol";
+import {Test, console} from "forge-std/Test.sol";
+import {RefundRequest} from "../src/requests/refund/RefundRequest.sol";
+import {PaymentOperator} from "../src/operator/arbitration/PaymentOperator.sol";
+import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
+import {StaticAddressCondition} from "../src/conditions/StaticAddressCondition.sol";
+import {RequestStatus} from "../src/requests/types/Types.sol";
+import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
+import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
+import {MockERC20} from "./mocks/MockERC20.sol";
 
-contract RefundRequestTest is BaseTest {
+contract RefundRequestTest is Test {
     RefundRequest public refundRequest;
-    
-    uint256 public constant DEPOSIT_AMOUNT = 1000 * 1e6; // 1000 USDC
-    string public constant TEST_IPFS_LINK = "QmTest123";
-    
-    function setUp() public override {
-        super.setUp();
-        refundRequest = new RefundRequest(address(escrow));
-    }
-    
-    function test_RequestRefund() public {
-        token.mint(address(escrow), DEPOSIT_AMOUNT);
-        uint256 depositNonce = escrow.noteDeposit(user, merchant, DEPOSIT_AMOUNT);
-        
-        vm.prank(user);
-        refundRequest.requestRefund(depositNonce, TEST_IPFS_LINK);
-        
-        RefundRequest.RefundRequestData memory request = refundRequest.getRefundRequest(user, depositNonce);
-        assertEq(request.user, user, "User should match");
-        assertEq(request.depositNonce, depositNonce, "Deposit nonce should match");
-        assertEq(request.ipfsLink, TEST_IPFS_LINK, "IPFS link should match");
-        assertEq(uint8(request.status), uint8(RefundRequest.RequestStatus.Pending), "Status should be Pending");
-        assertEq(request.originalAmount, DEPOSIT_AMOUNT, "Original amount should match deposit amount");
-    }
-    
-    function test_RequestRefund_EmptyIPFSLink() public {
-        token.mint(address(escrow), DEPOSIT_AMOUNT);
-        uint256 depositNonce = escrow.noteDeposit(user, merchant, DEPOSIT_AMOUNT);
-        
-        vm.prank(user);
-        vm.expectRevert("Empty IPFS link");
-        refundRequest.requestRefund(depositNonce, "");
-    }
-    
-    function test_RequestRefund_DepositDoesNotExist() public {
-        vm.prank(user);
-        vm.expectRevert("Deposit does not exist");
-        refundRequest.requestRefund(999, TEST_IPFS_LINK);
-    }
-    
-    function test_RequestRefund_RequestAlreadyExists() public {
-        token.mint(address(escrow), DEPOSIT_AMOUNT);
-        uint256 depositNonce = escrow.noteDeposit(user, merchant, DEPOSIT_AMOUNT);
-        
-        vm.prank(user);
-        refundRequest.requestRefund(depositNonce, TEST_IPFS_LINK);
-        
-        vm.prank(user);
-        vm.expectRevert("Request already exists");
-        refundRequest.requestRefund(depositNonce, TEST_IPFS_LINK);
-    }
-    
-    function test_GetRefundRequest() public {
-        token.mint(address(escrow), DEPOSIT_AMOUNT);
-        uint256 depositNonce = escrow.noteDeposit(user, merchant, DEPOSIT_AMOUNT);
-        
-        vm.prank(user);
-        refundRequest.requestRefund(depositNonce, TEST_IPFS_LINK);
-        
-        RefundRequest.RefundRequestData memory request = refundRequest.getRefundRequest(user, depositNonce);
-        assertEq(request.user, user, "User should match");
-        assertEq(request.depositNonce, depositNonce, "Deposit nonce should match");
-        assertEq(request.ipfsLink, TEST_IPFS_LINK, "IPFS link should match");
-        assertEq(uint8(request.status), uint8(RefundRequest.RequestStatus.Pending), "Status should be Pending");
-        assertEq(request.originalAmount, DEPOSIT_AMOUNT, "Original amount should match deposit amount");
-    }
-    
-    function test_OriginalAmount_PersistsAfterRefund() public {
-        token.mint(address(escrow), DEPOSIT_AMOUNT);
-        uint256 depositNonce = escrow.noteDeposit(user, merchant, DEPOSIT_AMOUNT);
-        
-        vm.prank(user);
-        refundRequest.requestRefund(depositNonce, TEST_IPFS_LINK);
-        
-        // Verify originalAmount is stored
-        RefundRequest.RefundRequestData memory request = refundRequest.getRefundRequest(user, depositNonce);
-        assertEq(request.originalAmount, DEPOSIT_AMOUNT, "Original amount should be stored");
-        
-        // Refund the deposit
-        vm.prank(merchant);
-        escrow.refund(user, depositNonce);
-        
-        // Verify originalAmount persists even after refund
-        request = refundRequest.getRefundRequest(user, depositNonce);
-        assertEq(request.originalAmount, DEPOSIT_AMOUNT, "Original amount should persist after refund");
-        
-        // Verify deposit principal is now 0
-        (uint256 principal, , , ) = escrow.getDeposit(user, depositNonce);
-        assertEq(principal, 0, "Deposit principal should be 0 after refund");
-    }
-    
-    function test_GetRefundRequest_DoesNotExist() public {
-        vm.expectRevert("Request does not exist");
-        refundRequest.getRefundRequest(user, 999);
-    }
-    
-    function test_UpdateStatus_Approved_ByMerchant() public {
-        token.mint(address(escrow), DEPOSIT_AMOUNT);
-        uint256 depositNonce = escrow.noteDeposit(user, merchant, DEPOSIT_AMOUNT);
-        
-        vm.prank(user);
-        refundRequest.requestRefund(depositNonce, TEST_IPFS_LINK);
-        
-        vm.prank(merchant);
-        refundRequest.updateStatus(user, depositNonce, RefundRequest.RequestStatus.Approved);
-        
-        RefundRequest.RefundRequestData memory request = refundRequest.getRefundRequest(user, depositNonce);
-        assertEq(uint8(request.status), uint8(RefundRequest.RequestStatus.Approved), "Status should be Approved");
-    }
-    
-    function test_UpdateStatus_Denied_ByMerchant() public {
-        token.mint(address(escrow), DEPOSIT_AMOUNT);
-        uint256 depositNonce = escrow.noteDeposit(user, merchant, DEPOSIT_AMOUNT);
-        
-        vm.prank(user);
-        refundRequest.requestRefund(depositNonce, TEST_IPFS_LINK);
-        
-        vm.prank(merchant);
-        refundRequest.updateStatus(user, depositNonce, RefundRequest.RequestStatus.Denied);
-        
-        RefundRequest.RefundRequestData memory request = refundRequest.getRefundRequest(user, depositNonce);
-        assertEq(uint8(request.status), uint8(RefundRequest.RequestStatus.Denied), "Status should be Denied");
-    }
-    
-    function test_UpdateStatus_Approved_ByArbiter() public {
-        token.mint(address(escrow), DEPOSIT_AMOUNT);
-        uint256 depositNonce = escrow.noteDeposit(user, merchant, DEPOSIT_AMOUNT);
-        
-        vm.prank(user);
-        refundRequest.requestRefund(depositNonce, TEST_IPFS_LINK);
-        
-        vm.prank(defaultArbiter);
-        refundRequest.updateStatus(user, depositNonce, RefundRequest.RequestStatus.Approved);
-        
-        RefundRequest.RefundRequestData memory request = refundRequest.getRefundRequest(user, depositNonce);
-        assertEq(uint8(request.status), uint8(RefundRequest.RequestStatus.Approved), "Status should be Approved");
-    }
-    
-    function test_UpdateStatus_InvalidStatus() public {
-        token.mint(address(escrow), DEPOSIT_AMOUNT);
-        uint256 depositNonce = escrow.noteDeposit(user, merchant, DEPOSIT_AMOUNT);
-        
-        vm.prank(user);
-        refundRequest.requestRefund(depositNonce, TEST_IPFS_LINK);
-        
-        vm.prank(merchant);
-        vm.expectRevert("Invalid status");
-        refundRequest.updateStatus(user, depositNonce, RefundRequest.RequestStatus.Pending);
-    }
-    
-    function test_UpdateStatus_RequestDoesNotExist() public {
-        vm.prank(merchant);
-        vm.expectRevert("Request does not exist");
-        refundRequest.updateStatus(user, 999, RefundRequest.RequestStatus.Approved);
-    }
-    
-    function test_UpdateStatus_RequestNotPending() public {
-        token.mint(address(escrow), DEPOSIT_AMOUNT);
-        uint256 depositNonce = escrow.noteDeposit(user, merchant, DEPOSIT_AMOUNT);
-        
-        vm.prank(user);
-        refundRequest.requestRefund(depositNonce, TEST_IPFS_LINK);
-        
-        vm.prank(merchant);
-        refundRequest.updateStatus(user, depositNonce, RefundRequest.RequestStatus.Approved);
-        
-        vm.prank(merchant);
-        vm.expectRevert("Request not pending");
-        refundRequest.updateStatus(user, depositNonce, RefundRequest.RequestStatus.Denied);
-    }
-    
-    function test_UpdateStatus_NotMerchantOrArbiter() public {
-        address unauthorized = address(0x9999);
-        token.mint(address(escrow), DEPOSIT_AMOUNT);
-        uint256 depositNonce = escrow.noteDeposit(user, merchant, DEPOSIT_AMOUNT);
-        
-        vm.prank(user);
-        refundRequest.requestRefund(depositNonce, TEST_IPFS_LINK);
-        
-        vm.prank(unauthorized);
-        vm.expectRevert("Not merchant or arbiter");
-        refundRequest.updateStatus(user, depositNonce, RefundRequest.RequestStatus.Approved);
-    }
-    
-    function test_HasRefundRequest() public {
-        token.mint(address(escrow), DEPOSIT_AMOUNT);
-        uint256 depositNonce = escrow.noteDeposit(user, merchant, DEPOSIT_AMOUNT);
-        
-        assertFalse(refundRequest.hasRefundRequest(user, depositNonce), "Request should not exist initially");
-        
-        vm.prank(user);
-        refundRequest.requestRefund(depositNonce, TEST_IPFS_LINK);
-        
-        assertTrue(refundRequest.hasRefundRequest(user, depositNonce), "Request should exist after creation");
-    }
-    
-    function test_GetRefundRequestStatus() public {
-        token.mint(address(escrow), DEPOSIT_AMOUNT);
-        uint256 depositNonce = escrow.noteDeposit(user, merchant, DEPOSIT_AMOUNT);
-        
-        // Status should be Pending (0) for non-existent request
-        assertEq(refundRequest.getRefundRequestStatus(user, depositNonce), 0, "Non-existent request should return Pending");
-        
-        vm.prank(user);
-        refundRequest.requestRefund(depositNonce, TEST_IPFS_LINK);
-        
-        assertEq(refundRequest.getRefundRequestStatus(user, depositNonce), 0, "Status should be Pending");
-        
-        vm.prank(merchant);
-        refundRequest.updateStatus(user, depositNonce, RefundRequest.RequestStatus.Approved);
-        
-        assertEq(refundRequest.getRefundRequestStatus(user, depositNonce), 1, "Status should be Approved");
-        
-        // Test with a new request
-        token.mint(address(escrow), DEPOSIT_AMOUNT);
-        uint256 depositNonce2 = escrow.noteDeposit(user, merchant, DEPOSIT_AMOUNT);
-        
-        vm.prank(user);
-        refundRequest.requestRefund(depositNonce2, TEST_IPFS_LINK);
-        
-        vm.prank(merchant);
-        refundRequest.updateStatus(user, depositNonce2, RefundRequest.RequestStatus.Denied);
-        
-        assertEq(refundRequest.getRefundRequestStatus(user, depositNonce2), 2, "Status should be Denied");
-    }
-    
-    function test_MultipleUsers_MultipleDeposits() public {
-        address user2 = address(0x2222);
-        
-        // User 1 deposit and request
-        token.mint(address(escrow), DEPOSIT_AMOUNT);
-        uint256 depositNonce1 = escrow.noteDeposit(user, merchant, DEPOSIT_AMOUNT);
-        
-        vm.prank(user);
-        refundRequest.requestRefund(depositNonce1, "ipfs1");
-        
-        // User 2 deposit and request
-        token.mint(address(escrow), DEPOSIT_AMOUNT);
-        uint256 depositNonce2 = escrow.noteDeposit(user2, merchant, DEPOSIT_AMOUNT);
-        
-        vm.prank(user2);
-        refundRequest.requestRefund(depositNonce2, "ipfs2");
-        
-        // Verify both requests exist independently
-        RefundRequest.RefundRequestData memory request1 = refundRequest.getRefundRequest(user, depositNonce1);
-        RefundRequest.RefundRequestData memory request2 = refundRequest.getRefundRequest(user2, depositNonce2);
-        
-        assertEq(request1.user, user, "User 1 should match");
-        assertEq(request2.user, user2, "User 2 should match");
-        assertEq(request1.ipfsLink, "ipfs1", "IPFS link 1 should match");
-        assertEq(request2.ipfsLink, "ipfs2", "IPFS link 2 should match");
-        
-        // Update status independently
-        vm.prank(merchant);
-        refundRequest.updateStatus(user, depositNonce1, RefundRequest.RequestStatus.Approved);
-        
-        vm.prank(defaultArbiter);
-        refundRequest.updateStatus(user2, depositNonce2, RefundRequest.RequestStatus.Denied);
-        
-        assertEq(uint8(refundRequest.getRefundRequest(user, depositNonce1).status), uint8(RefundRequest.RequestStatus.Approved), "Request 1 should be Approved");
-        assertEq(uint8(refundRequest.getRefundRequest(user2, depositNonce2).status), uint8(RefundRequest.RequestStatus.Denied), "Request 2 should be Denied");
-    }
-    
-    function test_Events_RefundRequested() public {
-        token.mint(address(escrow), DEPOSIT_AMOUNT);
-        uint256 depositNonce = escrow.noteDeposit(user, merchant, DEPOSIT_AMOUNT);
-        
-        vm.expectEmit(true, true, false, false);
-        emit RefundRequest.RefundRequested(user, depositNonce, TEST_IPFS_LINK);
-        
-        vm.prank(user);
-        refundRequest.requestRefund(depositNonce, TEST_IPFS_LINK);
-    }
-    
-    function test_Events_RefundRequestStatusUpdated() public {
-        token.mint(address(escrow), DEPOSIT_AMOUNT);
-        uint256 depositNonce = escrow.noteDeposit(user, merchant, DEPOSIT_AMOUNT);
-        
-        vm.prank(user);
-        refundRequest.requestRefund(depositNonce, TEST_IPFS_LINK);
-        
-        vm.expectEmit(true, true, false, false);
-        emit RefundRequest.RefundRequestStatusUpdated(
-            user,
-            depositNonce,
-            RefundRequest.RequestStatus.Pending,
-            RefundRequest.RequestStatus.Approved,
-            merchant
+    PaymentOperator public operator;
+    PaymentOperatorFactory public operatorFactory;
+    AuthCaptureEscrow public escrow;
+    PreApprovalPaymentCollector public collector;
+    MockERC20 public token;
+    StaticAddressCondition public designatedAddressCondition;
+
+    address public owner;
+    address public protocolFeeRecipient;
+    address public receiver;
+    address public designatedAddress;
+    address public payer;
+
+    uint256 public constant MAX_TOTAL_FEE_RATE = 50;
+    uint256 public constant PROTOCOL_FEE_PERCENTAGE = 25;
+    uint256 public constant INITIAL_BALANCE = 1000000 * 10 ** 18;
+    uint256 public constant PAYMENT_AMOUNT = 1000 * 10 ** 18;
+
+    function setUp() public {
+        owner = address(this);
+        protocolFeeRecipient = makeAddr("protocolFeeRecipient");
+        receiver = makeAddr("receiver");
+        designatedAddress = makeAddr("designatedAddress");
+        payer = makeAddr("payer");
+
+        // Deploy real escrow
+        escrow = new AuthCaptureEscrow();
+        token = new MockERC20("Test Token", "TEST");
+
+        // Deploy PreApprovalPaymentCollector
+        collector = new PreApprovalPaymentCollector(address(escrow));
+
+        // Deploy designated address condition for refunds
+        designatedAddressCondition = new StaticAddressCondition(designatedAddress);
+
+        // Deploy operator factory
+        operatorFactory = new PaymentOperatorFactory(
+            address(escrow), protocolFeeRecipient, MAX_TOTAL_FEE_RATE, PROTOCOL_FEE_PERCENTAGE, owner
         );
-        
-        vm.prank(merchant);
-        refundRequest.updateStatus(user, depositNonce, RefundRequest.RequestStatus.Approved);
+
+        // Deploy operator with designated address condition for refunds
+        PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
+            feeRecipient: protocolFeeRecipient,
+            authorizeCondition: address(0),
+            authorizeRecorder: address(0),
+            chargeCondition: address(0),
+            chargeRecorder: address(0),
+            releaseCondition: address(0),
+            releaseRecorder: address(0),
+            refundInEscrowCondition: address(designatedAddressCondition),
+            refundInEscrowRecorder: address(0),
+            refundPostEscrowCondition: address(0),
+            refundPostEscrowRecorder: address(0)
+        });
+        operator = PaymentOperator(operatorFactory.deployOperator(config));
+
+        // Deploy refund request contract
+        refundRequest = new RefundRequest();
+
+        // Setup balances
+        token.mint(payer, INITIAL_BALANCE);
+        token.mint(receiver, INITIAL_BALANCE);
+
+        vm.prank(payer);
+        token.approve(address(collector), type(uint256).max);
+
+        vm.prank(receiver);
+        token.approve(address(collector), type(uint256).max);
     }
-    
-    function test_CancelRefundRequest_RemainsInArrays() public {
-        token.mint(address(escrow), DEPOSIT_AMOUNT);
-        uint256 depositNonce = escrow.noteDeposit(user, merchant, DEPOSIT_AMOUNT);
-        
-        vm.prank(user);
-        refundRequest.requestRefund(depositNonce, TEST_IPFS_LINK);
-        
-        // Verify request is in arrays
-        RefundRequest.RefundRequestData[] memory userRequests = refundRequest.getUserRefundRequests(user);
-        assertEq(userRequests.length, 1, "User should have 1 request");
-        RefundRequest.RefundRequestData[] memory merchantRequests = refundRequest.getMerchantRefundRequests(merchant);
-        assertEq(merchantRequests.length, 1, "Merchant should have 1 request");
-        
-        // Cancel the request
-        vm.prank(user);
-        refundRequest.cancelRefundRequest(depositNonce);
-        
-        // Verify request still in arrays (cancelled requests remain)
-        userRequests = refundRequest.getUserRefundRequests(user);
-        assertEq(userRequests.length, 1, "User should still have 1 request after cancel");
-        assertEq(uint8(userRequests[0].status), uint8(RefundRequest.RequestStatus.Cancelled), "Status should be Cancelled");
-        
-        merchantRequests = refundRequest.getMerchantRefundRequests(merchant);
-        assertEq(merchantRequests.length, 1, "Merchant should still have 1 request after cancel");
-        assertEq(uint8(merchantRequests[0].status), uint8(RefundRequest.RequestStatus.Cancelled), "Status should be Cancelled");
+
+    function _createPaymentInfo() internal view returns (AuthCaptureEscrow.PaymentInfo memory) {
+        return AuthCaptureEscrow.PaymentInfo({
+            operator: address(operator),
+            payer: payer,
+            receiver: receiver,
+            token: address(token),
+            maxAmount: uint120(PAYMENT_AMOUNT),
+            preApprovalExpiry: uint48(block.timestamp + 1 days),
+            authorizationExpiry: uint48(block.timestamp + 7 days),
+            refundExpiry: uint48(block.timestamp + 30 days),
+            minFeeBps: uint16(MAX_TOTAL_FEE_RATE),
+            maxFeeBps: uint16(MAX_TOTAL_FEE_RATE),
+            feeReceiver: address(operator),
+            salt: 12345
+        });
     }
-    
-    function test_UpdateStatus_Denied_AfterRefund_Fails() public {
-        token.mint(address(escrow), DEPOSIT_AMOUNT);
-        uint256 depositNonce = escrow.noteDeposit(user, merchant, DEPOSIT_AMOUNT);
-        
-        vm.prank(user);
-        refundRequest.requestRefund(depositNonce, TEST_IPFS_LINK);
-        
-        // Process refund directly via Escrow
-        vm.prank(merchant);
-        escrow.refund(user, depositNonce);
-        
-        // Try to deny after refund - should fail
-        vm.prank(merchant);
-        vm.expectRevert("Cannot deny: deposit already refunded/released");
-        refundRequest.updateStatus(user, depositNonce, RefundRequest.RequestStatus.Denied);
+
+    function _authorize() internal returns (AuthCaptureEscrow.PaymentInfo memory) {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+
+        // Pre-approve payment with collector
+        vm.prank(payer);
+        collector.preApprove(paymentInfo);
+
+        // Authorize payment through operator
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+        return paymentInfo;
+    }
+
+    // ============ Request Refund Tests ============
+
+    function test_RequestRefund_Success() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo);
+
+        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);
+        bytes32 expectedHash = escrow.getHash(paymentInfo);
+
+        assertEq(data.paymentInfoHash, expectedHash);
+        assertEq(uint256(data.status), uint256(RequestStatus.Pending));
+    }
+
+    function test_RequestRefund_RevertsIfNotPayer() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(receiver);
+        vm.expectRevert();
+        refundRequest.requestRefund(paymentInfo);
+    }
+
+    function test_ApproveRefund_ByDesignatedAddress_InEscrow() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo);
+
+        // Designated address approves the refund request
+        vm.prank(designatedAddress);
+        refundRequest.updateStatus(paymentInfo, RequestStatus.Approved);
+
+        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);
+        assertEq(uint256(data.status), uint256(RequestStatus.Approved));
+
+        // Now execute the actual refund through the operator
+        uint256 payerBalanceBefore = token.balanceOf(payer);
+
+        vm.prank(designatedAddress);
+        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
+
+        uint256 payerBalanceAfter = token.balanceOf(payer);
+        assertEq(payerBalanceAfter - payerBalanceBefore, PAYMENT_AMOUNT);
+    }
+
+    function test_ApproveRefund_ByReceiver_InEscrow() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo);
+
+        // Receiver approves the refund request
+        vm.prank(receiver);
+        refundRequest.updateStatus(paymentInfo, RequestStatus.Approved);
+
+        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);
+        assertEq(uint256(data.status), uint256(RequestStatus.Approved));
+
+        // Receiver cannot execute refund (only designated address can per condition)
+        // But designated address can execute after receiver approval
+        uint256 payerBalanceBefore = token.balanceOf(payer);
+
+        vm.prank(designatedAddress);
+        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
+
+        uint256 payerBalanceAfter = token.balanceOf(payer);
+        assertEq(payerBalanceAfter - payerBalanceBefore, PAYMENT_AMOUNT);
+    }
+
+    function test_CancelRefund_Success() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo);
+
+        vm.prank(payer);
+        refundRequest.cancelRefundRequest(paymentInfo);
+
+        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);
+        assertEq(uint256(data.status), uint256(RequestStatus.Cancelled));
+    }
+
+    function test_DenyRefund_ByDesignatedAddress() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo);
+
+        vm.prank(designatedAddress);
+        refundRequest.updateStatus(paymentInfo, RequestStatus.Denied);
+
+        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);
+        assertEq(uint256(data.status), uint256(RequestStatus.Denied));
+    }
+
+    function test_DenyRefund_ByReceiver() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo);
+
+        vm.prank(receiver);
+        refundRequest.updateStatus(paymentInfo, RequestStatus.Denied);
+
+        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);
+        assertEq(uint256(data.status), uint256(RequestStatus.Denied));
+    }
+
+    function test_ApproveRefund_PostEscrow_OnlyReceiver() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        // Release payment (move to post-escrow state)
+        vm.prank(receiver);
+        operator.release(paymentInfo, PAYMENT_AMOUNT);
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo);
+
+        // Receiver can approve post-escrow
+        vm.prank(receiver);
+        refundRequest.updateStatus(paymentInfo, RequestStatus.Approved);
+
+        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);
+        assertEq(uint256(data.status), uint256(RequestStatus.Approved));
+    }
+
+    function test_ApproveRefund_PostEscrow_DesignatedAddressCannotApprove() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        // Release payment (move to post-escrow state)
+        vm.prank(receiver);
+        operator.release(paymentInfo, PAYMENT_AMOUNT);
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo);
+
+        // Designated address cannot approve post-escrow (only receiver can)
+        vm.prank(designatedAddress);
+        vm.expectRevert();
+        refundRequest.updateStatus(paymentInfo, RequestStatus.Approved);
+    }
+
+    function test_UpdateStatus_PostEscrow_RevertsIfNotReceiver() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        // Release payment (move to post-escrow)
+        vm.prank(receiver);
+        operator.release(paymentInfo, PAYMENT_AMOUNT);
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo);
+
+        // Random address cannot approve post-escrow (only receiver can)
+        address randomAddress = makeAddr("random");
+        vm.prank(randomAddress);
+        vm.expectRevert();
+        refundRequest.updateStatus(paymentInfo, RequestStatus.Approved);
+    }
+
+    function test_UpdateStatus_RevertsIfNotPending() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo);
+
+        // Approve once
+        vm.prank(receiver);
+        refundRequest.updateStatus(paymentInfo, RequestStatus.Approved);
+
+        // Cannot update again
+        vm.prank(receiver);
+        vm.expectRevert();
+        refundRequest.updateStatus(paymentInfo, RequestStatus.Denied);
+    }
+
+    function test_CancelRefund_RevertsIfNotPayer() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo);
+
+        vm.prank(receiver);
+        vm.expectRevert();
+        refundRequest.cancelRefundRequest(paymentInfo);
+    }
+
+    function test_RequestRefund_AllowsReRequestAfterCancel() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        // First request
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo);
+
+        // Cancel it
+        vm.prank(payer);
+        refundRequest.cancelRefundRequest(paymentInfo);
+
+        // Should be able to request again
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo);
+
+        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);
+        assertEq(uint256(data.status), uint256(RequestStatus.Pending));
     }
 }
-

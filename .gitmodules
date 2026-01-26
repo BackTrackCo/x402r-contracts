@@ -7,3 +7,9 @@
 [submodule "lib/createx"]
 	path = lib/createx
 	url = https://github.com/pcaversaccio/createx
+[submodule "lib/solady"]
+	path = lib/solady
+	url = https://github.com/Vectorized/solady
+[submodule "lib/commerce-payments"]
+	path = lib/commerce-payments
+	url = https://github.com/BackTrackCo/commerce-payments.git

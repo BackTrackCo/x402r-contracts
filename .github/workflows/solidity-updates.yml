@@ -1,0 +1,368 @@
+name: Solidity Version Monitoring
+
+on:
+  schedule:
+    # Check for Solidity updates weekly on Mondays at 9 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+jobs:
+  check-solidity-version:
+    name: Check Solidity Updates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Get current Solidity version
+        id: current
+        run: |
+          CURRENT_VERSION=$(grep -oP 'solc = "\K[0-9.]+' foundry.toml || echo "unknown")
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "Current Solidity version: $CURRENT_VERSION"
+
+      - name: Check latest Solidity release
+        id: latest
+        run: |
+          # Get latest Solidity release from GitHub API
+          LATEST_VERSION=$(curl -s https://api.github.com/repos/ethereum/solidity/releases/latest | jq -r '.tag_name' | sed 's/v//')
+          echo "version=$LATEST_VERSION" >> $GITHUB_OUTPUT
+          echo "Latest Solidity version: $LATEST_VERSION"
+
+          # Get release notes URL
+          RELEASE_URL=$(curl -s https://api.github.com/repos/ethereum/solidity/releases/latest | jq -r '.html_url')
+          echo "url=$RELEASE_URL" >> $GITHUB_OUTPUT
+
+      - name: Compare versions
+        id: compare
+        run: |
+          CURRENT="${{ steps.current.outputs.version }}"
+          LATEST="${{ steps.latest.outputs.version }}"
+
+          if [ "$CURRENT" != "$LATEST" ]; then
+            echo "update_available=true" >> $GITHUB_OUTPUT
+            echo "🔔 Solidity update available: $CURRENT → $LATEST"
+
+            # Parse version components
+            CURRENT_MAJOR=$(echo $CURRENT | cut -d. -f1)
+            CURRENT_MINOR=$(echo $CURRENT | cut -d. -f2)
+            CURRENT_PATCH=$(echo $CURRENT | cut -d. -f3)
+
+            LATEST_MAJOR=$(echo $LATEST | cut -d. -f1)
+            LATEST_MINOR=$(echo $LATEST | cut -d. -f2)
+            LATEST_PATCH=$(echo $LATEST | cut -d. -f3)
+
+            # Determine update type
+            if [ "$CURRENT_MAJOR" != "$LATEST_MAJOR" ]; then
+              echo "update_type=major" >> $GITHUB_OUTPUT
+              echo "severity=high" >> $GITHUB_OUTPUT
+            elif [ "$CURRENT_MINOR" != "$LATEST_MINOR" ]; then
+              echo "update_type=minor" >> $GITHUB_OUTPUT
+              echo "severity=medium" >> $GITHUB_OUTPUT
+            else
+              echo "update_type=patch" >> $GITHUB_OUTPUT
+              echo "severity=low" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "update_available=false" >> $GITHUB_OUTPUT
+            echo "✓ Solidity version is up to date"
+          fi
+
+      - name: Get changelog for new version
+        if: steps.compare.outputs.update_available == 'true'
+        id: changelog
+        run: |
+          LATEST="${{ steps.latest.outputs.version }}"
+
+          # Fetch release notes
+          RELEASE_NOTES=$(curl -s https://api.github.com/repos/ethereum/solidity/releases/latest | jq -r '.body')
+
+          # Extract key sections
+          BREAKING=$(echo "$RELEASE_NOTES" | grep -A 10 "Breaking" || echo "No breaking changes mentioned")
+          FEATURES=$(echo "$RELEASE_NOTES" | grep -A 10 "Features\|Language Features" || echo "No new features mentioned")
+          BUGFIXES=$(echo "$RELEASE_NOTES" | grep -A 10 "Bugfixes" || echo "No bugfixes mentioned")
+
+          echo "breaking<<EOF" >> $GITHUB_OUTPUT
+          echo "$BREAKING" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          echo "features<<EOF" >> $GITHUB_OUTPUT
+          echo "$FEATURES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          echo "bugfixes<<EOF" >> $GITHUB_OUTPUT
+          echo "$BUGFIXES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Issue for update
+        if: steps.compare.outputs.update_available == 'true'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const current = '${{ steps.current.outputs.version }}';
+            const latest = '${{ steps.latest.outputs.version }}';
+            const updateType = '${{ steps.compare.outputs.update_type }}';
+            const severity = '${{ steps.compare.outputs.severity }}';
+            const releaseUrl = '${{ steps.latest.outputs.url }}';
+
+            const severityEmoji = {
+              'high': '🔴',
+              'medium': '🟠',
+              'low': '🟡'
+            };
+
+            const body = `## ${severityEmoji[severity]} Solidity Version Update Available
+
+**Current Version**: \`${current}\`
+**Latest Version**: \`${latest}\`
+**Update Type**: ${updateType.toUpperCase()}
+**Severity**: ${severity.toUpperCase()}
+
+### Release Notes
+
+[View full release notes](${releaseUrl})
+
+### Action Items
+
+- [ ] Review [release notes](${releaseUrl}) for breaking changes
+- [ ] Update \`foundry.toml\` to \`solc = "${latest}"\`
+- [ ] Run full test suite: \`forge test\`
+- [ ] Run gas benchmark: \`forge snapshot\`
+- [ ] Compare gas changes: \`forge snapshot --diff\`
+- [ ] Run extended fuzzing: \`echidna . --contract PaymentOperatorInvariants --config echidna.yaml\`
+- [ ] Run Slither analysis: \`slither . --config-file slither.config.json\`
+- [ ] Update [GAS_OPTIMIZATION_REPORT.md](GAS_OPTIMIZATION_REPORT.md) if gas changes
+- [ ] Create PR with version update
+
+### Gas Optimization Potential
+
+${updateType === 'minor' ? '⚠️ Minor versions often include gas optimizations. Re-benchmark after update.' : ''}
+${updateType === 'patch' ? 'ℹ️ Patch versions typically fix bugs. Gas impact should be minimal.' : ''}
+${updateType === 'major' ? '🚨 Major version! Review breaking changes carefully. Significant gas changes possible.' : ''}
+
+### Resources
+
+- [Solidity Release Notes](${releaseUrl})
+- [Solidity Blog](https://blog.soliditylang.org/)
+- [Breaking Changes Guide](https://docs.soliditylang.org/en/latest/080-breaking-changes.html)
+
+---
+
+*Automated by [Solidity Version Monitoring](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/workflows/solidity-updates.yml)*
+`;
+
+            // Check if issue already exists
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'solidity-update'
+            });
+
+            const existingIssue = issues.find(issue =>
+              issue.title.includes(`Solidity ${latest}`)
+            );
+
+            if (existingIssue) {
+              console.log(`Issue already exists for Solidity ${latest}: #${existingIssue.number}`);
+            } else {
+              const { data: issue } = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `🔔 Solidity Update Available: ${current} → ${latest}`,
+                body: body,
+                labels: ['solidity-update', 'dependencies', severity]
+              });
+
+              console.log(`Created issue #${issue.number}`);
+            }
+
+      - name: Summary
+        run: |
+          echo "### Solidity Version Check Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Current: \`${{ steps.current.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Latest: \`${{ steps.latest.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.compare.outputs.update_available }}" = "true" ]; then
+            echo "- Status: 🔔 **Update available**" >> $GITHUB_STEP_SUMMARY
+            echo "- Type: ${{ steps.compare.outputs.update_type }}" >> $GITHUB_STEP_SUMMARY
+            echo "- Severity: ${{ steps.compare.outputs.severity }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- Status: ✅ **Up to date**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  benchmark-on-update:
+    name: Benchmark New Solidity Version
+    needs: check-solidity-version
+    if: needs.check-solidity-version.outputs.update_available == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Generate baseline gas snapshot
+        run: |
+          forge snapshot --snap .gas-snapshot-old
+          cat .gas-snapshot-old
+
+      - name: Update Solidity version
+        run: |
+          LATEST_VERSION="${{ needs.check-solidity-version.outputs.latest_version }}"
+          sed -i "s/solc = \"[0-9.]*\"/solc = \"$LATEST_VERSION\"/" foundry.toml
+          cat foundry.toml | grep solc
+
+      - name: Test with new version
+        id: test
+        continue-on-error: true
+        run: |
+          forge test -vv
+
+      - name: Generate new gas snapshot
+        if: steps.test.outcome == 'success'
+        run: |
+          forge snapshot --snap .gas-snapshot-new
+          cat .gas-snapshot-new
+
+      - name: Compare gas snapshots
+        if: steps.test.outcome == 'success'
+        run: |
+          echo "## Gas Comparison" > gas-comparison.txt
+          echo "" >> gas-comparison.txt
+
+          if [ -f .gas-snapshot-old ] && [ -f .gas-snapshot-new ]; then
+            forge snapshot --diff .gas-snapshot-old .gas-snapshot-new > gas-diff.txt || true
+
+            if [ -s gas-diff.txt ]; then
+              cat gas-diff.txt >> gas-comparison.txt
+            else
+              echo "No gas changes detected" >> gas-comparison.txt
+            fi
+          fi
+
+          cat gas-comparison.txt
+
+      - name: Upload comparison results
+        if: steps.test.outcome == 'success'
+        uses: actions/upload-artifact@v3
+        with:
+          name: solidity-update-benchmark
+          path: |
+            .gas-snapshot-old
+            .gas-snapshot-new
+            gas-diff.txt
+            gas-comparison.txt
+          retention-days: 90
+
+      - name: Comment on issue
+        if: steps.test.outcome == 'success'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+
+            let gasComparison = 'Gas comparison not available';
+            if (fs.existsSync('gas-comparison.txt')) {
+              gasComparison = fs.readFileSync('gas-comparison.txt', 'utf8');
+            }
+
+            const body = `## ⚡ Benchmark Results
+
+### Test Status
+✅ All tests passed with Solidity ${{ needs.check-solidity-version.outputs.latest_version }}
+
+### Gas Comparison
+
+\`\`\`diff
+${gasComparison}
+\`\`\`
+
+### Artifacts
+
+Download benchmark artifacts from [workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
+
+---
+
+*Benchmark completed automatically*
+`;
+
+            // Find the update issue
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'solidity-update'
+            });
+
+            const latest = '${{ needs.check-solidity-version.outputs.latest_version }}';
+            const updateIssue = issues.find(issue =>
+              issue.title.includes(`Solidity ${latest}`)
+            );
+
+            if (updateIssue) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: updateIssue.number,
+                body: body
+              });
+            }
+
+      - name: Comment on test failure
+        if: steps.test.outcome == 'failure'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const body = `## ❌ Benchmark Failed
+
+Tests failed with Solidity ${{ needs.check-solidity-version.outputs.latest_version }}
+
+This may indicate:
+- Breaking changes that require code updates
+- Incompatibility with current codebase
+- Compiler bugs (rare)
+
+**Action Required**: Manual investigation needed before upgrading.
+
+See [workflow logs](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) for details.
+
+---
+
+*Benchmark completed automatically*
+`;
+
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'solidity-update'
+            });
+
+            const latest = '${{ needs.check-solidity-version.outputs.latest_version }}';
+            const updateIssue = issues.find(issue =>
+              issue.title.includes(`Solidity ${latest}`)
+            );
+
+            if (updateIssue) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: updateIssue.number,
+                body: body
+              });
+
+              // Add 'breaking-change' label if tests fail
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: updateIssue.number,
+                labels: ['breaking-change']
+              });
+            }

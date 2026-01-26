@@ -1,0 +1,35 @@
+# Echidna configuration for x402r-contracts invariant tests
+# Run: echidna . --contract PaymentOperatorInvariants --config echidna.yaml
+
+# Test mode: property testing
+testMode: property
+
+# Number of test sequences (extended fuzzing campaign)
+testLimit: 100000
+
+# Sequence length (longer sequences for complex scenarios)
+seqLen: 150
+
+# Shrinking sequences
+shrinkLimit: 10000
+
+# Contract deployment
+contractAddr: "0x00a329c0648769A73afAc7F9381E08FB43dBEA72"
+
+# Compilation options
+prefix: "echidna_"
+solcArgs: "--evm-version cancun --optimize --optimize-runs 200"
+cryticArgs: ["--foundry-out-dir", "out"]
+
+# Coverage and corpus
+coverage: true
+corpusDir: "echidna-corpus"
+
+# Output
+format: text
+
+# Worker configuration for parallel fuzzing
+workers: 4
+
+# Multi-ABI support
+allContracts: false

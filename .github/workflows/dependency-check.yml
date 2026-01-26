@@ -1,0 +1,286 @@
+name: Dependency Age Check
+
+on:
+  schedule:
+    # Run every Monday at 9 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+  # Also run on push to main (for testing)
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/dependency-check.yml'
+
+jobs:
+  check-dependencies:
+    name: Check Dependency Ages
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+          fetch-depth: 0  # Need full history for git log
+
+      - name: Check Solady age
+        id: solady
+        run: |
+          echo "Checking Solady dependency..."
+          cd lib/solady
+
+          # Get last commit timestamp
+          LAST_COMMIT_TIMESTAMP=$(git log -1 --format=%ct)
+          CURRENT_TIMESTAMP=$(date +%s)
+          AGE_SECONDS=$((CURRENT_TIMESTAMP - LAST_COMMIT_TIMESTAMP))
+          AGE_DAYS=$((AGE_SECONDS / 86400))
+
+          # Get commit info
+          LAST_COMMIT_HASH=$(git log -1 --format=%H)
+          LAST_COMMIT_DATE=$(git log -1 --format=%cd --date=short)
+          LAST_COMMIT_MSG=$(git log -1 --format=%s)
+
+          echo "age_days=$AGE_DAYS" >> $GITHUB_OUTPUT
+          echo "commit_hash=$LAST_COMMIT_HASH" >> $GITHUB_OUTPUT
+          echo "commit_date=$LAST_COMMIT_DATE" >> $GITHUB_OUTPUT
+          echo "commit_msg=$LAST_COMMIT_MSG" >> $GITHUB_OUTPUT
+
+          echo "Solady last updated: $AGE_DAYS days ago ($LAST_COMMIT_DATE)"
+          echo "Last commit: $LAST_COMMIT_MSG"
+
+          if [ $AGE_DAYS -gt 180 ]; then
+            echo "stale=true" >> $GITHUB_OUTPUT
+            echo "⚠️  Solady is stale (>180 days old)"
+          else
+            echo "stale=false" >> $GITHUB_OUTPUT
+            echo "✓ Solady is up-to-date"
+          fi
+
+      - name: Check OpenZeppelin age
+        id: oz
+        run: |
+          echo "Checking OpenZeppelin dependency..."
+          cd lib/openzeppelin-contracts
+
+          LAST_COMMIT_TIMESTAMP=$(git log -1 --format=%ct)
+          CURRENT_TIMESTAMP=$(date +%s)
+          AGE_SECONDS=$((CURRENT_TIMESTAMP - LAST_COMMIT_TIMESTAMP))
+          AGE_DAYS=$((AGE_SECONDS / 86400))
+
+          LAST_COMMIT_HASH=$(git log -1 --format=%H)
+          LAST_COMMIT_DATE=$(git log -1 --format=%cd --date=short)
+          LAST_COMMIT_MSG=$(git log -1 --format=%s)
+
+          echo "age_days=$AGE_DAYS" >> $GITHUB_OUTPUT
+          echo "commit_hash=$LAST_COMMIT_HASH" >> $GITHUB_OUTPUT
+          echo "commit_date=$LAST_COMMIT_DATE" >> $GITHUB_OUTPUT
+          echo "commit_msg=$LAST_COMMIT_MSG" >> $GITHUB_OUTPUT
+
+          echo "OpenZeppelin last updated: $AGE_DAYS days ago ($LAST_COMMIT_DATE)"
+          echo "Last commit: $LAST_COMMIT_MSG"
+
+          if [ $AGE_DAYS -gt 180 ]; then
+            echo "stale=true" >> $GITHUB_OUTPUT
+            echo "⚠️  OpenZeppelin is stale (>180 days old)"
+          else
+            echo "stale=false" >> $GITHUB_OUTPUT
+            echo "✓ OpenZeppelin is up-to-date"
+          fi
+
+      - name: Check Commerce Payments age
+        id: commerce
+        run: |
+          echo "Checking Commerce Payments dependency..."
+          cd lib/commerce-payments
+
+          LAST_COMMIT_TIMESTAMP=$(git log -1 --format=%ct)
+          CURRENT_TIMESTAMP=$(date +%s)
+          AGE_SECONDS=$((CURRENT_TIMESTAMP - LAST_COMMIT_TIMESTAMP))
+          AGE_DAYS=$((AGE_SECONDS / 86400))
+
+          LAST_COMMIT_HASH=$(git log -1 --format=%H)
+          LAST_COMMIT_DATE=$(git log -1 --format=%cd --date=short)
+          LAST_COMMIT_MSG=$(git log -1 --format=%s)
+
+          echo "age_days=$AGE_DAYS" >> $GITHUB_OUTPUT
+          echo "commit_hash=$LAST_COMMIT_HASH" >> $GITHUB_OUTPUT
+          echo "commit_date=$LAST_COMMIT_DATE" >> $GITHUB_OUTPUT
+          echo "commit_msg=$LAST_COMMIT_MSG" >> $GITHUB_OUTPUT
+
+          echo "Commerce Payments last updated: $AGE_DAYS days ago ($LAST_COMMIT_DATE)"
+          echo "Last commit: $LAST_COMMIT_MSG"
+
+          if [ $AGE_DAYS -gt 90 ]; then
+            echo "stale=true" >> $GITHUB_OUTPUT
+            echo "⚠️  Commerce Payments is stale (>90 days old)"
+          else
+            echo "stale=false" >> $GITHUB_OUTPUT
+            echo "✓ Commerce Payments is up-to-date"
+          fi
+
+      - name: Check Forge Std age
+        id: forge
+        run: |
+          echo "Checking Forge Std dependency..."
+          cd lib/forge-std
+
+          LAST_COMMIT_TIMESTAMP=$(git log -1 --format=%ct)
+          CURRENT_TIMESTAMP=$(date +%s)
+          AGE_SECONDS=$((CURRENT_TIMESTAMP - LAST_COMMIT_TIMESTAMP))
+          AGE_DAYS=$((AGE_SECONDS / 86400))
+
+          LAST_COMMIT_HASH=$(git log -1 --format=%H)
+          LAST_COMMIT_DATE=$(git log -1 --format=%cd --date=short)
+
+          echo "age_days=$AGE_DAYS" >> $GITHUB_OUTPUT
+          echo "commit_hash=$LAST_COMMIT_HASH" >> $GITHUB_OUTPUT
+          echo "commit_date=$LAST_COMMIT_DATE" >> $GITHUB_OUTPUT
+
+          echo "Forge Std last updated: $AGE_DAYS days ago ($LAST_COMMIT_DATE)"
+
+          if [ $AGE_DAYS -gt 180 ]; then
+            echo "stale=true" >> $GITHUB_OUTPUT
+          else
+            echo "stale=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create or update issue if dependencies stale
+        if: steps.solady.outputs.stale == 'true' || steps.oz.outputs.stale == 'true' || steps.commerce.outputs.stale == 'true'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const soladyAge = '${{ steps.solady.outputs.age_days }}';
+            const ozAge = '${{ steps.oz.outputs.age_days }}';
+            const commerceAge = '${{ steps.commerce.outputs.age_days }}';
+            const forgeAge = '${{ steps.forge.outputs.age_days }}';
+
+            const soladyStale = '${{ steps.solady.outputs.stale }}' === 'true';
+            const ozStale = '${{ steps.oz.outputs.stale }}' === 'true';
+            const commerceStale = '${{ steps.commerce.outputs.stale }}' === 'true';
+
+            const body = `## 🔔 Dependency Update Recommended
+
+            One or more dependencies are outdated and should be reviewed for updates.
+
+            ### Dependency Status
+
+            | Dependency | Age (days) | Last Updated | Status |
+            |------------|------------|--------------|--------|
+            | **Solady** | ${soladyAge} | ${{ steps.solady.outputs.commit_date }} | ${soladyStale ? '⚠️ Stale (>180 days)' : '✓ OK'} |
+            | **OpenZeppelin** | ${ozAge} | ${{ steps.oz.outputs.commit_date }} | ${ozStale ? '⚠️ Stale (>180 days)' : '✓ OK'} |
+            | **Commerce Payments** | ${commerceAge} | ${{ steps.commerce.outputs.commit_date }} | ${commerceStale ? '⚠️ Stale (>90 days)' : '✓ OK'} |
+            | **Forge Std** | ${forgeAge} | ${{ steps.forge.outputs.commit_date }} | ℹ️ Testing library |
+
+            ### Dependency Details
+
+            ${soladyStale ? `
+            #### Solady
+            - Last commit: \`${{ steps.solady.outputs.commit_hash }}\`
+            - Date: ${{ steps.solady.outputs.commit_date }}
+            - Message: ${{ steps.solady.outputs.commit_msg }}
+            - [View releases](https://github.com/Vectorized/solady/releases)
+            ` : ''}
+
+            ${ozStale ? `
+            #### OpenZeppelin
+            - Last commit: \`${{ steps.oz.outputs.commit_hash }}\`
+            - Date: ${{ steps.oz.outputs.commit_date }}
+            - Message: ${{ steps.oz.outputs.commit_msg }}
+            - [View releases](https://github.com/OpenZeppelin/openzeppelin-contracts/releases)
+            ` : ''}
+
+            ${commerceStale ? `
+            #### Commerce Payments
+            - Last commit: \`${{ steps.commerce.outputs.commit_hash }}\`
+            - Date: ${{ steps.commerce.outputs.commit_date }}
+            - Message: ${{ steps.commerce.outputs.commit_msg }}
+            - [View Base Commerce Payments](https://github.com/base-org/commerce-payments)
+            ` : ''}
+
+            ### Action Items
+
+            - [ ] Review changelog for each stale dependency
+            - [ ] Check for security advisories
+            - [ ] Test dependency updates in separate branch
+            - [ ] Update \`lib/\` submodules:
+              \`\`\`bash
+              git submodule update --remote lib/solady
+              git submodule update --remote lib/openzeppelin-contracts
+              git submodule update --remote lib/commerce-payments
+              \`\`\`
+            - [ ] Run full test suite: \`forge test -vvv\`
+            - [ ] Run gas snapshot comparison: \`forge snapshot --diff\`
+            - [ ] Run Slither analysis: \`slither . --config-file slither.config.json\`
+            - [ ] Run Echidna 100k sequences: \`echidna . --contract PaymentOperatorInvariants --config echidna.yaml\`
+            - [ ] Update [DEPENDENCY_MONITORING.md](DEPENDENCY_MONITORING.md) with review date
+            - [ ] Create PR with dependency updates if tests pass
+
+            ### Resources
+
+            - [Solady Releases](https://github.com/Vectorized/solady/releases)
+            - [OpenZeppelin Releases](https://github.com/OpenZeppelin/openzeppelin-contracts/releases)
+            - [Base Commerce Payments](https://github.com/base-org/commerce-payments)
+            - [Dependency Monitoring Guide](DEPENDENCY_MONITORING.md)
+
+            ### Security Advisories
+
+            Check for security advisories before updating:
+            - [Solady Security](https://github.com/Vectorized/solady/security)
+            - [OpenZeppelin Security](https://github.com/OpenZeppelin/openzeppelin-contracts/security)
+
+            ---
+
+            *Automated check performed on ${new Date().toISOString().split('T')[0]}*
+            *Next check: Next Monday at 9 AM UTC*
+            `;
+
+            // Check if issue already exists
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'dependencies'
+            });
+
+            const existingIssue = issues.find(issue =>
+              issue.title.includes('Dependency Update Recommended')
+            );
+
+            if (existingIssue) {
+              // Update existing issue
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existingIssue.number,
+                body: body
+              });
+              console.log(`Updated existing issue #${existingIssue.number}`);
+            } else {
+              // Create new issue
+              const { data: issue } = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: '🔔 Dependency Update Recommended',
+                body: body,
+                labels: ['dependencies', 'maintenance']
+              });
+              console.log(`Created new issue #${issue.number}`);
+            }
+
+      - name: Summary
+        run: |
+          echo "## Dependency Check Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Dependency | Age | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Solady | ${{ steps.solady.outputs.age_days }} days | ${{ steps.solady.outputs.stale == 'true' && '⚠️ Stale' || '✓ OK' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| OpenZeppelin | ${{ steps.oz.outputs.age_days }} days | ${{ steps.oz.outputs.stale == 'true' && '⚠️ Stale' || '✓ OK' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commerce Payments | ${{ steps.commerce.outputs.age_days }} days | ${{ steps.commerce.outputs.stale == 'true' && '⚠️ Stale' || '✓ OK' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Forge Std | ${{ steps.forge.outputs.age_days }} days | ℹ️ Testing |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.solady.outputs.stale }}" = "true" ] || [ "${{ steps.oz.outputs.stale }}" = "true" ] || [ "${{ steps.commerce.outputs.stale }}" = "true" ]; then
+            echo "⚠️ **Action required**: Review and update stale dependencies" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ **All dependencies are up-to-date**" >> $GITHUB_STEP_SUMMARY
+          fi
