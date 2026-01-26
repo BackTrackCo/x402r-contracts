@@ -2,8 +2,8 @@
 // CONTRACTS UNAUDITED: USE AT YOUR OWN RISK
 pragma solidity ^0.8.28;
 
-import {ICondition} from "./ICondition.sol";
-import {AuthCaptureEscrow} from "../commerce-payments/AuthCaptureEscrow.sol";
+import {ICondition} from "../commerce-payments/conditions/ICondition.sol";
+import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
 /**
  * @title StaticAddressCondition
@@ -35,6 +35,7 @@ contract StaticAddressCondition is ICondition {
     function check(AuthCaptureEscrow.PaymentInfo calldata payment, address caller)
         external
         view
+        override
         returns (bool)
     {
         return caller == DESIGNATED_ADDRESS;

@@ -7,7 +7,7 @@ import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {ArbitrationOperatorAccess} from "./ArbitrationOperatorAccess.sol";
 import {ZeroAddress, ZeroAmount} from "../../types/Errors.sol";
-import {ZeroEscrow, ZeroArbiter} from "../types/Errors.sol";
+import {ZeroEscrow} from "../types/Errors.sol";
 import {
     TotalFeeRateExceedsMax,
     InvalidFeeBps,
@@ -136,7 +136,7 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
         ConditionConfig memory _conditions
     ) {
         if (_escrow == address(0)) revert ZeroEscrow();
-        if (_arbiter == address(0)) revert ZeroArbiter();
+        if (_arbiter == address(0)) revert ZeroAddress();
         ESCROW = AuthCaptureEscrow(_escrow);
         ARBITER = _arbiter;
         if (_protocolFeeRecipient == address(0)) revert ZeroAddress();

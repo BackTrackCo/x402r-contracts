@@ -175,7 +175,7 @@ contract PaymentOperatorFactory is Ownable {
     function _computeKey(OperatorConfig memory config) internal pure returns (bytes32) {
         return keccak256(
             abi.encodePacked(
-                config.arbiter,
+                config.feeRecipient,
                 config.authorizeCondition,
                 config.authorizeRecorder,
                 config.chargeCondition,
