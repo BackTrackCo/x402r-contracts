@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {IFreezePolicy} from "../../src/commerce-payments/conditions/escrow-period/freeze-policy/IFreezePolicy.sol";
+import {IFreezePolicy} from "../../src/conditions/escrow-period/freeze-policy/IFreezePolicy.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
 /**

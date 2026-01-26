@@ -2,7 +2,7 @@
 pragma solidity ^0.8.23;
 
 import {Script, console} from "forge-std/Script.sol";
-import {PaymentOperatorFactory} from "../src/commerce-payments/operator/PaymentOperatorFactory.sol";
+import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
 import {StaticAddressCondition} from "../src/conditions/StaticAddressCondition.sol";
 
 /**

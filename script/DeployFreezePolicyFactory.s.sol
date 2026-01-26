@@ -3,10 +3,10 @@ pragma solidity ^0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
 import {FreezePolicyFactory} from
-    "../src/commerce-payments/conditions/escrow-period/freeze-policy/FreezePolicyFactory.sol";
-import {PayerCondition} from "../src/commerce-payments/conditions/access/PayerCondition.sol";
-import {ReceiverCondition} from "../src/commerce-payments/conditions/access/ReceiverCondition.sol";
-import {AlwaysTrueCondition} from "../src/commerce-payments/conditions/access/AlwaysTrueCondition.sol";
+    "../src/conditions/escrow-period/freeze-policy/FreezePolicyFactory.sol";
+import {PayerCondition} from "../src/conditions/access/PayerCondition.sol";
+import {ReceiverCondition} from "../src/conditions/access/ReceiverCondition.sol";
+import {AlwaysTrueCondition} from "../src/conditions/access/AlwaysTrueCondition.sol";
 
 /**
  * @title DeployFreezePolicyFactory

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.23;
 
 import {Script, console} from "forge-std/Script.sol";
-import {RefundRequest} from "../src/commerce-payments/requests/refund/RefundRequest.sol";
+import {RefundRequest} from "../src/requests/refund/RefundRequest.sol";
 
 /**
  * @title DeployRefundRequest

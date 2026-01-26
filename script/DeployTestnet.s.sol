@@ -2,8 +2,8 @@
 pragma solidity ^0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
-import {PaymentOperator} from "../src/commerce-payments/operator/arbitration/PaymentOperator.sol";
-import {PaymentOperatorFactory} from "../src/commerce-payments/operator/PaymentOperatorFactory.sol";
+import {PaymentOperator} from "../src/operator/arbitration/PaymentOperator.sol";
+import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
 /**

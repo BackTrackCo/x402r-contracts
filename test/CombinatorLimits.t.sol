@@ -2,10 +2,10 @@
 pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
-import {ICondition} from "../src/commerce-payments/conditions/ICondition.sol";
-import {AndCondition} from "../src/commerce-payments/conditions/combinators/AndCondition.sol";
-import {OrCondition} from "../src/commerce-payments/conditions/combinators/OrCondition.sol";
-import {AlwaysTrueCondition} from "../src/commerce-payments/conditions/access/AlwaysTrueCondition.sol";
+import {ICondition} from "../src/conditions/ICondition.sol";
+import {AndCondition} from "../src/conditions/combinators/AndCondition.sol";
+import {OrCondition} from "../src/conditions/combinators/OrCondition.sol";
+import {AlwaysTrueCondition} from "../src/conditions/access/AlwaysTrueCondition.sol";
 
 /**
  * @title CombinatorLimitsTest

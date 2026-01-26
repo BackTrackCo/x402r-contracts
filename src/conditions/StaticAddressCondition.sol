@@ -2,7 +2,7 @@
 // CONTRACTS UNAUDITED: USE AT YOUR OWN RISK
 pragma solidity ^0.8.28;
 
-import {ICondition} from "../commerce-payments/conditions/ICondition.sol";
+import {ICondition} from "./ICondition.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
 /**

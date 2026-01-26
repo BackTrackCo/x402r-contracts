@@ -2,12 +2,12 @@
 pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
-import {PaymentOperator} from "../src/commerce-payments/operator/arbitration/PaymentOperator.sol";
-import {PaymentOperatorFactory} from "../src/commerce-payments/operator/PaymentOperatorFactory.sol";
-import {EscrowPeriodCondition} from "../src/commerce-payments/conditions/escrow-period/EscrowPeriodCondition.sol";
-import {EscrowPeriodConditionFactory} from "../src/commerce-payments/conditions/escrow-period/EscrowPeriodConditionFactory.sol";
-import {EscrowPeriodRecorder} from "../src/commerce-payments/conditions/escrow-period/EscrowPeriodRecorder.sol";
-import {PayerFreezePolicy} from "../src/commerce-payments/conditions/escrow-period/freeze-policy/PayerFreezePolicy.sol";
+import {PaymentOperator} from "../src/operator/arbitration/PaymentOperator.sol";
+import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
+import {EscrowPeriodCondition} from "../src/conditions/escrow-period/EscrowPeriodCondition.sol";
+import {EscrowPeriodConditionFactory} from "../src/conditions/escrow-period/EscrowPeriodConditionFactory.sol";
+import {EscrowPeriodRecorder} from "../src/conditions/escrow-period/EscrowPeriodRecorder.sol";
+import {PayerFreezePolicy} from "../src/conditions/escrow-period/freeze-policy/PayerFreezePolicy.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
