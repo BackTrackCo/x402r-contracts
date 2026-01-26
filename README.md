@@ -179,10 +179,12 @@ MEV Protection: Payers should freeze EARLY, not at deadline.
 
 | Role | Capabilities |
 |------|-------------|
-| **Payer** | `authorize()`, `freeze()`, `unfreeze()`, `requestRefund()`, `cancelRefundRequest()` |
+| **Payer** | `authorize()`, `freeze()`, `unfreeze()`, `requestRefund()`, `cancelRefundRequest()`, `void()` (after expiry) |
 | **Receiver** | `release()` (if condition allows), `charge()` |
 | **Arbiter** | `refundInEscrow()`, `refundPostEscrow()`, `updateStatus()` on refund requests |
 | **Owner** | `queueFeesEnabled()`, `executeFeesEnabled()`, `cancelFeesEnabled()`, `rescueETH()` |
+
+**Authorization Expiry:** The `PaymentInfo` struct includes an `authorizationExpiry` field from base commerce-payments. Payers can set this to limit how long receivers can charge funds. Set to `type(uint48).max` for no expiry, or specify a timestamp for time-limited authorizations (useful for subscriptions). After expiry, payers can reclaim unused funds via `void()`.
 
 ### Security Features
 

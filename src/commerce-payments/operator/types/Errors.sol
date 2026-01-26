@@ -9,7 +9,6 @@ error TotalFeeRateExceedsMax();
 error ReleaseLocked();
 
 // ============ PaymentInfo Validation Errors ============
-error InvalidAuthorizationExpiry();
 error InvalidFeeBps();
 error InvalidFeeReceiver();
 error UnauthorizedCaller();

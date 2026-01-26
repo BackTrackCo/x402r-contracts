@@ -10,7 +10,6 @@ import {ZeroAddress, ZeroAmount} from "../../types/Errors.sol";
 import {ZeroEscrow, ZeroArbiter} from "../types/Errors.sol";
 import {
     TotalFeeRateExceedsMax,
-    InvalidAuthorizationExpiry,
     InvalidFeeBps,
     InvalidFeeReceiver,
     ETHTransferFailed,
@@ -210,9 +209,9 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
      * @dev Checks AUTHORIZE_CONDITION, performs authorization, then calls AUTHORIZE_RECORDER
      * @param paymentInfo PaymentInfo struct with required values:
      *        - operator == address(this)
-     *        - authorizationExpiry == type(uint48).max
      *        - minFeeBps == maxFeeBps == MAX_TOTAL_FEE_RATE
      *        - feeReceiver == address(this)
+     *        authorizationExpiry can be set to any value (use type(uint48).max for no expiry)
      * @param amount Amount to authorize
      * @param tokenCollector Address of the token collector
      * @param collectorData Data to pass to the token collector
@@ -230,7 +229,6 @@ contract ArbitrationOperator is Ownable, ArbitrationOperatorAccess, IOperator {
                 revert ConditionNotMet();
             }
         }
-        if (paymentInfo.authorizationExpiry != type(uint48).max) revert InvalidAuthorizationExpiry();
 
         // ============ EFFECTS ============
         // Compute hash and update state before external call (CEI pattern)
