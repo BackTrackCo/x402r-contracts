@@ -29,7 +29,7 @@ contract DeployTestnet is Script {
         address feeRecipient = vm.envOr("FEE_RECIPIENT", msg.sender);
 
         console.log("\n=== TESTNET DEPLOYMENT ===");
-        console.log("🧪 EOA owner allowed for testing");
+        console.log("[TEST] EOA owner allowed for testing");
         console.log("Network:", block.chainid);
         console.log("Deployer:", msg.sender);
         console.log("Owner:", owner);
@@ -95,6 +95,6 @@ contract DeployTestnet is Script {
         console.log("Operator:", address(operator));
         console.log("Escrow:", escrow);
         console.log("Owner:", owner);
-        console.log("\n🧪 Ready for testing!\n");
+        console.log("\n[TEST] Ready for testing!\n");
     }
 }

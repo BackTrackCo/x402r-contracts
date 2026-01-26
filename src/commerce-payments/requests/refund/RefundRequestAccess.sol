@@ -3,34 +3,60 @@
 pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {ArbitrationOperator} from "../../operator/arbitration/ArbitrationOperator.sol";
-import {NotReceiver, NotReceiverOrArbiter, InvalidOperator} from "../../types/Errors.sol";
+import {IOperator} from "../../operator/types/IOperator.sol";
+import {NotReceiver, NotPayer, InvalidOperator} from "../../types/Errors.sol";
 
 /**
  * @title RefundRequestAccess
- * @notice Stateless access control for RefundRequest - complements ArbitrationOperatorAccess
- * @dev Contains RefundRequest-specific modifiers. Use with ArbitrationOperatorAccess for onlyPayer.
+ * @notice Stateless access control for RefundRequest contract
+ * @dev Contains ALL modifiers used by RefundRequest.
+ *      Separated from PaymentOperatorAccess for proper code reuse.
  */
 abstract contract RefundRequestAccess {
+    // ============ Role-Based Access Control ============
+
+    /**
+     * @notice Modifier to check if sender is the payer
+     * @param paymentInfo The PaymentInfo struct
+     */
+    modifier onlyPayer(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
+        if (msg.sender != paymentInfo.payer) revert NotPayer();
+        _;
+    }
+
+    /**
+     * @notice Modifier to check if sender is the receiver
+     * @param paymentInfo The PaymentInfo struct
+     */
+    modifier onlyReceiver(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
+        if (msg.sender != paymentInfo.receiver) revert NotReceiver();
+        _;
+    }
+
     // ============ Refund Status Authorization ============
 
     /**
      * @notice Modifier to check authorization for updating refund status
-     * @dev In escrow: receiver OR arbiter can update
+     * @dev In escrow: receiver can update (operator conditions handle additional authorization)
      *      Post escrow: only receiver can update
+     * @param paymentInfo The payment info
      */
     modifier onlyAuthorizedForRefundStatus(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
-        ArbitrationOperator operator = ArbitrationOperator(paymentInfo.operator);
-        (, uint120 capturableAmount,) = operator.ESCROW().paymentState(operator.ESCROW().getHash(paymentInfo));
+        // Get escrow state to determine if in escrow or post-escrow
+        IOperator operator = IOperator(paymentInfo.operator);
+        AuthCaptureEscrow escrow = AuthCaptureEscrow(operator.ESCROW());
+        (, uint120 capturableAmount,) = escrow.paymentState(escrow.getHash(paymentInfo));
 
-        if (capturableAmount > 0) {
-            if (msg.sender != paymentInfo.receiver && msg.sender != operator.ARBITER()) {
-                revert NotReceiverOrArbiter();
-            }
-        } else {
-            if (msg.sender != paymentInfo.receiver) {
+        // In escrow: receiver can update (operator's conditions will handle additional auth like arbiter)
+        // Post escrow: only receiver can update
+        if (msg.sender != paymentInfo.receiver) {
+            // If not receiver, check if in escrow and allow (operator conditions will validate)
+            if (capturableAmount == 0) {
+                // Post-escrow: only receiver allowed
                 revert NotReceiver();
             }
+            // In escrow: allow non-receiver (operator's refund conditions will validate authorization)
+            // This enables flexible authorization via conditions (e.g., StaticAddressCondition)
         }
         _;
     }
@@ -39,7 +65,7 @@ abstract contract RefundRequestAccess {
 
     /**
      * @notice Modifier to validate operator address is set
-     * @dev Different from ArbitrationOperatorAccess.validOperator which checks operator == address(this)
+     * @dev Different from PaymentOperatorAccess.validOperator which checks operator == address(this)
      */
     modifier operatorNotZero(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
         if (paymentInfo.operator == address(0)) revert InvalidOperator();

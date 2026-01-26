@@ -125,17 +125,17 @@ contract DeployProduction is Script {
             revert("DEPLOYMENT FAILED: Owner must be multisig contract, not EOA");
         }
 
-        console.log("✅ Owner is contract (multisig/timelock verified)");
+        console.log("[OK] Owner is contract (multisig/timelock verified)");
 
         // Try to detect Gnosis Safe
         try this.isGnosisSafe(owner) returns (bool isSafe) {
             if (isSafe) {
-                console.log("✅ Owner appears to be Gnosis Safe");
+                console.log("[OK] Owner appears to be Gnosis Safe");
             } else {
-                console.log("⚠️  Owner is contract but not Gnosis Safe - verify manually");
+                console.log("[WARN]  Owner is contract but not Gnosis Safe - verify manually");
             }
         } catch {
-            console.log("⚠️  Could not detect multisig type - verify manually");
+            console.log("[WARN]  Could not detect multisig type - verify manually");
         }
     }
 
@@ -212,11 +212,11 @@ contract DeployProduction is Script {
         require(operator.FEE_RECIPIENT() != address(0), "Fee recipient not set");
         require(operator.MAX_TOTAL_FEE_RATE() > 0, "Invalid fee rate");
 
-        console.log("✅ Escrow:", address(operator.ESCROW()));
-        console.log("✅ Fee Recipient:", operator.FEE_RECIPIENT());
-        console.log("✅ Max Total Fee Rate:", operator.MAX_TOTAL_FEE_RATE(), "bps");
-        console.log("✅ Protocol Fee %:", operator.PROTOCOL_FEE_PERCENTAGE());
+        console.log("[OK] Escrow:", address(operator.ESCROW()));
+        console.log("[OK] Fee Recipient:", operator.FEE_RECIPIENT());
+        console.log("[OK] Max Total Fee Rate:", operator.MAX_TOTAL_FEE_RATE(), "bps");
+        console.log("[OK] Protocol Fee %:", operator.PROTOCOL_FEE_PERCENTAGE());
 
-        console.log("\n✅ All deployment checks passed");
+        console.log("\n[OK] All deployment checks passed");
     }
 }

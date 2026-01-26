@@ -6,7 +6,6 @@ import {FreezePolicyFactory} from
     "../src/commerce-payments/conditions/escrow-period/freeze-policy/FreezePolicyFactory.sol";
 import {PayerCondition} from "../src/commerce-payments/conditions/access/PayerCondition.sol";
 import {ReceiverCondition} from "../src/commerce-payments/conditions/access/ReceiverCondition.sol";
-import {ArbiterCondition} from "../src/commerce-payments/conditions/access/ArbiterCondition.sol";
 import {AlwaysTrueCondition} from "../src/commerce-payments/conditions/access/AlwaysTrueCondition.sol";
 
 /**
@@ -32,9 +31,6 @@ contract DeployFreezePolicyFactory is Script {
         ReceiverCondition receiverCondition = new ReceiverCondition();
         console.log("ReceiverCondition:", address(receiverCondition));
 
-        ArbiterCondition arbiterCondition = new ArbiterCondition();
-        console.log("ArbiterCondition:", address(arbiterCondition));
-
         AlwaysTrueCondition alwaysTrueCondition = new AlwaysTrueCondition();
         console.log("AlwaysTrueCondition:", address(alwaysTrueCondition));
 
@@ -48,7 +44,6 @@ contract DeployFreezePolicyFactory is Script {
         console.log("\n=== Deployment Summary ===");
         console.log("PayerCondition:", address(payerCondition));
         console.log("ReceiverCondition:", address(receiverCondition));
-        console.log("ArbiterCondition:", address(arbiterCondition));
         console.log("AlwaysTrueCondition:", address(alwaysTrueCondition));
         console.log("FreezePolicyFactory:", address(factory));
     }

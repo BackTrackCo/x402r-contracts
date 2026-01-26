@@ -7,14 +7,19 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 /**
  * @title IOperator
  * @notice Interface for operator contracts that manage payment authorization and release
- * @dev Operators are the intermediary between release conditions and the escrow contract.
+ * @dev Operators are the intermediary between conditions and the escrow contract.
  *      They handle the business logic for payment flows while delegating fund custody to escrow.
  *
  *      Typical flow:
- *        User -> IReleaseCondition.release() -> IOperator.release() -> Escrow.capture()
- *        User -> IOperator.authorize() (or via IAuthorizable condition) -> Escrow.authorize()
+ *        User -> ICondition.check() -> IOperator.release() -> Escrow.capture()
+ *        User -> IOperator.authorize() -> Escrow.authorize()
  */
 interface IOperator {
+    /**
+     * @notice Get the escrow contract address
+     * @return The AuthCaptureEscrow contract address
+     */
+    function ESCROW() external view returns (AuthCaptureEscrow);
     /**
      * @notice Authorize a payment through the escrow
      * @param paymentInfo PaymentInfo struct with payment details

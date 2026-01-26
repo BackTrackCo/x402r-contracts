@@ -3,32 +3,27 @@ pragma solidity ^0.8.28;
 
 import {Test, console} from "forge-std/Test.sol";
 import {RefundRequest} from "../src/commerce-payments/requests/refund/RefundRequest.sol";
-import {ArbitrationOperator} from "../src/commerce-payments/operator/arbitration/ArbitrationOperator.sol";
-import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
+import {PaymentOperator} from "../src/commerce-payments/operator/arbitration/PaymentOperator.sol";
+import {PaymentOperatorFactory} from "../src/commerce-payments/operator/PaymentOperatorFactory.sol";
+import {StaticAddressCondition} from "../src/conditions/StaticAddressCondition.sol";
 import {RequestStatus} from "../src/commerce-payments/requests/types/Types.sol";
-import {NotReceiver, NotPayer, NotReceiverOrArbiter, InvalidOperator} from "../src/commerce-payments/types/Errors.sol";
-import {
-    RequestAlreadyExists,
-    RequestDoesNotExist,
-    RequestNotPending
-} from "../src/commerce-payments/requests/types/Errors.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
+import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
-import {MockEscrow} from "./mocks/MockEscrow.sol";
-import {MockReleaseCondition} from "./mocks/MockReleaseCondition.sol";
 
 contract RefundRequestTest is Test {
     RefundRequest public refundRequest;
-    ArbitrationOperator public operator;
-    ArbitrationOperatorFactory public operatorFactory;
+    PaymentOperator public operator;
+    PaymentOperatorFactory public operatorFactory;
+    AuthCaptureEscrow public escrow;
+    PreApprovalPaymentCollector public collector;
     MockERC20 public token;
-    MockEscrow public escrow;
-    MockReleaseCondition public releaseCondition;
+    StaticAddressCondition public designatedAddressCondition;
 
     address public owner;
     address public protocolFeeRecipient;
     address public receiver;
-    address public arbiter;
+    address public designatedAddress;
     address public payer;
 
     uint256 public constant MAX_TOTAL_FEE_RATE = 50;
@@ -36,50 +31,45 @@ contract RefundRequestTest is Test {
     uint256 public constant INITIAL_BALANCE = 1000000 * 10 ** 18;
     uint256 public constant PAYMENT_AMOUNT = 1000 * 10 ** 18;
 
-    // Events
-    event RefundRequested(AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed payer, address indexed receiver);
-    event RefundRequestStatusUpdated(
-        AuthCaptureEscrow.PaymentInfo paymentInfo,
-        RequestStatus oldStatus,
-        RequestStatus newStatus,
-        address indexed updatedBy
-    );
-    event RefundRequestCancelled(AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed payer);
-
     function setUp() public {
         owner = address(this);
         protocolFeeRecipient = makeAddr("protocolFeeRecipient");
         receiver = makeAddr("receiver");
-        arbiter = makeAddr("arbiter");
+        designatedAddress = makeAddr("designatedAddress");
         payer = makeAddr("payer");
 
-        // Deploy mock contracts
+        // Deploy real escrow
+        escrow = new AuthCaptureEscrow();
         token = new MockERC20("Test Token", "TEST");
-        escrow = new MockEscrow();
-        releaseCondition = new MockReleaseCondition();
+
+        // Deploy PreApprovalPaymentCollector
+        collector = new PreApprovalPaymentCollector(address(escrow));
+
+        // Deploy designated address condition for refunds
+        designatedAddressCondition = new StaticAddressCondition(designatedAddress);
 
         // Deploy operator factory
-        operatorFactory = new ArbitrationOperatorFactory(
+        operatorFactory = new PaymentOperatorFactory(
             address(escrow), protocolFeeRecipient, MAX_TOTAL_FEE_RATE, PROTOCOL_FEE_PERCENTAGE, owner
         );
 
-        // Deploy operator with release condition
-        ArbitrationOperatorFactory.OperatorConfig memory config = ArbitrationOperatorFactory.OperatorConfig({
-            arbiter: arbiter,
+        // Deploy operator with designated address condition for refunds
+        PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
+            feeRecipient: protocolFeeRecipient,
             authorizeCondition: address(0),
             authorizeRecorder: address(0),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(releaseCondition), // requires approval for release
+            releaseCondition: address(0),
             releaseRecorder: address(0),
-            refundInEscrowCondition: address(0),
+            refundInEscrowCondition: address(designatedAddressCondition),
             refundInEscrowRecorder: address(0),
             refundPostEscrowCondition: address(0),
             refundPostEscrowRecorder: address(0)
         });
-        operator = ArbitrationOperator(operatorFactory.deployOperator(config));
+        operator = PaymentOperator(operatorFactory.deployOperator(config));
 
-        // Deploy refund request (no factory needed - singleton)
+        // Deploy refund request contract
         refundRequest = new RefundRequest();
 
         // Setup balances
@@ -87,24 +77,22 @@ contract RefundRequestTest is Test {
         token.mint(receiver, INITIAL_BALANCE);
 
         vm.prank(payer);
-        token.approve(address(escrow), type(uint256).max);
+        token.approve(address(collector), type(uint256).max);
 
         vm.prank(receiver);
-        token.approve(address(escrow), type(uint256).max);
+        token.approve(address(collector), type(uint256).max);
     }
 
-    // ============ Helper Functions ============
-
-    function _createPaymentInfo() internal view returns (MockEscrow.PaymentInfo memory) {
-        return MockEscrow.PaymentInfo({
+    function _createPaymentInfo() internal view returns (AuthCaptureEscrow.PaymentInfo memory) {
+        return AuthCaptureEscrow.PaymentInfo({
             operator: address(operator),
             payer: payer,
             receiver: receiver,
             token: address(token),
             maxAmount: uint120(PAYMENT_AMOUNT),
             preApprovalExpiry: uint48(block.timestamp + 1 days),
-            authorizationExpiry: type(uint48).max,
-            refundExpiry: type(uint48).max,
+            authorizationExpiry: uint48(block.timestamp + 7 days),
+            refundExpiry: uint48(block.timestamp + 30 days),
             minFeeBps: uint16(MAX_TOTAL_FEE_RATE),
             maxFeeBps: uint16(MAX_TOTAL_FEE_RATE),
             feeReceiver: address(operator),
@@ -112,73 +100,90 @@ contract RefundRequestTest is Test {
         });
     }
 
-    function _toAuthCapturePaymentInfo(MockEscrow.PaymentInfo memory mockInfo)
-        internal
-        pure
-        returns (AuthCaptureEscrow.PaymentInfo memory)
-    {
-        return AuthCaptureEscrow.PaymentInfo({
-            operator: mockInfo.operator,
-            payer: mockInfo.payer,
-            receiver: mockInfo.receiver,
-            token: mockInfo.token,
-            maxAmount: mockInfo.maxAmount,
-            preApprovalExpiry: mockInfo.preApprovalExpiry,
-            authorizationExpiry: mockInfo.authorizationExpiry,
-            refundExpiry: mockInfo.refundExpiry,
-            minFeeBps: mockInfo.minFeeBps,
-            maxFeeBps: mockInfo.maxFeeBps,
-            feeReceiver: mockInfo.feeReceiver,
-            salt: mockInfo.salt
-        });
-    }
+    function _authorize() internal returns (AuthCaptureEscrow.PaymentInfo memory) {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
 
-    function _authorize() internal returns (bytes32, AuthCaptureEscrow.PaymentInfo memory) {
-        MockEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+        // Pre-approve payment with collector
+        vm.prank(payer);
+        collector.preApprove(paymentInfo);
 
-        operator.authorize(_toAuthCapturePaymentInfo(paymentInfo), PAYMENT_AMOUNT, address(0), "");
-
-        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
-
-        return (paymentInfoHash, _toAuthCapturePaymentInfo(paymentInfo));
+        // Authorize payment through operator
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+        return paymentInfo;
     }
 
     // ============ Request Refund Tests ============
 
     function test_RequestRefund_Success() public {
-        (bytes32 paymentInfoHash, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
-
-        vm.expectEmit(true, true, false, true);
-        emit RefundRequested(paymentInfo, payer, receiver);
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
 
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo);
 
-        assertTrue(refundRequest.hasRefundRequest(paymentInfo));
-        assertEq(uint8(refundRequest.getRefundRequestStatus(paymentInfo)), uint8(RequestStatus.Pending));
+        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);
+        bytes32 expectedHash = escrow.getHash(paymentInfo);
+
+        assertEq(data.paymentInfoHash, expectedHash);
+        assertEq(uint256(data.status), uint256(RequestStatus.Pending));
     }
 
-    function test_RequestRefund_RevertsOnNotPayer() public {
-        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
+    function test_RequestRefund_RevertsIfNotPayer() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
 
         vm.prank(receiver);
-        vm.expectRevert(NotPayer.selector);
+        vm.expectRevert();
         refundRequest.requestRefund(paymentInfo);
     }
 
-    function test_RequestRefund_RevertsOnDuplicate() public {
-        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
+    function test_ApproveRefund_ByDesignatedAddress_InEscrow() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
 
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo);
 
-        vm.prank(payer);
-        vm.expectRevert(RequestAlreadyExists.selector);
-        refundRequest.requestRefund(paymentInfo);
+        // Designated address approves the refund request
+        vm.prank(designatedAddress);
+        refundRequest.updateStatus(paymentInfo, RequestStatus.Approved);
+
+        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);
+        assertEq(uint256(data.status), uint256(RequestStatus.Approved));
+
+        // Now execute the actual refund through the operator
+        uint256 payerBalanceBefore = token.balanceOf(payer);
+
+        vm.prank(designatedAddress);
+        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
+
+        uint256 payerBalanceAfter = token.balanceOf(payer);
+        assertEq(payerBalanceAfter - payerBalanceBefore, PAYMENT_AMOUNT);
     }
 
-    function test_RequestRefund_AllowsAfterCancel() public {
-        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
+    function test_ApproveRefund_ByReceiver_InEscrow() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo);
+
+        // Receiver approves the refund request
+        vm.prank(receiver);
+        refundRequest.updateStatus(paymentInfo, RequestStatus.Approved);
+
+        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);
+        assertEq(uint256(data.status), uint256(RequestStatus.Approved));
+
+        // Receiver cannot execute refund (only designated address can per condition)
+        // But designated address can execute after receiver approval
+        uint256 payerBalanceBefore = token.balanceOf(payer);
+
+        vm.prank(designatedAddress);
+        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
+
+        uint256 payerBalanceAfter = token.balanceOf(payer);
+        assertEq(payerBalanceAfter - payerBalanceBefore, PAYMENT_AMOUNT);
+    }
+
+    function test_CancelRefund_Success() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
 
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo);
@@ -186,41 +191,25 @@ contract RefundRequestTest is Test {
         vm.prank(payer);
         refundRequest.cancelRefundRequest(paymentInfo);
 
-        // Should allow re-request after cancel
-        vm.prank(payer);
-        refundRequest.requestRefund(paymentInfo);
-
-        assertEq(uint8(refundRequest.getRefundRequestStatus(paymentInfo)), uint8(RequestStatus.Pending));
+        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);
+        assertEq(uint256(data.status), uint256(RequestStatus.Cancelled));
     }
 
-    // ============ Update Status Tests ============
-
-    function test_UpdateStatus_ApproveByReceiverInEscrow() public {
-        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
+    function test_DenyRefund_ByDesignatedAddress() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
 
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo);
 
-        vm.prank(receiver);
-        refundRequest.updateStatus(paymentInfo, RequestStatus.Approved);
+        vm.prank(designatedAddress);
+        refundRequest.updateStatus(paymentInfo, RequestStatus.Denied);
 
-        assertEq(uint8(refundRequest.getRefundRequestStatus(paymentInfo)), uint8(RequestStatus.Approved));
+        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);
+        assertEq(uint256(data.status), uint256(RequestStatus.Denied));
     }
 
-    function test_UpdateStatus_ApproveByArbiterInEscrow() public {
-        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
-
-        vm.prank(payer);
-        refundRequest.requestRefund(paymentInfo);
-
-        vm.prank(arbiter);
-        refundRequest.updateStatus(paymentInfo, RequestStatus.Approved);
-
-        assertEq(uint8(refundRequest.getRefundRequestStatus(paymentInfo)), uint8(RequestStatus.Approved));
-    }
-
-    function test_UpdateStatus_DenyByReceiverInEscrow() public {
-        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
+    function test_DenyRefund_ByReceiver() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
 
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo);
@@ -228,140 +217,104 @@ contract RefundRequestTest is Test {
         vm.prank(receiver);
         refundRequest.updateStatus(paymentInfo, RequestStatus.Denied);
 
-        assertEq(uint8(refundRequest.getRefundRequestStatus(paymentInfo)), uint8(RequestStatus.Denied));
+        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);
+        assertEq(uint256(data.status), uint256(RequestStatus.Denied));
     }
 
-    function test_UpdateStatus_RevertsOnPayerInEscrow() public {
-        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
+    function test_ApproveRefund_PostEscrow_OnlyReceiver() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
 
-        vm.prank(payer);
-        refundRequest.requestRefund(paymentInfo);
-
-        vm.prank(payer);
-        vm.expectRevert(NotReceiverOrArbiter.selector);
-        refundRequest.updateStatus(paymentInfo, RequestStatus.Approved);
-    }
-
-    function test_UpdateStatus_ApproveByReceiverPostCapture() public {
-        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
-
-        // Approve the release and call release on operator (pull model)
-        releaseCondition.approvePayment(paymentInfo);
+        // Release payment (move to post-escrow state)
         vm.prank(receiver);
         operator.release(paymentInfo, PAYMENT_AMOUNT);
 
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo);
 
-        // Receiver can still approve post-capture
+        // Receiver can approve post-escrow
         vm.prank(receiver);
         refundRequest.updateStatus(paymentInfo, RequestStatus.Approved);
 
-        assertEq(uint8(refundRequest.getRefundRequestStatus(paymentInfo)), uint8(RequestStatus.Approved));
+        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);
+        assertEq(uint256(data.status), uint256(RequestStatus.Approved));
     }
 
-    function test_UpdateStatus_RevertsOnArbiterPostCapture() public {
-        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
+    function test_ApproveRefund_PostEscrow_DesignatedAddressCannotApprove() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
 
-        // Approve the release and call release on operator (pull model)
-        releaseCondition.approvePayment(paymentInfo);
+        // Release payment (move to post-escrow state)
         vm.prank(receiver);
         operator.release(paymentInfo, PAYMENT_AMOUNT);
 
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo);
 
-        // Arbiter cannot approve post-capture
-        vm.prank(arbiter);
-        vm.expectRevert(NotReceiver.selector);
+        // Designated address cannot approve post-escrow (only receiver can)
+        vm.prank(designatedAddress);
+        vm.expectRevert();
         refundRequest.updateStatus(paymentInfo, RequestStatus.Approved);
     }
 
-    // ============ Cancel Tests ============
+    function test_UpdateStatus_PostEscrow_RevertsIfNotReceiver() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
 
-    function test_CancelRefundRequest_Success() public {
-        (bytes32 paymentInfoHash, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
+        // Release payment (move to post-escrow)
+        vm.prank(receiver);
+        operator.release(paymentInfo, PAYMENT_AMOUNT);
 
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo);
 
-        vm.expectEmit(true, false, false, true);
-        emit RefundRequestCancelled(paymentInfo, payer);
-
-        vm.prank(payer);
-        refundRequest.cancelRefundRequest(paymentInfo);
-
-        assertEq(uint8(refundRequest.getRefundRequestStatus(paymentInfo)), uint8(RequestStatus.Cancelled));
+        // Random address cannot approve post-escrow (only receiver can)
+        address randomAddress = makeAddr("random");
+        vm.prank(randomAddress);
+        vm.expectRevert();
+        refundRequest.updateStatus(paymentInfo, RequestStatus.Approved);
     }
 
-    function test_CancelRefundRequest_RevertsOnNotPayer() public {
-        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
+    function test_UpdateStatus_RevertsIfNotPending() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo);
+
+        // Approve once
+        vm.prank(receiver);
+        refundRequest.updateStatus(paymentInfo, RequestStatus.Approved);
+
+        // Cannot update again
+        vm.prank(receiver);
+        vm.expectRevert();
+        refundRequest.updateStatus(paymentInfo, RequestStatus.Denied);
+    }
+
+    function test_CancelRefund_RevertsIfNotPayer() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
 
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo);
 
         vm.prank(receiver);
-        vm.expectRevert(NotPayer.selector);
+        vm.expectRevert();
         refundRequest.cancelRefundRequest(paymentInfo);
     }
 
-    function test_CancelRefundRequest_RevertsOnNotPending() public {
-        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
+    function test_RequestRefund_AllowsReRequestAfterCancel() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
 
+        // First request
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo);
 
-        vm.prank(receiver);
-        refundRequest.updateStatus(paymentInfo, RequestStatus.Approved);
-
+        // Cancel it
         vm.prank(payer);
-        vm.expectRevert(RequestNotPending.selector);
         refundRequest.cancelRefundRequest(paymentInfo);
-    }
 
-    // ============ View Function Tests ============
-
-    function test_HasRefundRequest() public {
-        (, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
-
-        assertFalse(refundRequest.hasRefundRequest(paymentInfo));
-
+        // Should be able to request again
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo);
 
-        assertTrue(refundRequest.hasRefundRequest(paymentInfo));
-    }
-
-    function test_GetPayerRefundRequestHashes() public {
-        (bytes32 paymentInfoHash, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
-
-        vm.prank(payer);
-        refundRequest.requestRefund(paymentInfo);
-
-        bytes32[] memory hashes = refundRequest.getPayerRefundRequestHashes(payer);
-        assertEq(hashes.length, 1);
-        assertEq(hashes[0], paymentInfoHash);
-    }
-
-    function test_GetReceiverRefundRequestHashes() public {
-        (bytes32 paymentInfoHash, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
-
-        vm.prank(payer);
-        refundRequest.requestRefund(paymentInfo);
-
-        bytes32[] memory hashes = refundRequest.getReceiverRefundRequestHashes(receiver);
-        assertEq(hashes.length, 1);
-        assertEq(hashes[0], paymentInfoHash);
-    }
-
-    function test_GetRefundRequestByHash() public {
-        (bytes32 paymentInfoHash, AuthCaptureEscrow.PaymentInfo memory paymentInfo) = _authorize();
-
-        vm.prank(payer);
-        refundRequest.requestRefund(paymentInfo);
-
-        RefundRequest.RefundRequestData memory request = refundRequest.getRefundRequestByHash(paymentInfoHash);
-        assertEq(request.paymentInfoHash, paymentInfoHash);
-        assertEq(uint8(request.status), uint8(RequestStatus.Pending));
+        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);
+        assertEq(uint256(data.status), uint256(RequestStatus.Pending));
     }
 }

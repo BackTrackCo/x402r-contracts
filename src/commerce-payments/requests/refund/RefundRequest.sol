@@ -3,8 +3,7 @@
 pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {ArbitrationOperator} from "../../operator/arbitration/ArbitrationOperator.sol";
-import {ArbitrationOperatorAccess} from "../../operator/arbitration/ArbitrationOperatorAccess.sol";
+import {PaymentOperator} from "../../operator/arbitration/PaymentOperator.sol";
 import {RefundRequestAccess} from "./RefundRequestAccess.sol";
 import {RequestStatus} from "../types/Types.sol";
 import {
@@ -19,12 +18,12 @@ import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} fro
 /**
  * @title RefundRequest
  * @notice Contract for managing refund requests - operator-agnostic, takes PaymentInfo directly
- * @dev Works with any ArbitrationOperator. Escrow is source of truth.
+ * @dev Works with any PaymentOperator. Escrow is source of truth.
  *      Only the payer who made the authorization can create a request.
- *      In escrow: receiver (merchant) OR arbiter can approve
+ *      In escrow: receiver (merchant) OR designated address can approve
  *      Post escrow: receiver (merchant) ONLY can approve
  */
-contract RefundRequest is ArbitrationOperatorAccess, RefundRequestAccess {
+contract RefundRequest is RefundRequestAccess {
     struct RefundRequestData {
         bytes32 paymentInfoHash; // Hash of PaymentInfo
         RequestStatus status; // Current status of the request
@@ -48,7 +47,7 @@ contract RefundRequest is ArbitrationOperatorAccess, RefundRequestAccess {
         operatorNotZero(paymentInfo)
         onlyPayer(paymentInfo)
     {
-        ArbitrationOperator operator = ArbitrationOperator(paymentInfo.operator);
+        PaymentOperator operator = PaymentOperator(paymentInfo.operator);
         bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
 
         // Check if request already exists (allow re-requesting if cancelled)
@@ -91,7 +90,7 @@ contract RefundRequest is ArbitrationOperatorAccess, RefundRequestAccess {
         operatorNotZero(paymentInfo)
         onlyPayer(paymentInfo)
     {
-        ArbitrationOperator operator = ArbitrationOperator(paymentInfo.operator);
+        PaymentOperator operator = PaymentOperator(paymentInfo.operator);
         bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
 
         RefundRequestData storage request = refundRequests[paymentInfoHash];
@@ -111,7 +110,7 @@ contract RefundRequest is ArbitrationOperatorAccess, RefundRequestAccess {
             revert InvalidStatus();
         }
 
-        ArbitrationOperator operator = ArbitrationOperator(paymentInfo.operator);
+        PaymentOperator operator = PaymentOperator(paymentInfo.operator);
         bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
 
         RefundRequestData storage request = refundRequests[paymentInfoHash];
@@ -154,7 +153,7 @@ contract RefundRequest is ArbitrationOperatorAccess, RefundRequestAccess {
         view
         returns (RefundRequestData memory)
     {
-        ArbitrationOperator operator = ArbitrationOperator(paymentInfo.operator);
+        PaymentOperator operator = PaymentOperator(paymentInfo.operator);
         bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
         RefundRequestData memory request = refundRequests[paymentInfoHash];
         if (request.paymentInfoHash == bytes32(0)) revert RequestDoesNotExist();
@@ -165,7 +164,7 @@ contract RefundRequest is ArbitrationOperatorAccess, RefundRequestAccess {
     /// @param paymentInfo PaymentInfo struct
     /// @return True if request exists, false otherwise
     function hasRefundRequest(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external view returns (bool) {
-        ArbitrationOperator operator = ArbitrationOperator(paymentInfo.operator);
+        PaymentOperator operator = PaymentOperator(paymentInfo.operator);
         bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
         return refundRequests[paymentInfoHash].paymentInfoHash != bytes32(0);
     }
@@ -178,7 +177,7 @@ contract RefundRequest is ArbitrationOperatorAccess, RefundRequestAccess {
         view
         returns (RequestStatus)
     {
-        ArbitrationOperator operator = ArbitrationOperator(paymentInfo.operator);
+        PaymentOperator operator = PaymentOperator(paymentInfo.operator);
         bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
         return refundRequests[paymentInfoHash].status;
     }
