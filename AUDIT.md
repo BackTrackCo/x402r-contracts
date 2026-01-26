@@ -5,7 +5,7 @@
 **x402r Payment System** - Generic payment operator built on Base Commerce Payments with flexible condition/recorder slots.
 
 **Version**: 0.1.0 (Beta - Unaudited)
-**Optimizations**: v2.0 indexing pattern
+**Optimizations**: Mapping + counter indexing pattern
 **Solidity**: 0.8.28+
 **Chain**: EVM-compatible (Base, Ethereum, Optimism, Arbitrum)
 
@@ -72,18 +72,18 @@ FreezePolicyFactory
 
 ---
 
-## v2.0 Optimizations
+## Indexing Optimizations
 
 ### What Changed
 
 **Replaced array-based indexing with mapping + counter pattern** for gas efficiency.
 
-**Before (v1.0)**:
+**Before**:
 ```solidity
 mapping(address => bytes32[]) private payerPayments;  // Dynamic array
 ```
 
-**After (v2.0)**:
+**After**:
 ```solidity
 mapping(address => mapping(uint256 => bytes32)) private payerPayments;  // Mapping
 mapping(address => uint256) public payerPaymentCount;  // Counter
@@ -91,7 +91,7 @@ mapping(address => uint256) public payerPaymentCount;  // Counter
 
 ### Gas Savings
 
-| Scenario | v1.0 | v2.0 | Savings |
+| Scenario | Before | After | Savings |
 |----------|------|------|---------|
 | **First authorization** | 473k gas | 404k gas | **-69k (-14.6%)** |
 | **Subsequent authorization** | 473k gas | 287k gas | **-186k (-39.3%)** |
@@ -290,7 +290,7 @@ See `SOLADY_VS_OZ_ANALYSIS.md` for full comparison.
 - Reliability (cannot be pruned/rate-limited)
 - Developer UX (query payments directly)
 
-**Cost**: 44k gas first / 10k subsequent (optimized in v2.0)
+**Cost**: 44k gas first / 10k subsequent (optimized with mapping + counter)
 
 ### 4. Mapping + Counter Pattern
 
@@ -416,5 +416,5 @@ See `SOLADY_VS_OZ_ANALYSIS.md` for full comparison.
 
 **Prepared**: 2026-01-26
 **Version**: 0.1.0 (Beta - Unaudited)
-**Optimizations**: v2.0 indexing pattern
+**Optimizations**: Mapping + counter indexing pattern
 **Status**: Ready for audit quote

@@ -4,7 +4,7 @@
 
 **Base Commerce Payments (Escrow) accounts for 61-78% of total gas costs.**
 
-Most gas is spent in the escrow layer (which we don't control), not our operator wrapper. Our v2.0 indexing optimization already captured the major operator overhead savings (14.6-39.3%). Further optimizations yield diminishing returns.
+Most gas is spent in the escrow layer (which we don't control), not our operator wrapper. Our mapping + counter indexing optimization already captured the major operator overhead savings (14.6-39.3%). Further optimizations yield diminishing returns.
 
 ---
 
@@ -96,7 +96,7 @@ Total overhead:        ~62,000 gas
 
 ## Optimization History
 
-### v1.0 (Array-Based Indexing)
+### Before (Array-Based Indexing)
 ```
 First payment:     473,000 gas
 Subsequent:        473,000 gas
@@ -104,7 +104,7 @@ Subsequent:        473,000 gas
 
 **Indexing cost:** 40k (first) + 40k (receiver) = 80k per payment
 
-### v2.0 (Mapping + Counter - Current)
+### After (Mapping + Counter - Current)
 ```
 First payment:     407,981 gas (-65k, -13.7%)
 Subsequent:        287,059 gas (-186k, -39.3%)
@@ -197,7 +197,7 @@ The majority of gas is spent in Base Commerce Payments escrow layer:
 
 ### 2. Our Optimization Captured Major Savings
 
-v2.0 optimization (array → mapping + counter):
+Indexing optimization (array → mapping + counter):
 - ✅ 14.6% savings on first payment
 - ✅ 39.3% savings on subsequent payments
 - ✅ 50% reduction in indexing operations
@@ -261,7 +261,7 @@ Rather than chasing small universal gas savings (< 1%), optimize for specific us
 
 ## Conclusion
 
-**Our v2.0 optimization already captured the major savings available in the operator layer** (14.6-39.3%). Further universal optimizations yield < 1% improvement.
+**Our indexing optimization already captured the major savings available in the operator layer** (14.6-39.3%). Further universal optimizations yield < 1% improvement.
 
 **Focus future work on:**
 1. Use-case-specific optimizations (batching for high-volume users)

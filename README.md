@@ -24,7 +24,6 @@ For auditors and developers:
 | [TOKENS.md](TOKENS.md) | 🪙 Token compatibility and handling |
 | [FUZZING.md](FUZZING.md) | 🔬 Fuzzing methodology and invariants |
 | [DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md) | ✅ Production deployment checklist |
-| [OPTIMIZATION_SUMMARY.md](OPTIMIZATION_SUMMARY.md) | ⚡ v2.0 gas optimization details |
 | [GAS_BREAKDOWN.md](GAS_BREAKDOWN.md) | 📊 Detailed gas cost analysis |
 
 ### Base Sepolia
@@ -35,15 +34,15 @@ For auditors and developers:
 
 | Contract | Address |
 |----------|---------|
-| **AuthCaptureEscrow** (v2.0) | [`0xb9488351E48b23D798f24e8174514F28B741Eb4f`](https://sepolia.basescan.org/address/0xb9488351E48b23D798f24e8174514F28B741Eb4f) |
-| **PaymentOperator** (v2.0 - optimized) | [`0xB47a37e754c1e159EE5ECAff6aa2D210D4C1A075`](https://sepolia.basescan.org/address/0xB47a37e754c1e159EE5ECAff6aa2D210D4C1A075) |
+| **AuthCaptureEscrow** | [`0xb9488351E48b23D798f24e8174514F28B741Eb4f`](https://sepolia.basescan.org/address/0xb9488351E48b23D798f24e8174514F28B741Eb4f) |
+| **PaymentOperator** | [`0xB47a37e754c1e159EE5ECAff6aa2D210D4C1A075`](https://sepolia.basescan.org/address/0xB47a37e754c1e159EE5ECAff6aa2D210D4C1A075) |
 | RefundRequest | [`0x26A3d27139b442Be5ECc10c8608c494627B660BF`](https://sepolia.basescan.org/address/0x26A3d27139b442Be5ECc10c8608c494627B660BF) |
 
 #### Factories
 
 | Contract | Address |
 |----------|---------|
-| **PaymentOperatorFactory** (v2.0) | [`0x48ADf6E37F9b31dC2AAD0462C5862B5422C736B8`](https://sepolia.basescan.org/address/0x48ADf6E37F9b31dC2AAD0462C5862B5422C736B8) |
+| **PaymentOperatorFactory** | [`0x48ADf6E37F9b31dC2AAD0462C5862B5422C736B8`](https://sepolia.basescan.org/address/0x48ADf6E37F9b31dC2AAD0462C5862B5422C736B8) |
 | EscrowPeriodConditionFactory | [`0xc9BbA6A2CF9838e7Dd8c19BC8B3BAC620B9D8178`](https://sepolia.basescan.org/address/0xc9BbA6A2CF9838e7Dd8c19BC8B3BAC620B9D8178) |
 | FreezePolicyFactory | [`0x536439b00002CB3c0141391A92aFBB3e1E3f8604`](https://sepolia.basescan.org/address/0x536439b00002CB3c0141391A92aFBB3e1E3f8604) |
 
@@ -225,7 +224,7 @@ MEV Protection: Payers should freeze EARLY, not at deadline.
 
 Typical gas costs for common operations (measured with via-IR optimization and reentrancy protection):
 
-### Core Operations (Optimized v2.0 - Mapping + Counter Indexing)
+### Core Operations
 
 | Operation | Gas Cost | Previous | Savings | Notes |
 |-----------|----------|----------|---------|-------|
@@ -237,7 +236,7 @@ Typical gas costs for common operations (measured with via-IR optimization and r
 | **Cancel Refund** | ~617,000 | ~617,000 | 0 | Cancel pending refund request |
 | **Freeze Payment** | ~486,000 | ~486,000 | 0 | Payer freezes payment during escrow |
 
-**Optimization Details**: v2.0 uses mapping + counter pattern instead of dynamic arrays for payment indexing, saving 50% on indexing gas (22k vs 40k first, 5k vs 10k subsequent).
+**Implementation**: Uses mapping + counter pattern for efficient payment indexing (22k gas first write, 5k subsequent).
 
 ### Condition Evaluation
 
@@ -272,7 +271,7 @@ Typical gas costs for common operations (measured with via-IR optimization and r
 
 **Status**: Gas costs are **excellent** for the security features provided. See [GAS_OPTIMIZATION_REPORT.md](GAS_OPTIMIZATION_REPORT.md) for detailed analysis.
 
-### Network Cost Estimates (v2.0 Optimized)
+### Network Cost Estimates
 
 Estimated transaction costs on different networks (at typical gas prices):
 
@@ -282,19 +281,13 @@ Estimated transaction costs on different networks (at typical gas prices):
 | **Base Sepolia** | Free | Free | Free | Free | Free |
 | **Ethereum L1** | 30 gwei | ~$12.12 | ~$8.61 | ~$16.56 | ~$20.31 |
 
-**Cost Savings** (vs v1.0):
-- First authorization: **-$2.07/tx** on Ethereum L1 (-14.6%)
-- Subsequent authorization: **-$5.58/tx** on Ethereum L1 (-39.3%)
-- **Annual savings**: ~$1.5M/year on Ethereum L1 (1M transactions)
-
 **Recommendation**: Deploy on Base for low-cost transactions (100-1000x cheaper than Ethereum L1).
 
 ### Comparison with Alternatives
 
 | Protocol | Authorization | Release | Notes |
 |----------|--------------|---------|-------|
-| **x402r v2.0** | 287-404k | 552k | Optimized indexing + reentrancy protection + flexible conditions |
-| **x402r v1.0** | 473k | 552k | Previous version (array-based indexing) |
+| **x402r** | 287-404k | 552k | Optimized indexing + reentrancy protection + flexible conditions |
 | Gnosis Safe | ~300k | ~250k | Multi-sig overhead, less flexible |
 | Uniswap Permit2 | ~150k | ~100k | Signature-based, no escrow |
 | Superfluid | ~400k | Streaming | Continuous flow, different model |
@@ -320,7 +313,6 @@ Gas costs are continuously monitored in CI/CD:
 - **Baseline**: Updated on every merge to `main`
 - **Regression Detection**: PRs fail if gas increases > 5%
 - **Nightly Benchmarks**: Tracked in `.gas-snapshot`
-- **Optimization History**: See [INDEXING_ALTERNATIVES.md](INDEXING_ALTERNATIVES.md) for v2.0 improvements
 
 See [CI_CD_GUIDE.md](CI_CD_GUIDE.md) for details.
 
