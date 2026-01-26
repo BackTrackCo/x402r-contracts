@@ -7,10 +7,25 @@
 
 ⚠️ **WARNING: CONTRACTS UNAUDITED - USE AT YOUR OWN RISK**
 
-These contracts have been deployed but have **not been audited**. 
-Users should exercise extreme caution and conduct thorough due diligence before 
-interacting with these contracts. The developers assume no liability for any 
+These contracts have been deployed but have **not been audited**.
+Users should exercise extreme caution and conduct thorough due diligence before
+interacting with these contracts. The developers assume no liability for any
 losses incurred from using these contracts.
+
+## Documentation
+
+For auditors and developers:
+
+| Document | Description |
+|----------|-------------|
+| **[AUDIT.md](AUDIT.md)** | 📋 Comprehensive audit documentation (start here) |
+| [SECURITY.md](SECURITY.md) | 🔒 Security overview and threat model |
+| [OPERATOR_SECURITY.md](OPERATOR_SECURITY.md) | 🛡️ Operator-specific security considerations |
+| [TOKENS.md](TOKENS.md) | 🪙 Token compatibility and handling |
+| [FUZZING.md](FUZZING.md) | 🔬 Fuzzing methodology and invariants |
+| [DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md) | ✅ Production deployment checklist |
+| [OPTIMIZATION_SUMMARY.md](OPTIMIZATION_SUMMARY.md) | ⚡ v2.0 gas optimization details |
+| [GAS_BREAKDOWN.md](GAS_BREAKDOWN.md) | 📊 Detailed gas cost analysis |
 
 ### Base Sepolia
 
