@@ -18,14 +18,14 @@ For auditors and developers:
 
 | Document | Description |
 |----------|-------------|
-| **[AUDIT_PREP.md](AUDIT_PREP.md)** | 📦 Complete audit preparation package (beta release) |
-| **[AUDIT.md](AUDIT.md)** | 📋 Comprehensive audit documentation |
-| [SECURITY.md](SECURITY.md) | 🔒 Security overview and threat model |
-| [OPERATOR_SECURITY.md](OPERATOR_SECURITY.md) | 🛡️ Operator-specific security considerations |
-| [TOKENS.md](TOKENS.md) | 🪙 Token compatibility and handling |
-| [FUZZING.md](FUZZING.md) | 🔬 Fuzzing methodology and invariants |
-| [DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md) | ✅ Production deployment checklist |
-| [GAS_BREAKDOWN.md](GAS_BREAKDOWN.md) | 📊 Detailed gas cost analysis |
+| **[AUDIT_PREP.md](docs/AUDIT_PREP.md)** | 📦 Complete audit preparation package (beta release) |
+| **[AUDIT.md](docs/AUDIT.md)** | 📋 Comprehensive audit documentation |
+| [SECURITY.md](docs/SECURITY.md) | 🔒 Security overview and threat model |
+| [OPERATOR_SECURITY.md](docs/OPERATOR_SECURITY.md) | 🛡️ Operator-specific security considerations |
+| [TOKENS.md](docs/TOKENS.md) | 🪙 Token compatibility and handling |
+| [FUZZING.md](docs/FUZZING.md) | 🔬 Fuzzing methodology and invariants |
+| [DEPLOYMENT_CHECKLIST.md](docs/DEPLOYMENT_CHECKLIST.md) | ✅ Production deployment checklist |
+| [GAS_BREAKDOWN.md](docs/GAS_BREAKDOWN.md) | 📊 Detailed gas cost analysis |
 
 ### Base Sepolia
 
