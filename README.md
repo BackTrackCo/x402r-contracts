@@ -20,18 +20,17 @@ losses incurred from using these contracts.
 
 | Contract | Address |
 |----------|---------|
-| AuthCaptureEscrow | [`0xb33D6502EdBbC47201cd1E53C49d703EC0a660b8`](https://sepolia.basescan.org/address/0xb33D6502EdBbC47201cd1E53C49d703EC0a660b8) |
-| ERC3009PaymentCollector | [`0xed02d3E5167BCc9582D851885A89b050AB816a56`](https://sepolia.basescan.org/address/0xed02d3E5167BCc9582D851885A89b050AB816a56) |
+| **AuthCaptureEscrow** (v2.0) | [`0xb9488351E48b23D798f24e8174514F28B741Eb4f`](https://sepolia.basescan.org/address/0xb9488351E48b23D798f24e8174514F28B741Eb4f) |
+| **PaymentOperator** (v2.0 - optimized) | [`0xB47a37e754c1e159EE5ECAff6aa2D210D4C1A075`](https://sepolia.basescan.org/address/0xB47a37e754c1e159EE5ECAff6aa2D210D4C1A075) |
 | RefundRequest | [`0x26A3d27139b442Be5ECc10c8608c494627B660BF`](https://sepolia.basescan.org/address/0x26A3d27139b442Be5ECc10c8608c494627B660BF) |
 
 #### Factories
 
-| Contract | Address | Status |
-|----------|---------|--------|
-| **PaymentOperatorFactory** | TBD (deploy generic version) | ✅ **Recommended** |
-| ArbitrationOperatorFactory | [`0x46C44071BDf9753482400B76d88A5850318b776F`](https://sepolia.basescan.org/address/0x46C44071BDf9753482400B76d88A5850318b776F) | ⚠️ Deprecated |
-| EscrowPeriodConditionFactory | [`0xc9BbA6A2CF9838e7Dd8c19BC8B3BAC620B9D8178`](https://sepolia.basescan.org/address/0xc9BbA6A2CF9838e7Dd8c19BC8B3BAC620B9D8178) | ✅ Active |
-| FreezePolicyFactory | [`0x536439b00002CB3c0141391A92aFBB3e1E3f8604`](https://sepolia.basescan.org/address/0x536439b00002CB3c0141391A92aFBB3e1E3f8604) | ✅ Active |
+| Contract | Address |
+|----------|---------|
+| **PaymentOperatorFactory** (v2.0) | [`0x48ADf6E37F9b31dC2AAD0462C5862B5422C736B8`](https://sepolia.basescan.org/address/0x48ADf6E37F9b31dC2AAD0462C5862B5422C736B8) |
+| EscrowPeriodConditionFactory | [`0xc9BbA6A2CF9838e7Dd8c19BC8B3BAC620B9D8178`](https://sepolia.basescan.org/address/0xc9BbA6A2CF9838e7Dd8c19BC8B3BAC620B9D8178) |
+| FreezePolicyFactory | [`0x536439b00002CB3c0141391A92aFBB3e1E3f8604`](https://sepolia.basescan.org/address/0x536439b00002CB3c0141391A92aFBB3e1E3f8604) |
 
 #### Condition Singletons
 
@@ -45,12 +44,9 @@ losses incurred from using these contracts.
 
 For arbiter, service provider, DAO, platform, or any designated address access control:
 
-| Contract | Address | Notes |
-|----------|---------|-------|
-| **StaticAddressCondition** | Deploy per use case | Generic designated address condition |
-| ~~ArbiterCondition~~ | [`0x32471D31910a009273A812dE0894d9f0ADef4834`](https://sepolia.basescan.org/address/0x32471D31910a009273A812dE0894d9f0ADef4834) | ⚠️ Deprecated - use StaticAddressCondition instead |
-
-**Migration:** Instead of using `ArbiterCondition` singleton, deploy `StaticAddressCondition(arbiterAddress)` instances. This enables flexible designated address access for arbiter, service provider, DAO multisig, platform treasury, etc.
+| Contract | Notes |
+|----------|-------|
+| **StaticAddressCondition** | Deploy per use case - Generic designated address condition for arbiter, service provider, DAO multisig, platform treasury, etc. |
 
 **USDC (Base Sepolia):** [`0x036CbD53842c5426634e7929541eC2318f3dCF7e`](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e)
 
