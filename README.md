@@ -26,20 +26,31 @@ losses incurred from using these contracts.
 
 #### Factories
 
-| Contract | Address |
-|----------|---------|
-| ArbitrationOperatorFactory | [`0x46C44071BDf9753482400B76d88A5850318b776F`](https://sepolia.basescan.org/address/0x46C44071BDf9753482400B76d88A5850318b776F) |
-| EscrowPeriodConditionFactory | [`0xc9BbA6A2CF9838e7Dd8c19BC8B3BAC620B9D8178`](https://sepolia.basescan.org/address/0xc9BbA6A2CF9838e7Dd8c19BC8B3BAC620B9D8178) |
-| FreezePolicyFactory | [`0x536439b00002CB3c0141391A92aFBB3e1E3f8604`](https://sepolia.basescan.org/address/0x536439b00002CB3c0141391A92aFBB3e1E3f8604) |
+| Contract | Address | Status |
+|----------|---------|--------|
+| **PaymentOperatorFactory** | TBD (deploy generic version) | ✅ **Recommended** |
+| ArbitrationOperatorFactory | [`0x46C44071BDf9753482400B76d88A5850318b776F`](https://sepolia.basescan.org/address/0x46C44071BDf9753482400B76d88A5850318b776F) | ⚠️ Deprecated |
+| EscrowPeriodConditionFactory | [`0xc9BbA6A2CF9838e7Dd8c19BC8B3BAC620B9D8178`](https://sepolia.basescan.org/address/0xc9BbA6A2CF9838e7Dd8c19BC8B3BAC620B9D8178) | ✅ Active |
+| FreezePolicyFactory | [`0x536439b00002CB3c0141391A92aFBB3e1E3f8604`](https://sepolia.basescan.org/address/0x536439b00002CB3c0141391A92aFBB3e1E3f8604) | ✅ Active |
 
-#### Condition Singletons (for use with FreezePolicyFactory)
+#### Condition Singletons
 
-| Contract | Address |
-|----------|---------|
-| PayerCondition | [`0xDc0D800007ceACFf1299b926Ce22B4d4edCE6Ce7`](https://sepolia.basescan.org/address/0xDc0D800007ceACFf1299b926Ce22B4d4edCE6Ce7) |
-| ReceiverCondition | [`0x138Bf828643350AA3692aedDE8b2254eDF4D07EF`](https://sepolia.basescan.org/address/0x138Bf828643350AA3692aedDE8b2254eDF4D07EF) |
-| ArbiterCondition | [`0x32471D31910a009273A812dE0894d9f0ADef4834`](https://sepolia.basescan.org/address/0x32471D31910a009273A812dE0894d9f0ADef4834) |
-| AlwaysTrueCondition | [`0xe2659dc0d716B1226DF6a09A5f47862cd1ff6733`](https://sepolia.basescan.org/address/0xe2659dc0d716B1226DF6a09A5f47862cd1ff6733) |
+| Contract | Address | Status |
+|----------|---------|--------|
+| PayerCondition | [`0xDc0D800007ceACFf1299b926Ce22B4d4edCE6Ce7`](https://sepolia.basescan.org/address/0xDc0D800007ceACFf1299b926Ce22B4d4edCE6Ce7) | ✅ Active |
+| ReceiverCondition | [`0x138Bf828643350AA3692aedDE8b2254eDF4D07EF`](https://sepolia.basescan.org/address/0x138Bf828643350AA3692aedDE8b2254eDF4D07EF) | ✅ Active |
+| AlwaysTrueCondition | [`0xe2659dc0d716B1226DF6a09A5f47862cd1ff6733`](https://sepolia.basescan.org/address/0xe2659dc0d716B1226DF6a09A5f47862cd1ff6733) | ✅ Active |
+
+#### Designated Address Conditions
+
+For arbiter, service provider, DAO, platform, or any designated address access control:
+
+| Contract | Address | Notes |
+|----------|---------|-------|
+| **StaticAddressCondition** | Deploy per use case | Generic designated address condition |
+| ~~ArbiterCondition~~ | [`0x32471D31910a009273A812dE0894d9f0ADef4834`](https://sepolia.basescan.org/address/0x32471D31910a009273A812dE0894d9f0ADef4834) | ⚠️ Deprecated - use StaticAddressCondition instead |
+
+**Migration:** Instead of using `ArbiterCondition` singleton, deploy `StaticAddressCondition(arbiterAddress)` instances. This enables flexible designated address access for arbiter, service provider, DAO multisig, platform treasury, etc.
 
 **USDC (Base Sepolia):** [`0x036CbD53842c5426634e7929541eC2318f3dCF7e`](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e)
 
@@ -55,16 +66,16 @@ This repository contains contracts for the x402r refund extension system.
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              USER INTERACTIONS                               │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│  Payer                    Receiver                   Arbiter                │
-│    │                         │                          │                   │
-│    │  authorize()            │  release()               │  refund*()        │
-│    │  freeze()               │                          │  updateStatus()   │
-│    │  requestRefund()        │                          │                   │
-└────┼─────────────────────────┼──────────────────────────┼───────────────────┘
-     │                         │                          │
-     ▼                         ▼                          ▼
+│  Payer              Receiver              Designated Address                │
+│    │                   │                         │                           │
+│    │  authorize()      │  release()              │  refund*() (if configured)│
+│    │  freeze()         │  charge()               │  updateStatus()           │
+│    │  requestRefund()  │  requestRefund()        │  release() (if configured)│
+└────┼───────────────────┼─────────────────────────┼───────────────────────────┘
+     │                   │                         │
+     ▼                   ▼                         ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                         ARBITRATION OPERATOR                                 │
+│                          PAYMENT OPERATOR                                    │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │  Condition Slots (before action)    Recorder Slots (after action)   │   │
 │  │  ─────────────────────────────────  ─────────────────────────────   │   │
@@ -113,11 +124,11 @@ Conditions are composable plugins that control access to operator actions:
 │  OrCondition([A, B])      ──►  A || B                            │
 │  NotCondition(A)          ──►  !A                                │
 │                                                                   │
-│  Example: Release requires (Receiver OR Arbiter) AND EscrowPassed│
+│  Example: Release requires (Receiver OR DesignatedAddr) AND EscrowPassed│
 │                                                                   │
 │  OrCondition([                                                   │
 │    ReceiverCondition,                                            │
-│    ArbiterCondition                                              │
+│    StaticAddressCondition(designatedAddr)                        │
 │  ])                                                              │
 │    └──► AndCondition([                                           │
 │           <above>,                                               │
@@ -149,13 +160,13 @@ MEV Protection: Payers should freeze EARLY, not at deadline.
 
 ```
 ┌─────────────────────────┐
-│ ArbitrationOperatorFactory │◄─── Owner (Multisig in production)
+│ PaymentOperatorFactory  │◄─── Owner (Multisig in production)
 └────────────┬────────────┘
              │ deploys
              ▼
 ┌─────────────────────────┐      ┌─────────────────────────┐
-│  ArbitrationOperator    │─────►│    AuthCaptureEscrow    │
-│  (per-arbiter instance) │      │   (shared singleton)    │
+│   PaymentOperator       │─────►│    AuthCaptureEscrow    │
+│  (per-config instance)  │      │   (shared singleton)    │
 └────────────┬────────────┘      └─────────────────────────┘
              │ uses
              ▼
@@ -165,7 +176,7 @@ MEV Protection: Payers should freeze EARLY, not at deadline.
 │  Access Conditions:          │  Time Conditions:            │
 │  - PayerCondition            │  - EscrowPeriodCondition     │
 │  - ReceiverCondition         │    └─► EscrowPeriodRecorder  │
-│  - ArbiterCondition          │        └─► FreezePolicy      │
+│  - StaticAddressCondition    │        └─► FreezePolicy      │
 │  - AlwaysTrueCondition       │                              │
 ├─────────────────────────────────────────────────────────────┤
 │  Combinators:                │  Auxiliary:                  │
@@ -181,7 +192,7 @@ MEV Protection: Payers should freeze EARLY, not at deadline.
 |------|-------------|
 | **Payer** | `authorize()`, `freeze()`, `unfreeze()`, `requestRefund()`, `cancelRefundRequest()`, `void()` (after expiry) |
 | **Receiver** | `release()` (if condition allows), `charge()` |
-| **Arbiter** | `refundInEscrow()`, `refundPostEscrow()`, `updateStatus()` on refund requests |
+| **Designated Address** | Per operator configuration - can include `refundInEscrow()`, `refundPostEscrow()`, `release()`, `updateStatus()` (arbiter, service provider, DAO, etc.) |
 | **Owner** | `queueFeesEnabled()`, `executeFeesEnabled()`, `cancelFeesEnabled()`, `rescueETH()` |
 
 **Authorization Expiry:** The `PaymentInfo` struct includes an `authorizationExpiry` field from base commerce-payments. Payers can set this to limit how long receivers can charge funds. Set to `type(uint48).max` for no expiry, or specify a timestamp for time-limited authorizations (useful for subscriptions). After expiry, payers can reclaim unused funds via `void()`.
@@ -201,8 +212,8 @@ MEV Protection: Payers should freeze EARLY, not at deadline.
 
 The commerce-payments contracts provide refund functionality for Base Commerce Payments authorizations:
 
-- **ArbitrationOperator**: `src/commerce-payments/operator/ArbitrationOperator.sol`
-  - Operator contract that wraps Base Commerce Payments and enforces refund delay for uncaptured funds, arbiter refund restrictions, and fee distribution.
+- **PaymentOperator**: `src/commerce-payments/operator/arbitration/PaymentOperator.sol`
+  - Generic operator contract with pluggable conditions for flexible authorization logic. Supports marketplace, subscriptions, streaming, DAO governance, and custom payment flows.
 
 - **RefundRequest**: `src/commerce-payments/requests/refund/RefundRequest.sol`
   - Contract for managing refund requests for Base Commerce Payments authorizations. Users can create refund requests, cancel their own pending requests, and merchants or arbiters can approve or deny them based on capture status.
@@ -217,7 +228,7 @@ The `EscrowPeriodRecorder` contract supports an optional freeze policy via the `
 |-----------|-------------|
 | `PayerCondition` | Allows the payment's payer |
 | `ReceiverCondition` | Allows the payment's receiver |
-| `ArbiterCondition` | Allows the operator's arbiter |
+| `StaticAddressCondition(addr)` | Allows a designated address (arbiter, service provider, DAO, platform, etc.) |
 | `AlwaysTrueCondition` | Allows anyone |
 
 **Example:**
@@ -226,8 +237,9 @@ The `EscrowPeriodRecorder` contract supports an optional freeze policy via the `
 // Payer freeze/unfreeze, 3-day duration
 freezePolicyFactory.deploy(payerCondition, payerCondition, 3 days);
 
-// Payer freeze, Arbiter unfreeze, permanent
-freezePolicyFactory.deploy(payerCondition, arbiterCondition, 0);
+// Payer freeze, Designated Address unfreeze, permanent
+address designatedAddrCondition = address(new StaticAddressCondition(designatedAddress));
+freezePolicyFactory.deploy(payerCondition, designatedAddrCondition, 0);
 
 // Anyone freeze, Receiver unfreeze, 7 days
 freezePolicyFactory.deploy(alwaysTrueCondition, receiverCondition, 7 days);
@@ -235,36 +247,46 @@ freezePolicyFactory.deploy(alwaysTrueCondition, receiverCondition, 7 days);
 
 **Note:** If `FREEZE_POLICY` is `address(0)` when deploying EscrowPeriodRecorder, freeze/unfreeze calls will revert with `NoFreezePolicy()` error.
 
-#### ArbitrationOperatorFactory API
+#### PaymentOperatorFactory API
 
-The `ArbitrationOperatorFactory` provides a single generic `deployOperator(OperatorConfig)` method. There are no convenience methods - users must construct the full `OperatorConfig` struct:
+The `PaymentOperatorFactory` provides a single generic `deployOperator(OperatorConfig)` method. There are no convenience methods - users must construct the full `OperatorConfig` struct:
 
 ```solidity
 struct OperatorConfig {
-    address arbiter;
+    address feeRecipient;
     address authorizeCondition;
     address authorizeRecorder;
+    address chargeCondition;
+    address chargeRecorder;
     address releaseCondition;
     address releaseRecorder;
     address refundInEscrowCondition;
     address refundInEscrowRecorder;
     address refundPostEscrowCondition;
     address refundPostEscrowRecorder;
+    uint16 maxFeeBps;
+    uint8 protocolFeePct;
 }
 ```
 
-**Example: Deploy a simple operator (all conditions = address(0))**
+**Example: Deploy a marketplace operator with arbiter**
 ```solidity
-ArbitrationOperatorFactory.OperatorConfig memory config = ArbitrationOperatorFactory.OperatorConfig({
-    arbiter: arbiterAddress,
-    authorizeCondition: address(0),
-    authorizeRecorder: address(0),
-    releaseCondition: address(0),
-    releaseRecorder: address(0),
-    refundInEscrowCondition: address(0),
+address arbiterCondition = address(new StaticAddressCondition(arbiterAddress));
+
+PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
+    feeRecipient: arbiterAddress,           // Arbiter earns fees for dispute resolution
+    authorizeCondition: address(0),         // Anyone can authorize
+    authorizeRecorder: address(0),          // No recording
+    chargeCondition: RECEIVER_CONDITION,    // Only receiver can charge
+    chargeRecorder: address(0),
+    releaseCondition: address(0),           // Anyone can release after escrow
+    releaseRecorder: escrowRecorder,        // Record timestamp
+    refundInEscrowCondition: arbiterCondition,  // Only arbiter can refund
     refundInEscrowRecorder: address(0),
-    refundPostEscrowCondition: address(0),
-    refundPostEscrowRecorder: address(0)
+    refundPostEscrowCondition: arbiterCondition, // Only arbiter for post-escrow refunds
+    refundPostEscrowRecorder: address(0),
+    maxFeeBps: 5,                           // 0.05% fee
+    protocolFeePct: 25                      // 25% to protocol
 });
 address operator = factory.deployOperator(config);
 ```
