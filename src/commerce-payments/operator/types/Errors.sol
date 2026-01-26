@@ -4,7 +4,6 @@ pragma solidity ^0.8.28;
 
 // ============ Operator-Specific Errors ============
 error ZeroEscrow();
-error ZeroArbiter();
 error TotalFeeRateExceedsMax();
 error ReleaseLocked();
 
