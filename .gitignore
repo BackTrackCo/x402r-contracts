@@ -51,10 +51,18 @@ cache_hardhat/
 # Test artifacts
 test-results/
 
-# Claude Code 
+# Claude Code
 .claude/
 *.dot
+
+# Static analysis tools
 slither-output.json
 slither-results-new.json
 slither-results.json
 slither-workflow-results.json
+slither-report.json
+crytic-export/
+
+# Fuzzing
+echidna-corpus/
+.gas-snapshot
