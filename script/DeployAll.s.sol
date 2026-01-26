@@ -8,7 +8,11 @@ import {
     EscrowPeriodConditionFactory
 } from "../src/commerce-payments/conditions/escrow-period/EscrowPeriodConditionFactory.sol";
 import {ArbitrationOperatorFactory} from "../src/commerce-payments/operator/ArbitrationOperatorFactory.sol";
-import {PayerFreezePolicy} from "../src/commerce-payments/conditions/escrow-period/freeze-policy/PayerFreezePolicy.sol";
+import {FreezePolicyFactory} from "../src/commerce-payments/conditions/escrow-period/freeze-policy/FreezePolicyFactory.sol";
+import {PayerCondition} from "../src/commerce-payments/conditions/access/PayerCondition.sol";
+import {ReceiverCondition} from "../src/commerce-payments/conditions/access/ReceiverCondition.sol";
+import {ArbiterCondition} from "../src/commerce-payments/conditions/access/ArbiterCondition.sol";
+import {AlwaysTrueCondition} from "../src/commerce-payments/conditions/access/AlwaysTrueCondition.sol";
 import {RefundRequest} from "../src/commerce-payments/requests/refund/RefundRequest.sol";
 
 /**
@@ -19,8 +23,9 @@ import {RefundRequest} from "../src/commerce-payments/requests/refund/RefundRequ
  *      2. ERC3009PaymentCollector
  *      3. EscrowPeriodConditionFactory
  *      4. ArbitrationOperatorFactory
- *      5. PayerFreezePolicy (available for use when deploying condition instances)
- *      6. RefundRequest
+ *      5. Condition Singletons (PayerCondition, ReceiverCondition, ArbiterCondition, AlwaysTrueCondition)
+ *      6. FreezePolicyFactory (for creating freeze policy instances)
+ *      7. RefundRequest
  *
  *      Note: This script deploys only the factories. Factory instances (conditions and operators)
  *      should be deployed on-demand via the SDK or by calling the factory's deploy methods directly.
@@ -50,7 +55,11 @@ contract DeployAll is Script {
     address public refundRequest;
     address public operatorFactory;
     address public conditionFactory;
-    address public payerFreezePolicy;
+    address public freezePolicyFactory;
+    address public payerCondition;
+    address public receiverCondition;
+    address public arbiterCondition;
+    address public alwaysTrueCondition;
 
     function run() public {
         // Get configuration from environment variables
@@ -91,14 +100,32 @@ contract DeployAll is Script {
         operatorFactory = address(operatorFactoryContract);
         console.log("ArbitrationOperatorFactory:", operatorFactory);
 
-        // Step 5: Deploy PayerFreezePolicy
-        console.log("\n=== Step 5: Deploying PayerFreezePolicy ===");
-        PayerFreezePolicy payerFreezePolicyContract = new PayerFreezePolicy(3 days);
-        payerFreezePolicy = address(payerFreezePolicyContract);
-        console.log("PayerFreezePolicy:", payerFreezePolicy);
+        // Step 5: Deploy Condition Singletons
+        console.log("\n=== Step 5: Deploying Condition Singletons ===");
+        PayerCondition payerConditionContract = new PayerCondition();
+        payerCondition = address(payerConditionContract);
+        console.log("PayerCondition:", payerCondition);
 
-        // Step 6: Deploy RefundRequest
-        console.log("\n=== Step 6: Deploying RefundRequest ===");
+        ReceiverCondition receiverConditionContract = new ReceiverCondition();
+        receiverCondition = address(receiverConditionContract);
+        console.log("ReceiverCondition:", receiverCondition);
+
+        ArbiterCondition arbiterConditionContract = new ArbiterCondition();
+        arbiterCondition = address(arbiterConditionContract);
+        console.log("ArbiterCondition:", arbiterCondition);
+
+        AlwaysTrueCondition alwaysTrueConditionContract = new AlwaysTrueCondition();
+        alwaysTrueCondition = address(alwaysTrueConditionContract);
+        console.log("AlwaysTrueCondition:", alwaysTrueCondition);
+
+        // Step 6: Deploy FreezePolicyFactory
+        console.log("\n=== Step 6: Deploying FreezePolicyFactory ===");
+        FreezePolicyFactory freezePolicyFactoryContract = new FreezePolicyFactory();
+        freezePolicyFactory = address(freezePolicyFactoryContract);
+        console.log("FreezePolicyFactory:", freezePolicyFactory);
+
+        // Step 7: Deploy RefundRequest
+        console.log("\n=== Step 7: Deploying RefundRequest ===");
         RefundRequest refundRequestContract = new RefundRequest();
         refundRequest = address(refundRequestContract);
         console.log("RefundRequest:", refundRequest);
@@ -111,17 +138,26 @@ contract DeployAll is Script {
         console.log("ERC3009PaymentCollector:", erc3009Collector);
         console.log("EscrowPeriodConditionFactory:", conditionFactory);
         console.log("ArbitrationOperatorFactory:", operatorFactory);
-        console.log("PayerFreezePolicy:", payerFreezePolicy);
+        console.log("PayerCondition:", payerCondition);
+        console.log("ReceiverCondition:", receiverCondition);
+        console.log("ArbiterCondition:", arbiterCondition);
+        console.log("AlwaysTrueCondition:", alwaysTrueCondition);
+        console.log("FreezePolicyFactory:", freezePolicyFactory);
         console.log("RefundRequest:", refundRequest);
 
         console.log("\n=== Factory Addresses ===");
         console.log("Use these factories to deploy instances on-demand via SDK or direct calls:");
         console.log("CONDITION_FACTORY_ADDRESS=", conditionFactory);
         console.log("OPERATOR_FACTORY_ADDRESS=", operatorFactory);
+        console.log("FREEZE_POLICY_FACTORY_ADDRESS=", freezePolicyFactory);
+        console.log("\n=== Condition Singleton Addresses ===");
+        console.log("PAYER_CONDITION_ADDRESS=", payerCondition);
+        console.log("RECEIVER_CONDITION_ADDRESS=", receiverCondition);
+        console.log("ARBITER_CONDITION_ADDRESS=", arbiterCondition);
+        console.log("ALWAYS_TRUE_CONDITION_ADDRESS=", alwaysTrueCondition);
         console.log("\n=== Other Contract Addresses ===");
         console.log("ESCROW_ADDRESS=", escrow);
         console.log("ERC3009_COLLECTOR_ADDRESS=", erc3009Collector);
-        console.log("PAYER_FREEZE_POLICY_ADDRESS=", payerFreezePolicy);
         console.log("REFUND_REQUEST_ADDRESS=", refundRequest);
     }
 }

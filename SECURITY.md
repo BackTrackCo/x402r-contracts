@@ -137,7 +137,7 @@ These contracts are **immutable** - no pause function, no upgrades:
 
 - `ArbitrationOperator` - Cannot pause payments
 - `EscrowPeriodCondition` - Cannot modify escrow period
-- `PayerFreezePolicy` - Cannot change freeze rules
+- `FreezePolicy` instances - Cannot change freeze rules after deployment
 
 **Mitigation for immutable contracts:**
 1. Deploy new version with fix

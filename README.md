@@ -165,12 +165,12 @@ MEV Protection: Payers should freeze EARLY, not at deadline.
 │  Access Conditions:          │  Time Conditions:            │
 │  - PayerCondition            │  - EscrowPeriodCondition     │
 │  - ReceiverCondition         │    └─► EscrowPeriodRecorder  │
-│  - ArbiterCondition          │        └─► PayerFreezePolicy │
+│  - ArbiterCondition          │        └─► FreezePolicy      │
 │  - AlwaysTrueCondition       │                              │
 ├─────────────────────────────────────────────────────────────┤
 │  Combinators:                │  Auxiliary:                  │
 │  - AndCondition              │  - RefundRequest             │
-│  - OrCondition               │                              │
+│  - OrCondition               │  - FreezePolicyFactory       │
 │  - NotCondition              │                              │
 └─────────────────────────────────────────────────────────────┘
 ```
