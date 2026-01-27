@@ -43,7 +43,7 @@ contract EscrowPeriodCondition is ICondition {
      * @param paymentInfo PaymentInfo struct
      * @return allowed True if escrow period has passed and payment is not frozen
      */
-    function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, address)
+    function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address)
         external
         view
         override

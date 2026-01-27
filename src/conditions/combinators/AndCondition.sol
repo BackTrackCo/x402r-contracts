@@ -34,9 +34,10 @@ contract AndCondition is ICondition {
 
     /// @notice Check if ALL conditions pass
     /// @param paymentInfo The payment information
+    /// @param amount The amount involved in the action
     /// @param caller The address attempting the action
     /// @return allowed True only if all conditions return true
-    function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, address caller)
+    function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount, address caller)
         external
         view
         override
@@ -44,7 +45,7 @@ contract AndCondition is ICondition {
     {
         uint256 len = conditions.length;
         for (uint256 i = 0; i < len; i++) {
-            if (!conditions[i].check(paymentInfo, caller)) {
+            if (!conditions[i].check(paymentInfo, amount, caller)) {
                 return false;
             }
         }

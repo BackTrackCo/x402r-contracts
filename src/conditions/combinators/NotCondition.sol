@@ -24,14 +24,15 @@ contract NotCondition is ICondition {
 
     /// @notice Check the negation of the wrapped condition
     /// @param paymentInfo The payment information
+    /// @param amount The amount involved in the action
     /// @param caller The address attempting the action
     /// @return allowed True if the wrapped condition returns false
-    function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, address caller)
+    function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount, address caller)
         external
         view
         override
         returns (bool allowed)
     {
-        return !CONDITION.check(paymentInfo, caller);
+        return !CONDITION.check(paymentInfo, amount, caller);
     }
 }

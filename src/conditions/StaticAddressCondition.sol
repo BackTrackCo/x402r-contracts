@@ -32,7 +32,7 @@ contract StaticAddressCondition is ICondition {
      * @param caller Address attempting the action
      * @return True if caller is the designated address
      */
-    function check(AuthCaptureEscrow.PaymentInfo calldata payment, address caller)
+    function check(AuthCaptureEscrow.PaymentInfo calldata payment, uint256 amount, address caller)
         external
         view
         override

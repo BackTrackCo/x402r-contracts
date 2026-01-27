@@ -221,7 +221,7 @@ contract PaymentOperator is Ownable, ReentrancyGuardTransient, PaymentOperatorAc
         // ============ CHECKS ============
         // Check AUTHORIZE_CONDITION (address(0) = always allow)
         if (address(AUTHORIZE_CONDITION) != address(0)) {
-            if (!AUTHORIZE_CONDITION.check(paymentInfo, msg.sender)) {
+            if (!AUTHORIZE_CONDITION.check(paymentInfo, amount, msg.sender)) {
                 revert ConditionNotMet();
             }
         }
@@ -265,7 +265,7 @@ contract PaymentOperator is Ownable, ReentrancyGuardTransient, PaymentOperatorAc
         // ============ CHECKS ============
         // Check CHARGE_CONDITION (address(0) = always allow)
         if (address(CHARGE_CONDITION) != address(0)) {
-            if (!CHARGE_CONDITION.check(paymentInfo, msg.sender)) {
+            if (!CHARGE_CONDITION.check(paymentInfo, amount, msg.sender)) {
                 revert ConditionNotMet();
             }
         }
@@ -304,7 +304,7 @@ contract PaymentOperator is Ownable, ReentrancyGuardTransient, PaymentOperatorAc
         // ============ CHECKS ============
         // Check RELEASE_CONDITION (address(0) = always allow)
         if (address(RELEASE_CONDITION) != address(0)) {
-            if (!RELEASE_CONDITION.check(paymentInfo, msg.sender)) {
+            if (!RELEASE_CONDITION.check(paymentInfo, amount, msg.sender)) {
                 revert ConditionNotMet();
             }
         }
@@ -341,7 +341,7 @@ contract PaymentOperator is Ownable, ReentrancyGuardTransient, PaymentOperatorAc
         // ============ CHECKS ============
         // Check REFUND_IN_ESCROW_CONDITION (address(0) = always allow)
         if (address(REFUND_IN_ESCROW_CONDITION) != address(0)) {
-            if (!REFUND_IN_ESCROW_CONDITION.check(paymentInfo, msg.sender)) {
+            if (!REFUND_IN_ESCROW_CONDITION.check(paymentInfo, amount, msg.sender)) {
                 revert ConditionNotMet();
             }
         }
@@ -380,7 +380,7 @@ contract PaymentOperator is Ownable, ReentrancyGuardTransient, PaymentOperatorAc
         // ============ CHECKS ============
         // Check REFUND_POST_ESCROW_CONDITION (address(0) = always allow)
         if (address(REFUND_POST_ESCROW_CONDITION) != address(0)) {
-            if (!REFUND_POST_ESCROW_CONDITION.check(paymentInfo, msg.sender)) {
+            if (!REFUND_POST_ESCROW_CONDITION.check(paymentInfo, amount, msg.sender)) {
                 revert ConditionNotMet();
             }
         }

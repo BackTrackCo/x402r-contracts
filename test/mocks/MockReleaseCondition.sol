@@ -45,7 +45,7 @@ contract MockReleaseCondition is ICondition {
      * @param paymentInfo PaymentInfo struct
      * @return allowed True if approved
      */
-    function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, address)
+    function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address)
         external
         view
         override

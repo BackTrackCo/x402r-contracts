@@ -11,9 +11,10 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 interface ICondition {
     /// @notice Check if an action is allowed
     /// @param paymentInfo The payment information
+    /// @param amount The amount involved in the action
     /// @param caller The address attempting the action
     /// @return allowed True if the action is allowed
-    function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, address caller)
+    function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount, address caller)
         external
         view
         returns (bool allowed);

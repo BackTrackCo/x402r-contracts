@@ -40,7 +40,7 @@ contract FreezePolicy is IFreezePolicy {
         override
         returns (bool allowed, uint256 duration)
     {
-        allowed = FREEZE_CONDITION.check(paymentInfo, caller);
+        allowed = FREEZE_CONDITION.check(paymentInfo, 0, caller);
         duration = FREEZE_DURATION;
     }
 
@@ -51,6 +51,6 @@ contract FreezePolicy is IFreezePolicy {
         override
         returns (bool)
     {
-        return UNFREEZE_CONDITION.check(paymentInfo, caller);
+        return UNFREEZE_CONDITION.check(paymentInfo, 0, caller);
     }
 }

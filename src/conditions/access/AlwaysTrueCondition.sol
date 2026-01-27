@@ -11,7 +11,12 @@ import {ICondition} from "../ICondition.sol";
 contract AlwaysTrueCondition is ICondition {
     /// @notice Always returns true
     /// @return allowed Always true
-    function check(AuthCaptureEscrow.PaymentInfo calldata, address) external pure override returns (bool allowed) {
+    function check(AuthCaptureEscrow.PaymentInfo calldata, uint256, address)
+        external
+        pure
+        override
+        returns (bool allowed)
+    {
         return true;
     }
 }

@@ -13,7 +13,7 @@ contract PayerCondition is ICondition {
     /// @param paymentInfo The payment information
     /// @param caller The address attempting the action
     /// @return allowed True if caller is the payer
-    function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, address caller)
+    function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address caller)
         external
         pure
         override
