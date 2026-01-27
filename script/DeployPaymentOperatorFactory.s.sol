@@ -51,13 +51,8 @@ contract DeployPaymentOperatorFactory is Script {
         console.log("Owner:", owner);
 
         // Deploy PaymentOperatorFactory
-        PaymentOperatorFactory factory = new PaymentOperatorFactory(
-            escrow,
-            protocolFeeRecipient,
-            maxTotalFeeRate,
-            protocolFeePercentage,
-            owner
-        );
+        PaymentOperatorFactory factory =
+            new PaymentOperatorFactory(escrow, protocolFeeRecipient, maxTotalFeeRate, protocolFeePercentage, owner);
 
         console.log("\n=== Deployment Summary ===");
         console.log("PaymentOperatorFactory:", address(factory));

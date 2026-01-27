@@ -62,9 +62,8 @@ contract DeployTestnet is Script {
         console.log("\n--- Deploying PaymentOperatorFactory ---");
         vm.startBroadcast();
 
-        PaymentOperatorFactory factory = new PaymentOperatorFactory(
-            escrow, protocolFeeRecipient, maxTotalFeeRate, protocolFeePercentage, owner
-        );
+        PaymentOperatorFactory factory =
+            new PaymentOperatorFactory(escrow, protocolFeeRecipient, maxTotalFeeRate, protocolFeePercentage, owner);
 
         console.log("Factory deployed:", address(factory));
 

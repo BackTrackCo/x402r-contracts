@@ -383,9 +383,9 @@ contract ArithmeticEdgeCasesTest is Test {
      */
     function test_FeeCalculation_ConsistentRounding() public {
         uint120[5] memory testAmounts = [
-            uint120(1000),    // 0.5 wei fee -> 0
-            uint120(10000),   // 5 wei fee
-            uint120(100000),  // 50 wei fee
+            uint120(1000), // 0.5 wei fee -> 0
+            uint120(10000), // 5 wei fee
+            uint120(100000), // 50 wei fee
             uint120(1000000), // 500 wei fee
             uint120(10000000) // 5000 wei fee
         ];

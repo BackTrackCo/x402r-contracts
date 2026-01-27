@@ -59,23 +59,26 @@ contract MaliciousRecorder is IRecorder {
             // Try to reenter the same function with same payment
             // This should fail because escrow rejects duplicate operations
             try targetOperator.release(paymentInfo, amount) {
-                // If this succeeds, it's a vulnerability!
-            } catch {
+            // If this succeeds, it's a vulnerability!
+            }
+                catch {
                 // Expected - reentrancy should be blocked
             }
         } else if (attackType == AttackType.REENTER_DIFFERENT_FUNCTION && reentrancyCount <= maxReentrancy) {
             // Try to call a different function during callback
             // Create a new payment for refund attempt
             try targetOperator.refundPostEscrow(paymentInfo, uint120(amount), address(0), "") {
-                // If this succeeds when it shouldn't, it's a vulnerability
-            } catch {
+            // If this succeeds when it shouldn't, it's a vulnerability
+            }
+                catch {
                 // Expected in most cases
             }
         } else if (attackType == AttackType.REENTER_WITHDRAW_FEES && reentrancyCount <= maxReentrancy) {
             // Try to distribute fees during callback (note: distributeFees is not access-controlled)
             try PaymentOperator(payable(msg.sender)).distributeFees(paymentInfo.token) {
-                // If this succeeds and causes accounting issues, it's a vulnerability
-            } catch {
+            // If this succeeds and causes accounting issues, it's a vulnerability
+            }
+                catch {
                 // May succeed or fail depending on state
             }
         } else if (attackType == AttackType.INFINITE_LOOP) {

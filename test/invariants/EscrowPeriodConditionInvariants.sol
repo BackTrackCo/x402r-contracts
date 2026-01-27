@@ -32,9 +32,8 @@ contract EscrowPeriodConditionInvariants is Test {
         (address recorderAddr, address conditionAddr) = conditionFactory.deploy(ESCROW_PERIOD, address(freezePolicy));
         recorder = EscrowPeriodRecorder(recorderAddr);
 
-        PaymentOperatorFactory operatorFactory = new PaymentOperatorFactory(
-            address(escrow), address(this), 50, 25, address(this)
-        );
+        PaymentOperatorFactory operatorFactory =
+            new PaymentOperatorFactory(address(escrow), address(this), 50, 25, address(this));
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeRecipient: address(this),
