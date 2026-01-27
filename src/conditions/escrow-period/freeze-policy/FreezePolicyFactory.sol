@@ -43,14 +43,25 @@ contract FreezePolicyFactory {
             return policies[key];
         }
 
-        // Deploy policy
+        // ============ EFFECTS ============
+        // Pre-compute deterministic CREATE2 address (CEI pattern)
         bytes32 salt = keccak256(abi.encodePacked("freezePolicy", key));
-        policy = address(new FreezePolicy{salt: salt}(freezeCondition, unfreezeCondition, freezeDuration));
+        bytes memory bytecode = abi.encodePacked(
+            type(FreezePolicy).creationCode, abi.encode(freezeCondition, unfreezeCondition, freezeDuration)
+        );
+        policy = address(
+            uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)))))
+        );
 
-        // Store address
+        // Store address before deployment
         policies[key] = policy;
 
         emit FreezePolicyDeployed(policy, freezeCondition, unfreezeCondition, freezeDuration);
+
+        // ============ INTERACTIONS ============
+        address deployed = address(new FreezePolicy{salt: salt}(freezeCondition, unfreezeCondition, freezeDuration));
+
+        assert(deployed == policy);
     }
 
     /**

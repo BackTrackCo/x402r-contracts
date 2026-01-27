@@ -42,19 +42,44 @@ contract EscrowPeriodConditionFactory {
             return (recorders[key], conditions[key]);
         }
 
-        // Deploy recorder first (holds state)
+        // ============ EFFECTS ============
+        // Pre-compute deterministic CREATE2 addresses (CEI pattern)
         bytes32 recorderSalt = keccak256(abi.encodePacked("recorder", key));
-        recorder = address(new EscrowPeriodRecorder{salt: recorderSalt}(escrowPeriod, freezePolicy));
+        bytes memory recorderBytecode =
+            abi.encodePacked(type(EscrowPeriodRecorder).creationCode, abi.encode(escrowPeriod, freezePolicy));
+        recorder = address(
+            uint160(
+                uint256(
+                    keccak256(abi.encodePacked(bytes1(0xff), address(this), recorderSalt, keccak256(recorderBytecode)))
+                )
+            )
+        );
 
-        // Deploy condition pointing to recorder
         bytes32 conditionSalt = keccak256(abi.encodePacked("condition", key));
-        condition = address(new EscrowPeriodCondition{salt: conditionSalt}(recorder));
+        bytes memory conditionBytecode =
+            abi.encodePacked(type(EscrowPeriodCondition).creationCode, abi.encode(recorder));
+        condition = address(
+            uint160(
+                uint256(
+                    keccak256(
+                        abi.encodePacked(bytes1(0xff), address(this), conditionSalt, keccak256(conditionBytecode))
+                    )
+                )
+            )
+        );
 
-        // Store addresses
+        // Store addresses before deployment
         recorders[key] = recorder;
         conditions[key] = condition;
 
         emit EscrowPeriodConditionDeployed(condition, recorder, escrowPeriod);
+
+        // ============ INTERACTIONS ============
+        address deployedRecorder = address(new EscrowPeriodRecorder{salt: recorderSalt}(escrowPeriod, freezePolicy));
+        address deployedCondition = address(new EscrowPeriodCondition{salt: conditionSalt}(recorder));
+
+        assert(deployedRecorder == recorder);
+        assert(deployedCondition == condition);
     }
 
     /**
