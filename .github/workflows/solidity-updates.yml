@@ -251,7 +251,7 @@ ${updateType === 'major' ? '🚨 Major version! Review breaking changes carefull
 
       - name: Upload comparison results
         if: steps.test.outcome == 'success'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: solidity-update-benchmark
           path: |

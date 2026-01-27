@@ -95,7 +95,7 @@ jobs:
 
       - name: Upload Slither reports
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: slither-reports-${{ github.sha }}
           path: |
@@ -188,7 +188,7 @@ View the detailed report in [GitHub Security](${context.serverUrl}/${context.rep
           cat coverage-summary.txt
 
       - name: Upload coverage
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: coverage-${{ github.sha }}
           path: |
@@ -295,7 +295,7 @@ View the detailed report in [GitHub Security](${context.serverUrl}/${context.rep
           cat comprehensive-report.txt
 
       - name: Upload comprehensive report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: comprehensive-security-${{ github.run_number }}
           path: comprehensive-report.txt

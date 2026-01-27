@@ -217,7 +217,7 @@ ${diff}
           fi
 
       - name: Upload gas snapshots
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: gas-snapshots-${{ github.sha }}
           path: |
@@ -298,7 +298,7 @@ ${diff}
           fi
 
       - name: Upload benchmark
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: gas-benchmark-${{ github.run_number }}
           path: |
