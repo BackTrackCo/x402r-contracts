@@ -2,8 +2,9 @@
 // CONTRACTS UNAUDITED: USE AT YOUR OWN RISK
 pragma solidity ^0.8.28;
 
-import {IRecorder} from "./IRecorder.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
+import {BaseRecorder} from "./BaseRecorder.sol";
+import {ZeroAmount} from "../types/Errors.sol";
 
 /**
  * @title PaymentIndexRecorder
@@ -22,21 +23,23 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
  *
  * USAGE:
  *   // Deploy once, share across operators
- *   PaymentIndexRecorder indexRecorder = new PaymentIndexRecorder(escrow);
+ *   PaymentIndexRecorder indexRecorder = new PaymentIndexRecorder(address(escrow));
  *
  *   // Query payments with amount context
  *   (PaymentRecord[] memory records, uint256 total) = indexRecorder.getPayerPayments(alice, 0, 10);
  *   // records[0].paymentHash, records[0].amount
  */
-contract PaymentIndexRecorder is IRecorder {
-    /// @notice Payment record with hash and amount
+contract PaymentIndexRecorder is BaseRecorder {
+    // ============ Errors ============
+    error AmountExceedsMax();
+    error IndexOutOfBounds();
+
+    /// @notice Payment record with hash, amount, and record index
     struct PaymentRecord {
         bytes32 paymentHash; // 32 bytes (slot 1)
         uint120 amount; // 15 bytes (slot 2)
+        uint128 recordIndex; // 16 bytes (slot 2) — total 31 bytes, fits in one slot
     }
-
-    /// @notice Escrow contract for payment hash calculation
-    AuthCaptureEscrow public immutable ESCROW;
 
     /// @notice Payer address => index => payment record
     mapping(address => mapping(uint256 => PaymentRecord)) private payerPayments;
@@ -50,6 +53,9 @@ contract PaymentIndexRecorder is IRecorder {
     /// @notice Receiver address => total payment count
     mapping(address => uint256) public receiverPaymentCount;
 
+    /// @notice Per-payment record count (how many times record() was called for a paymentInfoHash)
+    mapping(bytes32 => uint256) public recordCount;
+
     /// @notice Emitted when a payment is indexed
     event PaymentIndexed(
         bytes32 indexed paymentHash,
@@ -57,13 +63,11 @@ contract PaymentIndexRecorder is IRecorder {
         address indexed receiver,
         uint120 amount,
         uint256 payerIndex,
-        uint256 receiverIndex
+        uint256 receiverIndex,
+        uint256 recordIndex
     );
 
-    constructor(address escrow) {
-        require(escrow != address(0), "Zero escrow");
-        ESCROW = AuthCaptureEscrow(escrow);
-    }
+    constructor(address escrow) BaseRecorder(escrow) {}
 
     /**
      * @notice Records payment by indexing it for both payer and receiver
@@ -75,14 +79,19 @@ contract PaymentIndexRecorder is IRecorder {
         external
         override
     {
-        // Validate amount
-        require(amount > 0, "Zero amount");
-        require(amount <= paymentInfo.maxAmount, "Amount exceeds max");
+        bytes32 hash = _verifyAndHash(paymentInfo);
 
-        bytes32 hash = ESCROW.getHash(paymentInfo);
+        // Validate amount
+        if (amount == 0) revert ZeroAmount();
+        if (amount > paymentInfo.maxAmount) revert AmountExceedsMax();
+
+        // Track per-payment record index
+        uint256 currentRecordIndex = recordCount[hash];
+        recordCount[hash]++;
 
         // Create payment record
-        PaymentRecord memory paymentRecord = PaymentRecord({paymentHash: hash, amount: uint120(amount)});
+        PaymentRecord memory paymentRecord =
+            PaymentRecord({paymentHash: hash, amount: uint120(amount), recordIndex: uint128(currentRecordIndex)});
 
         // Index for payer
         uint256 payerIndex = payerPaymentCount[paymentInfo.payer];
@@ -94,7 +103,15 @@ contract PaymentIndexRecorder is IRecorder {
         receiverPayments[paymentInfo.receiver][receiverIndex] = paymentRecord;
         receiverPaymentCount[paymentInfo.receiver]++;
 
-        emit PaymentIndexed(hash, paymentInfo.payer, paymentInfo.receiver, uint120(amount), payerIndex, receiverIndex);
+        emit PaymentIndexed(
+            hash,
+            paymentInfo.payer,
+            paymentInfo.receiver,
+            uint120(amount),
+            payerIndex,
+            receiverIndex,
+            currentRecordIndex
+        );
     }
 
     /**
@@ -137,7 +154,7 @@ contract PaymentIndexRecorder is IRecorder {
      * @return Payment record at the specified index
      */
     function getPayerPayment(address payer, uint256 index) external view returns (PaymentRecord memory) {
-        require(index < payerPaymentCount[payer], "Index out of bounds");
+        if (index >= payerPaymentCount[payer]) revert IndexOutOfBounds();
         return payerPayments[payer][index];
     }
 
@@ -181,7 +198,7 @@ contract PaymentIndexRecorder is IRecorder {
      * @return Payment record at the specified index
      */
     function getReceiverPayment(address receiver, uint256 index) external view returns (PaymentRecord memory) {
-        require(index < receiverPaymentCount[receiver], "Index out of bounds");
+        if (index >= receiverPaymentCount[receiver]) revert IndexOutOfBounds();
         return receiverPayments[receiver][index];
     }
 }

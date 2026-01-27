@@ -9,18 +9,22 @@ import {EscrowPeriodConditionFactory} from "../src/conditions/escrow-period/Escr
  * @notice Deploys the EscrowPeriodConditionFactory
  * @dev This script deploys only the EscrowPeriodConditionFactory.
  *      Factory instances should be deployed on-demand via the SDK or by calling
- *      the factory's deployCondition() method directly.
+ *      the factory's deploy() method directly.
  *
- *      No environment variables required - factory deployment only.
+ *      Required environment variables:
+ *        ESCROW_ADDRESS - Address of the AuthCaptureEscrow contract
  */
 contract DeployEscrowPeriodCondition is Script {
     function run() public {
+        address escrowAddress = vm.envAddress("ESCROW_ADDRESS");
+
         vm.startBroadcast();
 
         console.log("=== Deploying EscrowPeriodConditionFactory ===");
+        console.log("Escrow address:", escrowAddress);
 
-        // Deploy factory only
-        EscrowPeriodConditionFactory factory = new EscrowPeriodConditionFactory();
+        // Deploy factory with escrow reference
+        EscrowPeriodConditionFactory factory = new EscrowPeriodConditionFactory(escrowAddress);
         console.log("Factory deployed at:", address(factory));
 
         console.log("\n=== Deployment Summary ===");

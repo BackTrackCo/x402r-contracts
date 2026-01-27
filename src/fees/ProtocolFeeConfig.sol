@@ -22,12 +22,16 @@ contract ProtocolFeeConfig is Ownable {
     // ============ Errors ============
     error NoPendingCalculatorChange();
     error CalculatorTimelockNotElapsed();
+    error NoPendingRecipientChange();
+    error RecipientTimelockNotElapsed();
 
     // ============ Events ============
     event CalculatorChangeQueued(address indexed newCalculator, uint256 executeAfter);
     event CalculatorChangeExecuted(address indexed newCalculator);
     event CalculatorChangeCancelled();
-    event ProtocolFeeRecipientUpdated(address indexed newRecipient);
+    event RecipientChangeQueued(address indexed newRecipient, uint256 executeAfter);
+    event RecipientChangeExecuted(address indexed newRecipient);
+    event RecipientChangeCancelled();
 
     // ============ Constants ============
     uint256 public constant TIMELOCK_DELAY = 7 days;
@@ -39,6 +43,8 @@ contract ProtocolFeeConfig is Ownable {
     // ============ Timelock State ============
     address public pendingCalculator;
     uint256 public pendingCalculatorTimestamp;
+    address public pendingRecipient;
+    uint256 public pendingRecipientTimestamp;
 
     constructor(address _calculator, address _protocolFeeRecipient, address _owner) {
         if (_owner == address(0)) revert();
@@ -66,15 +72,38 @@ contract ProtocolFeeConfig is Ownable {
         return protocolFeeRecipient;
     }
 
-    // ============ Owner Functions ============
+    // ============ Owner Functions: Recipient Timelock ============
 
-    /// @notice Set the protocol fee recipient address
-    /// @param _protocolFeeRecipient New fee recipient
-    function setProtocolFeeRecipient(address _protocolFeeRecipient) external onlyOwner {
+    /// @notice Queue a recipient change (7-day timelock)
+    /// @param _protocolFeeRecipient New fee recipient (must not be address(0))
+    function queueRecipient(address _protocolFeeRecipient) external onlyOwner {
         if (_protocolFeeRecipient == address(0)) revert();
-        protocolFeeRecipient = _protocolFeeRecipient;
-        emit ProtocolFeeRecipientUpdated(_protocolFeeRecipient);
+        pendingRecipient = _protocolFeeRecipient;
+        pendingRecipientTimestamp = block.timestamp + TIMELOCK_DELAY;
+        emit RecipientChangeQueued(_protocolFeeRecipient, pendingRecipientTimestamp);
     }
+
+    /// @notice Execute a queued recipient change after timelock
+    function executeRecipient() external onlyOwner {
+        if (pendingRecipientTimestamp == 0) revert NoPendingRecipientChange();
+        if (block.timestamp < pendingRecipientTimestamp) revert RecipientTimelockNotElapsed();
+
+        protocolFeeRecipient = pendingRecipient;
+        emit RecipientChangeExecuted(pendingRecipient);
+
+        pendingRecipient = address(0);
+        pendingRecipientTimestamp = 0;
+    }
+
+    /// @notice Cancel a pending recipient change
+    function cancelRecipient() external onlyOwner {
+        if (pendingRecipientTimestamp == 0) revert NoPendingRecipientChange();
+        pendingRecipient = address(0);
+        pendingRecipientTimestamp = 0;
+        emit RecipientChangeCancelled();
+    }
+
+    // ============ Owner Functions: Calculator Timelock ============
 
     /// @notice Queue a calculator change (7-day timelock)
     /// @param _calculator New calculator address (address(0) = disable protocol fees)

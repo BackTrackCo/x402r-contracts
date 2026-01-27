@@ -3,7 +3,7 @@
 pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {AuthorizationTimeRecorder, IArbitrationOperator} from "../AuthorizationTimeRecorder.sol";
+import {AuthorizationTimeRecorder} from "../AuthorizationTimeRecorder.sol";
 import {IFreezePolicy} from "./freeze-policy/IFreezePolicy.sol";
 import {
     InvalidEscrowPeriod,
@@ -65,7 +65,7 @@ contract EscrowPeriodRecorder is AuthorizationTimeRecorder {
     /// @dev Key: paymentInfoHash, Value: timestamp when freeze expires
     mapping(bytes32 => uint256) public frozenUntil;
 
-    constructor(uint256 _escrowPeriod, address _freezePolicy) {
+    constructor(uint256 _escrowPeriod, address _freezePolicy, address _escrow) AuthorizationTimeRecorder(_escrow) {
         if (_escrowPeriod == 0) revert InvalidEscrowPeriod();
         ESCROW_PERIOD = _escrowPeriod;
         FREEZE_POLICY = IFreezePolicy(_freezePolicy);
@@ -163,5 +163,29 @@ contract EscrowPeriodRecorder is AuthorizationTimeRecorder {
             return (false, 0);
         }
         passed = block.timestamp >= authTime + ESCROW_PERIOD;
+    }
+
+    /**
+     * @notice Check if a payment can be released (escrow period passed and not frozen)
+     * @dev Used by EscrowPeriodCondition. Combines all three release checks in one call.
+     * @param paymentInfo PaymentInfo struct
+     * @return True if escrow period has passed and payment is not frozen
+     */
+    function canRelease(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external view returns (bool) {
+        bytes32 paymentInfoHash = _getPaymentHash(paymentInfo);
+
+        // Check if frozen (and freeze hasn't expired)
+        if (frozenUntil[paymentInfoHash] > block.timestamp) {
+            return false;
+        }
+
+        // Check if payment was authorized (record() was called)
+        uint256 authTime = authorizationTimes[paymentInfoHash];
+        if (authTime == 0) {
+            return false;
+        }
+
+        // Check if escrow period has passed
+        return block.timestamp >= authTime + ESCROW_PERIOD;
     }
 }

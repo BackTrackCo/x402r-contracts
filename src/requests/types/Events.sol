@@ -6,16 +6,23 @@ import {RequestStatus} from "./Types.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
 // ============ Refund Request Events ============
-event RefundRequested(AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed payer, address indexed receiver);
+event RefundRequested(
+    AuthCaptureEscrow.PaymentInfo paymentInfo,
+    address indexed payer,
+    address indexed receiver,
+    uint120 amount,
+    uint256 nonce
+);
 
 event RefundRequestStatusUpdated(
     AuthCaptureEscrow.PaymentInfo paymentInfo,
     RequestStatus oldStatus,
     RequestStatus newStatus,
-    address indexed updatedBy
+    address indexed updatedBy,
+    uint256 nonce
 );
 
-event RefundRequestCancelled(AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed payer);
+event RefundRequestCancelled(AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed payer, uint256 nonce);
 
 // ============ Factory Events ============
-event RefundRequestDeployed(address indexed refundRequest, address indexed operator);
+event RefundRequestDeployed(address indexed refundRequest);

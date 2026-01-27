@@ -2,9 +2,11 @@
 // CONTRACTS UNAUDITED: USE AT YOUR OWN RISK
 pragma solidity ^0.8.28;
 
+import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {EscrowPeriodRecorder} from "./EscrowPeriodRecorder.sol";
 import {EscrowPeriodCondition} from "./EscrowPeriodCondition.sol";
 import {EscrowPeriodConditionDeployed} from "./types/Events.sol";
+import {ZeroAddress} from "../../types/Errors.sol";
 
 /**
  * @title EscrowPeriodConditionFactory
@@ -12,13 +14,22 @@ import {EscrowPeriodConditionDeployed} from "./types/Events.sol";
  *         Uses CREATE2 for deterministic addresses.
  *
  * @dev Deployment flow:
- *      1. Deploy recorder with (escrowPeriod, freezePolicy)
+ *      1. Deploy recorder with (escrowPeriod, freezePolicy, escrow)
  *      2. Deploy condition pointing to the recorder
  *      3. Return both addresses
  *
  *      The key for looking up deployed pairs is keccak256(escrowPeriod, freezePolicy).
+ *      ESCROW is factory-level (immutable), not per-config.
  */
 contract EscrowPeriodConditionFactory {
+    /// @notice Escrow contract shared by all deployments
+    AuthCaptureEscrow public immutable ESCROW;
+
+    constructor(address escrow) {
+        if (escrow == address(0)) revert ZeroAddress();
+        ESCROW = AuthCaptureEscrow(escrow);
+    }
+
     /// @notice Deployed recorder addresses
     /// @dev Key: keccak256(abi.encodePacked(escrowPeriod, freezePolicy))
     mapping(bytes32 => address) public recorders;
@@ -45,8 +56,9 @@ contract EscrowPeriodConditionFactory {
         // ============ EFFECTS ============
         // Pre-compute deterministic CREATE2 addresses (CEI pattern)
         bytes32 recorderSalt = keccak256(abi.encodePacked("recorder", key));
-        bytes memory recorderBytecode =
-            abi.encodePacked(type(EscrowPeriodRecorder).creationCode, abi.encode(escrowPeriod, freezePolicy));
+        bytes memory recorderBytecode = abi.encodePacked(
+            type(EscrowPeriodRecorder).creationCode, abi.encode(escrowPeriod, freezePolicy, address(ESCROW))
+        );
         recorder = address(
             uint160(
                 uint256(
@@ -75,7 +87,8 @@ contract EscrowPeriodConditionFactory {
         emit EscrowPeriodConditionDeployed(condition, recorder, escrowPeriod);
 
         // ============ INTERACTIONS ============
-        address deployedRecorder = address(new EscrowPeriodRecorder{salt: recorderSalt}(escrowPeriod, freezePolicy));
+        address deployedRecorder =
+            address(new EscrowPeriodRecorder{salt: recorderSalt}(escrowPeriod, freezePolicy, address(ESCROW)));
         address deployedCondition = address(new EscrowPeriodCondition{salt: conditionSalt}(recorder));
 
         assert(deployedRecorder == recorder);
@@ -114,8 +127,9 @@ contract EscrowPeriodConditionFactory {
 
         // Compute recorder address
         bytes32 recorderSalt = keccak256(abi.encodePacked("recorder", key));
-        bytes memory recorderBytecode =
-            abi.encodePacked(type(EscrowPeriodRecorder).creationCode, abi.encode(escrowPeriod, freezePolicy));
+        bytes memory recorderBytecode = abi.encodePacked(
+            type(EscrowPeriodRecorder).creationCode, abi.encode(escrowPeriod, freezePolicy, address(ESCROW))
+        );
         bytes32 recorderHash =
             keccak256(abi.encodePacked(bytes1(0xff), address(this), recorderSalt, keccak256(recorderBytecode)));
         recorder = address(uint160(uint256(recorderHash)));

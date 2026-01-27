@@ -68,28 +68,111 @@ contract ProtocolFeeConfigTest is Test {
         assertEq(config.getProtocolFeeRecipient(), protocolFeeRecipient);
     }
 
-    // ============ setProtocolFeeRecipient Tests ============
+    // ============ Timelock: queueRecipient Tests ============
 
-    function test_SetProtocolFeeRecipient() public {
-        config.setProtocolFeeRecipient(newRecipient);
-        assertEq(config.getProtocolFeeRecipient(), newRecipient);
+    function test_QueueRecipient() public {
+        config.queueRecipient(newRecipient);
+
+        assertEq(config.pendingRecipient(), newRecipient);
+        assertEq(config.pendingRecipientTimestamp(), block.timestamp + 7 days);
     }
 
-    function test_SetProtocolFeeRecipient_EmitsEvent() public {
-        vm.expectEmit(true, false, false, false);
-        emit ProtocolFeeConfig.ProtocolFeeRecipientUpdated(newRecipient);
-        config.setProtocolFeeRecipient(newRecipient);
+    function test_QueueRecipient_EmitsEvent() public {
+        vm.expectEmit(true, false, false, true);
+        emit ProtocolFeeConfig.RecipientChangeQueued(newRecipient, block.timestamp + 7 days);
+        config.queueRecipient(newRecipient);
     }
 
-    function test_SetProtocolFeeRecipient_RevertsIfNotOwner() public {
+    function test_QueueRecipient_RevertsOnZeroAddress() public {
+        vm.expectRevert();
+        config.queueRecipient(address(0));
+    }
+
+    function test_QueueRecipient_RevertsIfNotOwner() public {
         vm.prank(makeAddr("nonOwner"));
         vm.expectRevert();
-        config.setProtocolFeeRecipient(newRecipient);
+        config.queueRecipient(newRecipient);
     }
 
-    function test_SetProtocolFeeRecipient_RevertsOnZeroAddress() public {
+    // ============ Timelock: executeRecipient Tests ============
+
+    function test_ExecuteRecipient_AfterTimelock() public {
+        config.queueRecipient(newRecipient);
+
+        vm.warp(block.timestamp + 7 days);
+        config.executeRecipient();
+
+        assertEq(config.getProtocolFeeRecipient(), newRecipient);
+        assertEq(config.pendingRecipientTimestamp(), 0);
+        assertEq(config.pendingRecipient(), address(0));
+    }
+
+    function test_ExecuteRecipient_EmitsEvent() public {
+        config.queueRecipient(newRecipient);
+
+        vm.warp(block.timestamp + 7 days);
+
+        vm.expectEmit(true, false, false, false);
+        emit ProtocolFeeConfig.RecipientChangeExecuted(newRecipient);
+        config.executeRecipient();
+    }
+
+    function test_ExecuteRecipient_RevertsBeforeTimelock() public {
+        config.queueRecipient(newRecipient);
+
+        vm.warp(block.timestamp + 7 days - 1);
+
+        vm.expectRevert(ProtocolFeeConfig.RecipientTimelockNotElapsed.selector);
+        config.executeRecipient();
+    }
+
+    function test_ExecuteRecipient_RevertsIfNoPending() public {
+        vm.expectRevert(ProtocolFeeConfig.NoPendingRecipientChange.selector);
+        config.executeRecipient();
+    }
+
+    function test_ExecuteRecipient_RevertsIfNotOwner() public {
+        config.queueRecipient(newRecipient);
+
+        vm.warp(block.timestamp + 7 days);
+
+        vm.prank(makeAddr("nonOwner"));
         vm.expectRevert();
-        config.setProtocolFeeRecipient(address(0));
+        config.executeRecipient();
+    }
+
+    // ============ Timelock: cancelRecipient Tests ============
+
+    function test_CancelRecipient() public {
+        config.queueRecipient(newRecipient);
+
+        config.cancelRecipient();
+
+        assertEq(config.pendingRecipient(), address(0));
+        assertEq(config.pendingRecipientTimestamp(), 0);
+        // Original recipient unchanged
+        assertEq(config.getProtocolFeeRecipient(), protocolFeeRecipient);
+    }
+
+    function test_CancelRecipient_EmitsEvent() public {
+        config.queueRecipient(newRecipient);
+
+        vm.expectEmit(false, false, false, false);
+        emit ProtocolFeeConfig.RecipientChangeCancelled();
+        config.cancelRecipient();
+    }
+
+    function test_CancelRecipient_RevertsIfNoPending() public {
+        vm.expectRevert(ProtocolFeeConfig.NoPendingRecipientChange.selector);
+        config.cancelRecipient();
+    }
+
+    function test_CancelRecipient_RevertsIfNotOwner() public {
+        config.queueRecipient(newRecipient);
+
+        vm.prank(makeAddr("nonOwner"));
+        vm.expectRevert();
+        config.cancelRecipient();
     }
 
     // ============ Timelock: queueCalculator Tests ============

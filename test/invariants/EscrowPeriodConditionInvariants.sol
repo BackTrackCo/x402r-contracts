@@ -29,7 +29,7 @@ contract EscrowPeriodConditionInvariants is Test {
         escrow = new AuthCaptureEscrow();
         token = new MockERC20("Test Token", "TEST");
 
-        EscrowPeriodConditionFactory conditionFactory = new EscrowPeriodConditionFactory();
+        EscrowPeriodConditionFactory conditionFactory = new EscrowPeriodConditionFactory(address(escrow));
         PayerCondition payerCondition = new PayerCondition();
         FreezePolicy freezePolicy = new FreezePolicy(address(payerCondition), address(payerCondition), 3 days);
         (address recorderAddr, address conditionAddr) = conditionFactory.deploy(ESCROW_PERIOD, address(freezePolicy));

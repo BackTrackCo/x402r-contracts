@@ -3,13 +3,8 @@
 pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {IRecorder} from "./IRecorder.sol";
+import {BaseRecorder} from "./BaseRecorder.sol";
 import {AuthorizationTimeRecorded} from "./escrow-period/types/Events.sol";
-
-/// @notice Forward declaration for reading escrow from operator
-interface IArbitrationOperator {
-    function ESCROW() external view returns (AuthCaptureEscrow);
-}
 
 /**
  * @title AuthorizationTimeRecorder
@@ -24,7 +19,7 @@ interface IArbitrationOperator {
  *
  * USAGE:
  *   // Standalone: just timestamp tracking
- *   AuthorizationTimeRecorder timeRecorder = new AuthorizationTimeRecorder();
+ *   AuthorizationTimeRecorder timeRecorder = new AuthorizationTimeRecorder(address(escrow));
  *   operator = factory.deployOperator({
  *       authorizeRecorder: address(timeRecorder),
  *       ...
@@ -36,24 +31,24 @@ interface IArbitrationOperator {
  *       address(timeRecorder)            // timestamps
  *   ]);
  */
-contract AuthorizationTimeRecorder is IRecorder {
+contract AuthorizationTimeRecorder is BaseRecorder {
     /// @notice Stores the authorization time for each payment
     /// @dev Key: paymentInfoHash, Value: block.timestamp when authorized
     mapping(bytes32 => uint256) public authorizationTimes;
+
+    constructor(address escrow) BaseRecorder(escrow) {}
 
     // ============ IRecorder Implementation ============
 
     /**
      * @notice Record authorization time for a payment
-     * @dev Called by the operator after a payment is authorized
+     * @dev Called by the operator after a payment is authorized.
+     *      Verifies operator identity and payment existence via BaseRecorder._verifyAndHash().
      * @param paymentInfo PaymentInfo struct
      */
     function record(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address) external virtual override {
-        // Verify caller is the operator
-        require(msg.sender == paymentInfo.operator, "Unauthorized");
+        bytes32 paymentInfoHash = _verifyAndHash(paymentInfo);
 
-        AuthCaptureEscrow escrow = IArbitrationOperator(paymentInfo.operator).ESCROW();
-        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
         authorizationTimes[paymentInfoHash] = block.timestamp;
 
         emit AuthorizationTimeRecorded(paymentInfo, block.timestamp);
@@ -67,18 +62,6 @@ contract AuthorizationTimeRecorder is IRecorder {
      * @return The timestamp when the payment was authorized (0 if not authorized through this recorder)
      */
     function getAuthorizationTime(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external view returns (uint256) {
-        AuthCaptureEscrow escrow = IArbitrationOperator(paymentInfo.operator).ESCROW();
-        return authorizationTimes[escrow.getHash(paymentInfo)];
-    }
-
-    /**
-     * @notice Internal helper to get payment hash
-     * @dev Used by child contracts to avoid duplicating escrow lookup
-     * @param paymentInfo PaymentInfo struct
-     * @return Payment hash
-     */
-    function _getPaymentHash(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) internal view returns (bytes32) {
-        AuthCaptureEscrow escrow = IArbitrationOperator(paymentInfo.operator).ESCROW();
-        return escrow.getHash(paymentInfo);
+        return authorizationTimes[_getPaymentHash(paymentInfo)];
     }
 }

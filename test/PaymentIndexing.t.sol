@@ -216,7 +216,7 @@ contract PaymentIndexingTest is Test {
         _authorizePayment(payer, receiver, PAYMENT_AMOUNT, 1);
 
         // Should revert when accessing index 1 (only index 0 exists)
-        vm.expectRevert("Index out of bounds");
+        vm.expectRevert(PaymentIndexRecorder.IndexOutOfBounds.selector);
         indexRecorder.getPayerPayment(payer, 1);
     }
 
@@ -227,7 +227,7 @@ contract PaymentIndexingTest is Test {
         _authorizePayment(payer, receiver, PAYMENT_AMOUNT, 1);
 
         // Should revert when accessing index 1 (only index 0 exists)
-        vm.expectRevert("Index out of bounds");
+        vm.expectRevert(PaymentIndexRecorder.IndexOutOfBounds.selector);
         indexRecorder.getReceiverPayment(receiver, 1);
     }
 

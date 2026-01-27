@@ -44,7 +44,7 @@ contract EscrowPeriodConditionTest is Test {
         collector = new PreApprovalPaymentCollector(address(escrow));
 
         // Deploy via factory
-        EscrowPeriodConditionFactory conditionFactory = new EscrowPeriodConditionFactory();
+        EscrowPeriodConditionFactory conditionFactory = new EscrowPeriodConditionFactory(address(escrow));
         PayerCondition payerCondition = new PayerCondition();
         FreezePolicy freezePolicy = new FreezePolicy(address(payerCondition), address(payerCondition), FREEZE_DURATION);
         (address recorderAddr, address conditionAddr) = conditionFactory.deploy(ESCROW_PERIOD, address(freezePolicy));

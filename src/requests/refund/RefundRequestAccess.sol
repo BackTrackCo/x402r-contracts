@@ -4,11 +4,12 @@ pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PaymentOperator} from "../../operator/payment/PaymentOperator.sol";
-import {NotReceiver, NotPayer, InvalidOperator} from "../../types/Errors.sol";
+import {ICondition} from "../../conditions/ICondition.sol";
+import {NotReceiver, NotPayer, NotReceiverOrArbiter, InvalidOperator} from "../../types/Errors.sol";
 
 /**
  * @title RefundRequestAccess
- * @notice Stateless access control for RefundRequest contract
+ * @notice Access control modifiers for RefundRequest contract
  * @dev Contains ALL modifiers used by RefundRequest.
  *      Separated from PaymentOperatorAccess for proper code reuse.
  */
@@ -37,26 +38,36 @@ abstract contract RefundRequestAccess {
 
     /**
      * @notice Modifier to check authorization for updating refund status
-     * @dev In escrow: receiver can update (operator conditions handle additional authorization)
-     *      Post escrow: only receiver can update
+     * @dev Receiver can always approve/deny.
+     *      While funds are in escrow, anyone passing the operator's REFUND_IN_ESCROW_CONDITION
+     *      can also approve/deny. If the condition is address(0), anyone is allowed.
+     *      Post escrow: only receiver.
+     *
+     *      FRONT-RUNNING RISK: A receiver (or anyone with release condition access) can front-run
+     *      an arbiter's updateStatus() call by calling operator.release() to drain capturableAmount
+     *      to 0, which locks out the arbiter (post-escrow = receiver only). This is mitigated when
+     *      operators use a RELEASE_CONDITION (e.g. EscrowPeriodCondition) that prevents immediate
+     *      release. Operators deployed with RELEASE_CONDITION = address(0) are fully exposed to
+     *      this race.
+     *
      * @param paymentInfo The payment info
      */
     modifier onlyAuthorizedForRefundStatus(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
-        // Get escrow state to determine if in escrow or post-escrow
-        PaymentOperator operator = PaymentOperator(paymentInfo.operator);
-        AuthCaptureEscrow escrow = operator.ESCROW();
-        (, uint120 capturableAmount,) = escrow.paymentState(escrow.getHash(paymentInfo));
-
-        // In escrow: receiver can update (operator's conditions will handle additional auth like arbiter)
-        // Post escrow: only receiver can update
         if (msg.sender != paymentInfo.receiver) {
-            // If not receiver, check if in escrow and allow (operator conditions will validate)
+            PaymentOperator operator = PaymentOperator(paymentInfo.operator);
+            AuthCaptureEscrow escrow = operator.ESCROW();
+            (, uint120 capturableAmount,) = escrow.paymentState(escrow.getHash(paymentInfo));
+
+            // Post escrow: only receiver
             if (capturableAmount == 0) {
-                // Post-escrow: only receiver allowed
-                revert NotReceiver();
+                revert NotReceiverOrArbiter();
             }
-            // In escrow: allow non-receiver (operator's refund conditions will validate authorization)
-            // This enables flexible authorization via conditions (e.g., StaticAddressCondition)
+
+            // In escrow: check operator's refund condition (address(0) = allow anyone)
+            ICondition condition = operator.REFUND_IN_ESCROW_CONDITION();
+            if (address(condition) != address(0) && !condition.check(paymentInfo, 0, msg.sender)) {
+                revert NotReceiverOrArbiter();
+            }
         }
         _;
     }

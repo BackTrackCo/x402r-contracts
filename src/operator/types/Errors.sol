@@ -10,5 +10,8 @@ error ReleaseLocked();
 error InvalidFeeReceiver();
 error UnauthorizedCaller();
 
+// ============ Fee Errors ============
+error FeeTooHigh();
+
 // ============ Condition Errors ============
 error ConditionNotMet();

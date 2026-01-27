@@ -22,4 +22,4 @@ event RefundAfterEscrowExecuted(AuthCaptureEscrow.PaymentInfo paymentInfo, addre
 event FeesDistributed(address indexed token, uint256 protocolAmount, uint256 arbiterAmount);
 
 // ============ Factory Events ============
-event OperatorDeployed(address indexed operator, address indexed arbiter, address indexed releaseCondition);
+event OperatorDeployed(address indexed operator, address indexed feeRecipient, address indexed releaseCondition);

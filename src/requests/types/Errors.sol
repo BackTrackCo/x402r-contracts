@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 
 // ============ Request-Specific Errors ============
 error ZeroOperator();
+error ZeroRefundAmount();
 error RequestAlreadyExists();
 error RequestDoesNotExist();
 error RequestNotPending();

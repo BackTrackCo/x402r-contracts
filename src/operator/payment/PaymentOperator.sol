@@ -7,7 +7,7 @@ import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.so
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PaymentOperatorAccess} from "./PaymentOperatorAccess.sol";
 import {ZeroAddress, ZeroAmount} from "../../types/Errors.sol";
-import {ZeroEscrow, InvalidFeeReceiver, ConditionNotMet} from "../types/Errors.sol";
+import {ZeroEscrow, InvalidFeeReceiver, ConditionNotMet, FeeTooHigh} from "../types/Errors.sol";
 import {ICondition} from "../../conditions/ICondition.sol";
 import {IRecorder} from "../../conditions/IRecorder.sol";
 import {PaymentState} from "../types/Types.sol";
@@ -152,7 +152,9 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
             operatorFeeBps = FEE_CALCULATOR.calculateFee(paymentInfo, amount, msg.sender);
         }
 
-        totalFeeBps = uint16(protocolFeeBps + operatorFeeBps);
+        uint256 combinedFeeBps = protocolFeeBps + operatorFeeBps;
+        if (combinedFeeBps > 10000) revert FeeTooHigh();
+        totalFeeBps = uint16(combinedFeeBps);
     }
 
     // ============ Payment Functions ============
@@ -362,7 +364,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
      * @dev Protocol gets tracked accumulated amount, operator gets remainder
      * @param token The token address to distribute fees for
      */
-    function distributeFees(address token) external {
+    function distributeFees(address token) external nonReentrant {
         // ============ CHECKS ============
         if (token == address(0)) revert ZeroAddress();
         uint256 balance = SafeTransferLib.balanceOf(token, address(this));

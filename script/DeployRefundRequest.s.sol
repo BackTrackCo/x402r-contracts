@@ -8,7 +8,7 @@ import {RefundRequest} from "../src/requests/refund/RefundRequest.sol";
  * @title DeployRefundRequest
  * @notice Deploys the RefundRequest contract for x402r
  * @dev RefundRequest is a singleton contract with no constructor parameters.
- *      It works with any ArbitrationOperator and is operator-agnostic.
+ *      It reads the REFUND_IN_ESCROW_CONDITION from each operator for authorization.
  *
  *      Usage:
  *      forge script script/DeployRefundRequest.s.sol:DeployRefundRequest \
@@ -23,14 +23,10 @@ contract DeployRefundRequest is Script {
 
         console.log("=== Deploying RefundRequest ===");
 
-        // Deploy RefundRequest (no constructor parameters)
         RefundRequest refundRequest = new RefundRequest();
 
         console.log("\n=== Deployment Summary ===");
         console.log("RefundRequest:", address(refundRequest));
-
-        console.log("\n=== Configuration ===");
-        console.log("REFUND_REQUEST_ADDRESS=", address(refundRequest));
 
         vm.stopBroadcast();
     }

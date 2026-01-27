@@ -9,7 +9,6 @@ error ZeroAmount();
 // ============ Access Control Errors ============
 error NotReceiver();
 error NotPayer();
-error NotArbiter();
 error NotReceiverOrArbiter();
 error OnlyOperator();
 
