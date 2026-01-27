@@ -190,10 +190,14 @@ MEV Protection: Payers should freeze EARLY, not at deadline.
 │  - StaticAddressCondition    │        └─► FreezePolicy      │
 │  - AlwaysTrueCondition       │                              │
 ├─────────────────────────────────────────────────────────────┤
-│  Combinators:                │  Auxiliary:                  │
-│  - AndCondition              │  - RefundRequest             │
-│  - OrCondition               │  - FreezePolicyFactory       │
+│  Combinators:                │  Recorders (Optional):       │
+│  - AndCondition              │  - PaymentIndexRecorder      │
+│  - OrCondition               │  - RecorderCombinator        │
 │  - NotCondition              │                              │
+├─────────────────────────────────────────────────────────────┤
+│  Auxiliary:                  │                              │
+│  - RefundRequest             │                              │
+│  - FreezePolicyFactory       │                              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -237,7 +241,7 @@ Typical gas costs for common operations (measured with via-IR optimization and r
 | **Cancel Refund** | ~617,000 | ~617,000 | 0 | Cancel pending refund request |
 | **Freeze Payment** | ~486,000 | ~486,000 | 0 | Payer freezes payment during escrow |
 
-**Implementation**: Uses mapping + counter pattern for efficient payment indexing (22k gas first write, 5k subsequent).
+**Implementation**: Payment indexing is now **optional** via `PaymentIndexRecorder`. Deploy with indexing for on-chain queries (mapping + counter pattern: 22k gas first write, 5k subsequent) or skip for gas savings when using external indexers (The Graph).
 
 ### Condition Evaluation
 
@@ -297,15 +301,18 @@ Estimated transaction costs on different networks (at typical gas prices):
 
 ### Pagination Queries (On-Chain)
 
+**Optional Feature**: Deploy `PaymentIndexRecorder` to enable on-chain payment lookups.
+
 | Query Type | Gas Cost | Notes |
 |------------|----------|-------|
-| **Get 10 payments** | ~8,000 | Paginated query (offset + count) |
+| **Get 10 payments** | ~10,000 | Paginated query (offset + count) |
 | **Get 50 payments** | ~32,000 | Scales linearly with count |
-| **Get single payment** | ~1,300 | Direct index access |
+| **Get single payment** | ~1,100 | Direct index access |
 
-**API**: `getPayerPayments(address, offset, count)` returns paginated results
-- No need for external indexers (The Graph)
-- Fully on-chain, decentralized
+**API**: `PaymentIndexRecorder.getPayerPayments(address, offset, count)` returns paginated results
+- **With indexing**: On-chain queries available, no external indexer needed
+- **Without indexing**: Use external indexer (The Graph) for lower gas costs
+- Fully on-chain, decentralized when enabled
 - Bounded gas cost (never unbounded array returns)
 
 ### Gas Monitoring
@@ -403,6 +410,49 @@ address operator = factory.deployOperator(config);
 ```
 
 **Note:** `address(0)` for a condition means "allow all" (no restriction). `address(0)` for a recorder means "no-op" (no state recording).
+
+#### Optional Payment Indexing
+
+`PaymentIndexRecorder` provides on-chain payment lookups by payer/receiver. Deploy once and share across operators:
+
+```solidity
+// Deploy indexer (optional)
+PaymentIndexRecorder indexRecorder = new PaymentIndexRecorder(address(escrow));
+
+// Option 1: Enable indexing
+PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
+    // ...
+    authorizeRecorder: address(indexRecorder),  // Index on authorize
+    chargeRecorder: address(indexRecorder),     // Index on charge
+    // ...
+});
+
+// Option 2: Skip indexing (lower gas, use The Graph instead)
+PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
+    // ...
+    authorizeRecorder: address(0),  // No indexing
+    chargeRecorder: address(0),     // No indexing
+    // ...
+});
+
+// Query payments (requires indexing enabled)
+(bytes32[] memory payments, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 10);
+```
+
+**Benefits:**
+- **Gas Savings**: ~10k per authorization without indexing
+- **Flexibility**: Deploy with or without on-chain queries
+- **Composability**: Combine with other recorders via `RecorderCombinator`
+
+**When to use indexing:**
+- ✅ Need on-chain payment history queries
+- ✅ Building fully decentralized applications
+- ✅ Want to avoid external dependencies
+
+**When to skip indexing:**
+- ✅ Using external indexer (The Graph, Dune)
+- ✅ Optimizing for minimum gas costs
+- ✅ Don't need on-chain payment history
 
 #### Factory Deployment
 
