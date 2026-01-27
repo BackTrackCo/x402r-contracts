@@ -89,14 +89,6 @@ contract PaymentOperator is Ownable, ReentrancyGuardTransient, PaymentOperatorAc
     address public immutable FEE_RECIPIENT;
     mapping(bytes32 => AuthCaptureEscrow.PaymentInfo) public paymentInfos;
 
-    // ============ Payment Indexing (Optimized Mapping + Counter) ============
-    // Gas: 22k first payment, 5k subsequent (vs 40k/10k with arrays)
-    mapping(address => mapping(uint256 => bytes32)) private payerPayments;
-    mapping(address => uint256) public payerPaymentCount;
-
-    mapping(address => mapping(uint256 => bytes32)) private receiverPayments;
-    mapping(address => uint256) public receiverPaymentCount;
-
     // ============ Fee Configuration ============
     uint256 public constant BASIS_POINTS = 10000;
     uint256 public immutable MAX_TOTAL_FEE_RATE;
@@ -238,8 +230,6 @@ contract PaymentOperator is Ownable, ReentrancyGuardTransient, PaymentOperatorAc
         // Compute hash and update state before external call (CEI pattern)
         bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
         paymentInfos[paymentInfoHash] = paymentInfo;
-        _addPayerPayment(paymentInfo.payer, paymentInfoHash);
-        _addReceiverPayment(paymentInfo.receiver, paymentInfoHash);
 
         // Emit event before external calls (CEI pattern)
         emit AuthorizationCreated(paymentInfoHash, paymentInfo.payer, paymentInfo.receiver, amount, block.timestamp);
@@ -287,8 +277,6 @@ contract PaymentOperator is Ownable, ReentrancyGuardTransient, PaymentOperatorAc
         // Compute hash and update state before external call (CEI pattern)
         bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
         paymentInfos[paymentInfoHash] = paymentInfo;
-        _addPayerPayment(paymentInfo.payer, paymentInfoHash);
-        _addReceiverPayment(paymentInfo.receiver, paymentInfoHash);
 
         // Emit event before external calls (CEI pattern)
         emit ChargeExecuted(paymentInfoHash, paymentInfo.payer, paymentInfo.receiver, amount, block.timestamp);
@@ -533,124 +521,6 @@ contract PaymentOperator is Ownable, ReentrancyGuardTransient, PaymentOperatorAc
             // No capturable and no refundable = payment is settled
             // Could be: voided, fully refunded, or refund period expired
             return PaymentState.Settled;
-        }
-    }
-
-    /**
-     * @notice Get paginated payment hashes for a payer
-     * @param payer The payer address
-     * @param offset Starting index (0 for first page)
-     * @param count Maximum number of payments to return
-     * @return payments Array of payment hashes
-     * @return total Total number of payments for this payer
-     * @dev Gas-efficient pagination. Example: getPayerPayments(addr, 0, 100) returns first 100 payments
-     */
-    function getPayerPayments(address payer, uint256 offset, uint256 count)
-        external
-        view
-        returns (bytes32[] memory payments, uint256 total)
-    {
-        total = payerPaymentCount[payer];
-
-        // Return empty array if offset is beyond total
-        if (offset >= total) {
-            return (new bytes32[](0), total);
-        }
-
-        // Calculate actual result count (might be less than requested)
-        uint256 remaining = total - offset;
-        uint256 resultCount = remaining < count ? remaining : count;
-
-        payments = new bytes32[](resultCount);
-        for (uint256 i = 0; i < resultCount; i++) {
-            payments[i] = payerPayments[payer][offset + i];
-        }
-    }
-
-    /**
-     * @notice Get paginated payment hashes for a receiver (merchant)
-     * @param receiver The receiver address
-     * @param offset Starting index (0 for first page)
-     * @param count Maximum number of payments to return
-     * @return payments Array of payment hashes
-     * @return total Total number of payments for this receiver
-     * @dev Gas-efficient pagination. Example: getReceiverPayments(addr, 0, 100) returns first 100 payments
-     */
-    function getReceiverPayments(address receiver, uint256 offset, uint256 count)
-        external
-        view
-        returns (bytes32[] memory payments, uint256 total)
-    {
-        total = receiverPaymentCount[receiver];
-
-        // Return empty array if offset is beyond total
-        if (offset >= total) {
-            return (new bytes32[](0), total);
-        }
-
-        // Calculate actual result count (might be less than requested)
-        uint256 remaining = total - offset;
-        uint256 resultCount = remaining < count ? remaining : count;
-
-        payments = new bytes32[](resultCount);
-        for (uint256 i = 0; i < resultCount; i++) {
-            payments[i] = receiverPayments[receiver][offset + i];
-        }
-    }
-
-    /**
-     * @notice Get a single payment hash by index for a payer
-     * @param payer The payer address
-     * @param index Payment index (0-based)
-     * @return Payment hash at the given index
-     * @dev Reverts if index is out of bounds
-     */
-    function getPayerPayment(address payer, uint256 index) external view returns (bytes32) {
-        require(index < payerPaymentCount[payer], "Index out of bounds");
-        return payerPayments[payer][index];
-    }
-
-    /**
-     * @notice Get a single payment hash by index for a receiver
-     * @param receiver The receiver address
-     * @param index Payment index (0-based)
-     * @return Payment hash at the given index
-     * @dev Reverts if index is out of bounds
-     */
-    function getReceiverPayment(address receiver, uint256 index) external view returns (bytes32) {
-        require(index < receiverPaymentCount[receiver], "Index out of bounds");
-        return receiverPayments[receiver][index];
-    }
-
-    // ============ Internal Helpers ============
-
-    /**
-     * @notice Add payment hash to payer's indexed payments
-     * @param payer The payer address
-     * @param hash The payment info hash
-     * @dev Uses mapping + counter pattern (22k first, 5k subsequent vs 40k/10k with arrays)
-     */
-    function _addPayerPayment(address payer, bytes32 hash) internal {
-        uint256 index = payerPaymentCount[payer];
-        payerPayments[payer][index] = hash;
-        unchecked {
-            // Safe: Would take 2^256 payments to overflow (impossible)
-            payerPaymentCount[payer] = index + 1;
-        }
-    }
-
-    /**
-     * @notice Add payment hash to receiver's indexed payments
-     * @param receiver The receiver address
-     * @param hash The payment info hash
-     * @dev Uses mapping + counter pattern (22k first, 5k subsequent vs 40k/10k with arrays)
-     */
-    function _addReceiverPayment(address receiver, bytes32 hash) internal {
-        uint256 index = receiverPaymentCount[receiver];
-        receiverPayments[receiver][index] = hash;
-        unchecked {
-            // Safe: Would take 2^256 payments to overflow (impossible)
-            receiverPaymentCount[receiver] = index + 1;
         }
     }
 }
