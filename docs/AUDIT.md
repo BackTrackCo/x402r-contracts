@@ -27,7 +27,7 @@
 | **EscrowPeriodCondition.sol** | ~80 | Time-based release condition |
 | **EscrowPeriodRecorder.sol** | ~160 | Authorization time tracking + freeze/unfreeze |
 | **FreezePolicyFactory.sol** | ~120 | Factory for freeze policy instances |
-| **PayerFreezePolicy.sol** | ~60 | Freeze policy allowing only payer to freeze |
+| **FreezePolicy.sol** | ~60 | Generic freeze policy using ICondition contracts |
 
 **Subtotal**: ~1,700 LoC
 
@@ -95,7 +95,7 @@ EscrowPeriodConditionFactory
     └── deploys → EscrowPeriodCondition + EscrowPeriodRecorder
 
 FreezePolicyFactory
-    └── deploys → PayerFreezePolicy instances
+    └── deploys → FreezePolicy instances (configured with ICondition contracts)
 ```
 
 ### Key Features

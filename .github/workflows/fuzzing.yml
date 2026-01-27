@@ -46,10 +46,13 @@ jobs:
 
       - name: Install Echidna
         run: |
-          wget https://github.com/crytic/echidna/releases/download/v2.2.1/echidna-2.2.1-Linux.tar.gz
-          tar -xzf echidna-2.2.1-Linux.tar.gz
+          wget https://github.com/crytic/echidna/releases/download/v2.2.5/echidna-2.2.5-x86_64-linux.tar.gz
+          tar -xzf echidna-2.2.5-x86_64-linux.tar.gz
           sudo mv echidna /usr/local/bin/
           echidna --version
+
+      - name: Build contracts
+        run: forge build
 
       - name: Run quick fuzzing
         run: |
@@ -57,12 +60,13 @@ jobs:
             --contract PaymentOperatorInvariants \
             --test-limit 1000 \
             --seq-len 50 \
-            --format text
+            --format text \
+            --crytic-args --foundry-out-dir=out
 
       - name: Check for failures
         if: failure()
         run: |
-          echo "::error::Fuzzing found invariant violations"
+          echo "::error::Fuzzing found invariant violations or failed to run"
           exit 1
 
   standard-fuzzing:
@@ -82,8 +86,8 @@ jobs:
 
       - name: Install Echidna
         run: |
-          wget https://github.com/crytic/echidna/releases/download/v2.2.1/echidna-2.2.1-Linux.tar.gz
-          tar -xzf echidna-2.2.1-Linux.tar.gz
+          wget https://github.com/crytic/echidna/releases/download/v2.2.5/echidna-2.2.5-x86_64-linux.tar.gz
+          tar -xzf echidna-2.2.5-x86_64-linux.tar.gz
           sudo mv echidna /usr/local/bin/
           echidna --version
 
@@ -98,6 +102,9 @@ jobs:
             echo "seq_len=100" >> $GITHUB_OUTPUT
           fi
 
+      - name: Build contracts
+        run: forge build
+
       - name: Run standard fuzzing
         run: |
           echidna test/invariants/PaymentOperatorInvariants.sol \
@@ -105,6 +112,7 @@ jobs:
             --test-limit ${{ steps.params.outputs.test_limit }} \
             --seq-len ${{ steps.params.outputs.seq_len }} \
             --format text \
+            --crytic-args --foundry-out-dir=out \
             | tee echidna-results.txt
 
       - name: Upload results
@@ -119,8 +127,12 @@ jobs:
       - name: Check for failures
         if: failure()
         run: |
-          echo "::error::Fuzzing found invariant violations"
-          cat echidna-results.txt
+          echo "::error::Fuzzing found invariant violations or failed to run"
+          if [ -f echidna-results.txt ]; then
+            cat echidna-results.txt
+          else
+            echo "No results file generated - echidna may have failed to start"
+          fi
           exit 1
 
       - name: Post results to PR (if applicable)
@@ -156,10 +168,13 @@ jobs:
 
       - name: Install Echidna
         run: |
-          wget https://github.com/crytic/echidna/releases/download/v2.2.1/echidna-2.2.1-Linux.tar.gz
-          tar -xzf echidna-2.2.1-Linux.tar.gz
+          wget https://github.com/crytic/echidna/releases/download/v2.2.5/echidna-2.2.5-x86_64-linux.tar.gz
+          tar -xzf echidna-2.2.5-x86_64-linux.tar.gz
           sudo mv echidna /usr/local/bin/
           echidna --version
+
+      - name: Build contracts
+        run: forge build
 
       - name: Run extended fuzzing campaign
         run: |

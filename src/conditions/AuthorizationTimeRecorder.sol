@@ -48,11 +48,7 @@ contract AuthorizationTimeRecorder is IRecorder {
      * @dev Called by the operator after a payment is authorized
      * @param paymentInfo PaymentInfo struct
      */
-    function record(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address)
-        external
-        virtual
-        override
-    {
+    function record(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address) external virtual override {
         // Verify caller is the operator
         require(msg.sender == paymentInfo.operator, "Unauthorized");
 
@@ -70,11 +66,7 @@ contract AuthorizationTimeRecorder is IRecorder {
      * @param paymentInfo PaymentInfo struct
      * @return The timestamp when the payment was authorized (0 if not authorized through this recorder)
      */
-    function getAuthorizationTime(AuthCaptureEscrow.PaymentInfo calldata paymentInfo)
-        external
-        view
-        returns (uint256)
-    {
+    function getAuthorizationTime(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external view returns (uint256) {
         AuthCaptureEscrow escrow = IArbitrationOperator(paymentInfo.operator).ESCROW();
         return authorizationTimes[escrow.getHash(paymentInfo)];
     }

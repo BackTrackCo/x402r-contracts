@@ -7,7 +7,8 @@ import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol
 import {EscrowPeriodCondition} from "../src/conditions/escrow-period/EscrowPeriodCondition.sol";
 import {EscrowPeriodConditionFactory} from "../src/conditions/escrow-period/EscrowPeriodConditionFactory.sol";
 import {EscrowPeriodRecorder} from "../src/conditions/escrow-period/EscrowPeriodRecorder.sol";
-import {PayerFreezePolicy} from "../src/conditions/escrow-period/freeze-policy/PayerFreezePolicy.sol";
+import {FreezePolicy} from "../src/conditions/escrow-period/freeze-policy/FreezePolicy.sol";
+import {PayerCondition} from "../src/conditions/access/PayerCondition.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
@@ -44,7 +45,8 @@ contract EscrowPeriodConditionTest is Test {
 
         // Deploy via factory
         EscrowPeriodConditionFactory conditionFactory = new EscrowPeriodConditionFactory();
-        PayerFreezePolicy freezePolicy = new PayerFreezePolicy(FREEZE_DURATION);
+        PayerCondition payerCondition = new PayerCondition();
+        FreezePolicy freezePolicy = new FreezePolicy(address(payerCondition), address(payerCondition), FREEZE_DURATION);
         (address recorderAddr, address conditionAddr) = conditionFactory.deploy(ESCROW_PERIOD, address(freezePolicy));
         recorder = EscrowPeriodRecorder(recorderAddr);
         escrowCondition = EscrowPeriodCondition(conditionAddr);

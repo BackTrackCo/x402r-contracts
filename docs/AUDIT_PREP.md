@@ -332,8 +332,6 @@
 - `PayerCondition.sol` - Optional access control condition
 - `ReceiverCondition.sol` - Optional access control condition
 - `NotCondition.sol` - Logical negation combinator (not used yet)
-- `FreezePolicy.sol` - Abstract base contract
-- `FreezePolicyFactory.sol` - Generic factory (PayerFreezePolicyFactory used instead)
 - `StaticAddressCondition.sol` - Testing utility
 
 **Rationale**: These are part of the flexible condition system - not dead code, but optional components users can deploy as needed.
@@ -412,7 +410,7 @@ src/commerce-payments/conditions/escrow-period/
   ├── EscrowPeriodRecorder.sol (~160 LoC) ⭐ CRITICAL
   ├── EscrowPeriodConditionFactory.sol (~120 LoC)
   ├── freeze-policy/
-      ├── PayerFreezePolicy.sol (~60 LoC)
+      ├── FreezePolicy.sol (~60 LoC) - Generic freeze policy using ICondition
       ├── FreezePolicyFactory.sol (~120 LoC)
 
 src/commerce-payments/conditions/
@@ -508,7 +506,7 @@ EscrowPeriodConditionFactory
     └── deploys → EscrowPeriodCondition + EscrowPeriodRecorder
 
 FreezePolicyFactory
-    └── deploys → PayerFreezePolicy instances
+    └── deploys → FreezePolicy instances (configured with ICondition contracts)
 ```
 
 **Key Patterns**:
@@ -571,7 +569,7 @@ FreezePolicyFactory
 2. **Receiver**: Releases payments, creates refund requests, executes refunds
 3. **Operator Owner**: Sets fee parameters (with 24h timelock), withdraws protocol fees
 4. **Factory Owner**: Can deploy new operators
-5. **Freeze Policy**: Determines who can freeze payments (e.g., PayerFreezePolicy)
+5. **Freeze Policy**: Determines who can freeze/unfreeze payments (e.g., FreezePolicy with PayerCondition)
 
 **Privilege Matrix**:
 
@@ -589,7 +587,7 @@ FreezePolicyFactory
 | setFeeParameters() | ❌ | ❌ | ✅ | ❌ |
 | withdrawFees() | ❌ | ❌ | ✅ | ❌ |
 
-*Subject to freeze policy (PayerFreezePolicy allows payer)
+*Subject to freeze policy (e.g., FreezePolicy with PayerCondition allows payer)
 
 ### Assumptions and Trust Boundaries
 
@@ -606,7 +604,7 @@ FreezePolicyFactory
 
 **Off-Chain Assumptions**:
 - Dispute resolution happens off-chain (system provides enforcement)
-- Freeze policy determined at deployment (PayerFreezePolicy or custom)
+- Freeze policy determined at deployment (FreezePolicy with chosen ICondition contracts)
 - Users use private mempool or freeze early to mitigate MEV
 
 ### Glossary
