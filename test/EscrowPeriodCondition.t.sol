@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {PaymentOperator} from "../src/operator/arbitration/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
+import {ProtocolFeeConfig} from "../src/fees/ProtocolFeeConfig.sol";
 import {EscrowPeriodCondition} from "../src/conditions/escrow-period/EscrowPeriodCondition.sol";
 import {EscrowPeriodConditionFactory} from "../src/conditions/escrow-period/EscrowPeriodConditionFactory.sol";
 import {EscrowPeriodRecorder} from "../src/conditions/escrow-period/EscrowPeriodRecorder.sol";
@@ -16,6 +17,7 @@ import {MockERC20} from "./mocks/MockERC20.sol";
 contract EscrowPeriodConditionTest is Test {
     PaymentOperator public operator;
     PaymentOperatorFactory public operatorFactory;
+    ProtocolFeeConfig public protocolFeeConfig;
     AuthCaptureEscrow public escrow;
     PreApprovalPaymentCollector public collector;
     EscrowPeriodCondition public escrowCondition;
@@ -29,8 +31,6 @@ contract EscrowPeriodConditionTest is Test {
 
     uint256 public constant ESCROW_PERIOD = 7 days;
     uint256 public constant FREEZE_DURATION = 3 days;
-    uint256 public constant MAX_TOTAL_FEE_RATE = 50;
-    uint256 public constant PROTOCOL_FEE_PERCENTAGE = 25;
     uint256 public constant PAYMENT_AMOUNT = 1000 * 10 ** 18;
 
     function setUp() public {
@@ -51,12 +51,14 @@ contract EscrowPeriodConditionTest is Test {
         recorder = EscrowPeriodRecorder(recorderAddr);
         escrowCondition = EscrowPeriodCondition(conditionAddr);
 
+        protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
         operatorFactory = new PaymentOperatorFactory(
-            address(escrow), protocolFeeRecipient, MAX_TOTAL_FEE_RATE, PROTOCOL_FEE_PERCENTAGE, owner
+            address(escrow), address(protocolFeeConfig), owner
         );
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeRecipient: protocolFeeRecipient,
+            feeCalculator: address(0),
             authorizeCondition: address(0),
             authorizeRecorder: address(recorder),
             chargeCondition: address(0),
@@ -85,8 +87,8 @@ contract EscrowPeriodConditionTest is Test {
             preApprovalExpiry: uint48(block.timestamp + 1 days),
             authorizationExpiry: uint48(block.timestamp + 30 days),
             refundExpiry: uint48(block.timestamp + 60 days),
-            minFeeBps: uint16(MAX_TOTAL_FEE_RATE),
-            maxFeeBps: uint16(MAX_TOTAL_FEE_RATE),
+            minFeeBps: 0,
+            maxFeeBps: 0,
             feeReceiver: address(operator),
             salt: 12345
         });

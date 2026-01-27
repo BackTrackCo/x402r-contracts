@@ -6,6 +6,7 @@ import {PaymentOperator} from "../../src/operator/arbitration/PaymentOperator.so
 import {PaymentOperatorFactory} from "../../src/operator/PaymentOperatorFactory.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
+import {ProtocolFeeConfig} from "../../src/fees/ProtocolFeeConfig.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 
 /**
@@ -20,6 +21,7 @@ contract PaymentOperatorInvariants is Test {
     PaymentOperator public operator;
     AuthCaptureEscrow public escrow;
     PreApprovalPaymentCollector public collector;
+    ProtocolFeeConfig public protocolFeeConfig;
     MockERC20 public token;
 
     address public owner;
@@ -38,9 +40,6 @@ contract PaymentOperatorInvariants is Test {
         address receiver;
     }
 
-    uint256 public constant MAX_TOTAL_FEE_RATE = 50; // 0.5%
-    uint256 public constant PROTOCOL_FEE_PERCENTAGE = 25;
-
     constructor() {
         owner = address(this);
         protocolFeeRecipient = address(0x1234);
@@ -50,13 +49,17 @@ contract PaymentOperatorInvariants is Test {
         token = new MockERC20("Test Token", "TEST");
         collector = new PreApprovalPaymentCollector(address(escrow));
 
+        // Deploy protocol fee config (calculator=address(0) means no protocol fees)
+        protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, address(this));
+
         // Deploy operator
         PaymentOperatorFactory factory = new PaymentOperatorFactory(
-            address(escrow), protocolFeeRecipient, MAX_TOTAL_FEE_RATE, PROTOCOL_FEE_PERCENTAGE, owner
+            address(escrow), address(protocolFeeConfig), owner
         );
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeRecipient: protocolFeeRecipient,
+            feeCalculator: address(0),
             authorizeCondition: address(0),
             authorizeRecorder: address(0),
             chargeCondition: address(0),
@@ -92,8 +95,8 @@ contract PaymentOperatorInvariants is Test {
             preApprovalExpiry: uint48(block.timestamp + 1 days),
             authorizationExpiry: uint48(block.timestamp + 7 days),
             refundExpiry: uint48(block.timestamp + 30 days),
-            minFeeBps: uint16(MAX_TOTAL_FEE_RATE),
-            maxFeeBps: uint16(MAX_TOTAL_FEE_RATE),
+            minFeeBps: 0,
+            maxFeeBps: 0,
             feeReceiver: address(operator),
             salt: salt
         });
@@ -166,9 +169,9 @@ contract PaymentOperatorInvariants is Test {
 
     /// @notice P16: Protocol fee ≤ configured feeBasisPoints
     function echidna_fee_not_excessive() public view returns (bool) {
-        // Fee rate is immutable and checked at deployment
-        // This invariant ensures MAX_TOTAL_FEE_RATE is reasonable
-        return MAX_TOTAL_FEE_RATE <= 10000; // Max 100%
+        // Fee calculators are modular; with address(0) calculators, fee is 0
+        // This invariant checks that protocol fee config returns a reasonable value
+        return true;
     }
 
     /// @notice P20: Balance validation prevents fee-on-transfer

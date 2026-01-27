@@ -7,6 +7,8 @@ import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
+import {ProtocolFeeConfig} from "../src/fees/ProtocolFeeConfig.sol";
+import {StaticFeeCalculator} from "../src/fees/StaticFeeCalculator.sol";
 
 /**
  * @title ArithmeticEdgeCasesTest
@@ -24,18 +26,24 @@ contract ArithmeticEdgeCasesTest is Test {
     AuthCaptureEscrow public escrow;
     PreApprovalPaymentCollector public collector;
     MockERC20 public token;
+    ProtocolFeeConfig public protocolFeeConfig;
+    StaticFeeCalculator public protocolCalculator;
+    StaticFeeCalculator public operatorCalculator;
 
     address public owner;
     address public protocolFeeRecipient;
+    address public operatorFeeRecipient;
     address public receiver;
     address public payer;
 
-    uint256 public constant MAX_TOTAL_FEE_RATE = 50; // 0.5% (50 basis points)
-    uint256 public constant PROTOCOL_FEE_PERCENTAGE = 25; // 25% of total fee
+    uint256 public constant PROTOCOL_FEE_BPS = 13; // ~0.13%
+    uint256 public constant OPERATOR_FEE_BPS = 37; // ~0.37%
+    uint256 public constant MAX_TOTAL_FEE_RATE = PROTOCOL_FEE_BPS + OPERATOR_FEE_BPS; // 50 bps
 
     function setUp() public {
         owner = address(this);
         protocolFeeRecipient = makeAddr("protocolFeeRecipient");
+        operatorFeeRecipient = makeAddr("operatorFeeRecipient");
         receiver = makeAddr("receiver");
         payer = makeAddr("payer");
 
@@ -44,14 +52,20 @@ contract ArithmeticEdgeCasesTest is Test {
         token = new MockERC20("Test Token", "TEST");
         collector = new PreApprovalPaymentCollector(address(escrow));
 
-        // Deploy operator factory
-        operatorFactory = new PaymentOperatorFactory(
-            address(escrow), protocolFeeRecipient, MAX_TOTAL_FEE_RATE, PROTOCOL_FEE_PERCENTAGE, owner
-        );
+        // Deploy fee calculators
+        protocolCalculator = new StaticFeeCalculator(PROTOCOL_FEE_BPS);
+        operatorCalculator = new StaticFeeCalculator(OPERATOR_FEE_BPS);
 
-        // Deploy operator with no conditions (always allow)
+        // Deploy protocol fee config
+        protocolFeeConfig = new ProtocolFeeConfig(address(protocolCalculator), protocolFeeRecipient, owner);
+
+        // Deploy operator factory
+        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), owner);
+
+        // Deploy operator with operator fee calculator
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: protocolFeeRecipient,
+            feeRecipient: operatorFeeRecipient,
+            feeCalculator: address(operatorCalculator),
             authorizeCondition: address(0),
             authorizeRecorder: address(0),
             chargeCondition: address(0),
@@ -64,11 +78,6 @@ contract ArithmeticEdgeCasesTest is Test {
             refundPostEscrowRecorder: address(0)
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
-
-        // Enable fees for testing
-        operator.queueFeesEnabled(true);
-        vm.warp(block.timestamp + 24 hours + 1);
-        operator.executeFeesEnabled();
     }
 
     // ============================================================
@@ -217,10 +226,6 @@ contract ArithmeticEdgeCasesTest is Test {
         uint256 amount = 0;
         uint256 fee = (amount * MAX_TOTAL_FEE_RATE) / 10000;
         assertEq(fee, 0, "Fee should be zero for zero amount");
-
-        // Protocol fee: (0 * 25) / 100 = 0
-        uint256 protocolFee = (fee * PROTOCOL_FEE_PERCENTAGE) / 100;
-        assertEq(protocolFee, 0, "Protocol fee should be zero");
     }
 
     // ============================================================
@@ -301,8 +306,10 @@ contract ArithmeticEdgeCasesTest is Test {
         // Fee = (200 * 50) / 10000 = 1 wei
         operator.distributeFees(address(token));
 
-        uint256 operatorBalance = token.balanceOf(protocolFeeRecipient);
-        assertGt(operatorBalance, 0, "Should generate at least 1 wei fee");
+        // Verify fees were distributed (either protocol or operator should get something)
+        uint256 protocolBalance = token.balanceOf(protocolFeeRecipient);
+        uint256 operatorBalance = token.balanceOf(operatorFeeRecipient);
+        assertGt(protocolBalance + operatorBalance, 0, "Should generate at least 1 wei fee");
     }
 
     /**
@@ -328,7 +335,8 @@ contract ArithmeticEdgeCasesTest is Test {
         operator.distributeFees(address(token));
 
         uint256 protocolBalance = token.balanceOf(protocolFeeRecipient);
-        assertEq(protocolBalance, 0, "Below minimum should generate zero fee");
+        uint256 operatorBalance = token.balanceOf(operatorFeeRecipient);
+        assertEq(protocolBalance + operatorBalance, 0, "Below minimum should generate zero fee");
     }
 
     // ============================================================
@@ -341,11 +349,6 @@ contract ArithmeticEdgeCasesTest is Test {
      *      The operator receives the FULL fee from escrow, then distributes it
      */
     function test_FeeCalculation_RoundingBehavior() public {
-        // Test case: 10000 wei with 50 bps (0.5%) fee
-        // Calculated: (10000 * 50) / 10000 = 50 wei total fee
-        // Protocol (25%): 50 * 25 / 100 = 12.5 -> rounds to 12
-        // Operator: 50 - 12 = 38 wei
-
         uint120 amount = 10000;
 
         token.mint(payer, 1000 ether);
@@ -360,14 +363,10 @@ contract ArithmeticEdgeCasesTest is Test {
 
         operator.release(paymentInfo, amount);
 
-        // Verify the operator received the fee from escrow
-        uint256 operatorBalanceBefore = token.balanceOf(address(operator));
-
-        // distributeFees() splits the fee according to PROTOCOL_FEE_PERCENTAGE
+        // distributeFees() splits tracked protocol amount + remainder to operator
         operator.distributeFees(address(token));
 
-        // The actual distribution may consolidate the fee in one place
-        // This documents the ACTUAL behavior rather than assumed behavior
+        // The actual distribution uses tracked amounts
         uint256 protocolBalance = token.balanceOf(protocolFeeRecipient);
 
         // Key assertion: Verify rounding doesn't cause loss or creation of funds
@@ -402,40 +401,36 @@ contract ArithmeticEdgeCasesTest is Test {
     }
 
     /**
-     * @notice Test that fee percentage split is always <= 100%
+     * @notice Test that fee split is always <= total
      * @dev Verifies protocol + operator fees never exceed total fee
      */
-    function test_FeeCalculation_SplitNeverExceeds100Percent() public {
+    function test_FeeCalculation_SplitNeverExceedsTotal() public {
         uint120 amount = 1000000;
 
         uint256 totalFee = (uint256(amount) * MAX_TOTAL_FEE_RATE) / 10000;
-        uint256 protocolFee = (totalFee * PROTOCOL_FEE_PERCENTAGE) / 100;
-        uint256 operatorFee = totalFee - protocolFee;
+        uint256 protocolFee = (uint256(amount) * PROTOCOL_FEE_BPS) / 10000;
+        uint256 operatorFee = (uint256(amount) * OPERATOR_FEE_BPS) / 10000;
 
         // Verify split never exceeds total
         assertLe(protocolFee + operatorFee, totalFee, "Split should never exceed total fee");
-        assertEq(protocolFee + operatorFee, totalFee, "Split should exactly equal total fee");
     }
 
     /**
-     * @notice Test fee calculation with edge case percentages
-     * @dev Verifies correct behavior at 0%, 25%, 50%, 75%, 100% protocol split
+     * @notice Test fee calculation with various bps values
+     * @dev Verifies correct behavior at 0%, 25%, 50%, 75%, 100% fee rates
      */
-    function test_FeeCalculation_ProtocolPercentageEdgeCases() public {
-        uint256 totalFee = 1000 wei;
+    function test_FeeCalculation_VariousBps() public {
+        uint256 amount = 10000 wei;
 
-        // Test various protocol percentages
-        uint256[5] memory percentages = [uint256(0), 25, 50, 75, 100];
+        // Test various bps rates
+        uint256[5] memory bpsRates = [uint256(0), 25, 50, 100, 10000];
 
-        for (uint256 i = 0; i < percentages.length; i++) {
-            uint256 pct = percentages[i];
-            uint256 protocolFee = (totalFee * pct) / 100;
-            uint256 operatorFee = totalFee - protocolFee;
+        for (uint256 i = 0; i < bpsRates.length; i++) {
+            uint256 bps = bpsRates[i];
+            uint256 fee = (amount * bps) / 10000;
 
-            // Verify split is correct
-            assertEq(protocolFee + operatorFee, totalFee, "Split should equal total");
-            assertLe(protocolFee, totalFee, "Protocol fee should not exceed total");
-            assertLe(operatorFee, totalFee, "Operator fee should not exceed total");
+            // Verify fee is correct
+            assertLe(fee, amount, "Fee should not exceed amount");
         }
     }
 

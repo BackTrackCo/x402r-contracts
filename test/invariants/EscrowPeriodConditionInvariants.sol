@@ -11,6 +11,7 @@ import {FreezePolicy} from "../../src/conditions/escrow-period/freeze-policy/Fre
 import {PayerCondition} from "../../src/conditions/access/PayerCondition.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
+import {ProtocolFeeConfig} from "../../src/fees/ProtocolFeeConfig.sol";
 
 contract EscrowPeriodConditionInvariants is Test {
     PaymentOperator public operator;
@@ -34,11 +35,14 @@ contract EscrowPeriodConditionInvariants is Test {
         (address recorderAddr, address conditionAddr) = conditionFactory.deploy(ESCROW_PERIOD, address(freezePolicy));
         recorder = EscrowPeriodRecorder(recorderAddr);
 
+        ProtocolFeeConfig protocolFeeConfig = new ProtocolFeeConfig(address(0), address(this), address(this));
+
         PaymentOperatorFactory operatorFactory =
-            new PaymentOperatorFactory(address(escrow), address(this), 50, 25, address(this));
+            new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), address(this));
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeRecipient: address(this),
+            feeCalculator: address(0),
             authorizeCondition: address(0),
             authorizeRecorder: address(recorder),
             chargeCondition: address(0),

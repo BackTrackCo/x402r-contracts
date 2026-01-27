@@ -35,6 +35,20 @@ interface IOperator {
     ) external;
 
     /**
+     * @notice Direct charge - collects payment and immediately transfers to receiver
+     * @param paymentInfo PaymentInfo struct with payment details
+     * @param amount Amount to charge
+     * @param tokenCollector Address of the token collector
+     * @param collectorData Data to pass to the token collector
+     */
+    function charge(
+        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
+        uint256 amount,
+        address tokenCollector,
+        bytes calldata collectorData
+    ) external;
+
+    /**
      * @notice Release funds to the receiver
      * @param paymentInfo PaymentInfo struct
      * @param amount Amount to release
@@ -61,4 +75,10 @@ interface IOperator {
         address tokenCollector,
         bytes calldata collectorData
     ) external;
+
+    /**
+     * @notice Distribute collected fees to protocol and operator
+     * @param token The token address to distribute fees for
+     */
+    function distributeFees(address token) external;
 }

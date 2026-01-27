@@ -5,6 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {PaymentOperator} from "../src/operator/arbitration/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
 import {PaymentIndexRecorder} from "../src/conditions/PaymentIndexRecorder.sol";
+import {ProtocolFeeConfig} from "../src/fees/ProtocolFeeConfig.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
@@ -18,6 +19,7 @@ contract PaymentIndexingTest is Test {
     PaymentOperator public operator;
     PaymentOperatorFactory public operatorFactory;
     PaymentIndexRecorder public indexRecorder;
+    ProtocolFeeConfig public protocolFeeConfig;
     AuthCaptureEscrow public escrow;
     PreApprovalPaymentCollector public collector;
     MockERC20 public token;
@@ -27,8 +29,6 @@ contract PaymentIndexingTest is Test {
     address public payer;
     address public receiver;
 
-    uint256 public constant MAX_TOTAL_FEE_RATE = 50; // 0.5%
-    uint256 public constant PROTOCOL_FEE_PERCENTAGE = 25; // 25%
     uint256 public constant PAYMENT_AMOUNT = 1000 * 10 ** 18;
 
     function setUp() public {
@@ -42,9 +42,12 @@ contract PaymentIndexingTest is Test {
         token = new MockERC20("Test Token", "TEST");
         collector = new PreApprovalPaymentCollector(address(escrow));
 
+        // Deploy protocol fee config (no calculator = 0 fees)
+        protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
+
         // Deploy operator factory
         operatorFactory = new PaymentOperatorFactory(
-            address(escrow), protocolFeeRecipient, MAX_TOTAL_FEE_RATE, PROTOCOL_FEE_PERCENTAGE, owner
+            address(escrow), address(protocolFeeConfig), owner
         );
 
         // Deploy payment index recorder
@@ -53,6 +56,7 @@ contract PaymentIndexingTest is Test {
         // Deploy operator with index recorder
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeRecipient: protocolFeeRecipient,
+            feeCalculator: address(0),
             authorizeCondition: address(0),
             authorizeRecorder: address(indexRecorder), // Use index recorder
             chargeCondition: address(0),
@@ -385,8 +389,8 @@ contract PaymentIndexingTest is Test {
             preApprovalExpiry: uint48(block.timestamp + 1 days),
             authorizationExpiry: uint48(block.timestamp + 7 days),
             refundExpiry: uint48(block.timestamp + 30 days),
-            minFeeBps: uint16(MAX_TOTAL_FEE_RATE),
-            maxFeeBps: uint16(MAX_TOTAL_FEE_RATE),
+            minFeeBps: uint16(0),
+            maxFeeBps: uint16(0),
             feeReceiver: address(operator),
             salt: salt
         });

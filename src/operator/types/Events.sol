@@ -19,11 +19,6 @@ event RefundExecuted(AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed 
 
 event RefundAfterEscrowExecuted(AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed payer, uint256 amount);
 
-event ProtocolFeesEnabledUpdated(bool enabled);
-
-event FeesEnabledChangeQueued(bool enabled, uint256 executeAfter);
-event FeesEnabledChangeCancelled();
-
 event FeesDistributed(address indexed token, uint256 protocolAmount, uint256 arbiterAmount);
 
 // ============ Factory Events ============

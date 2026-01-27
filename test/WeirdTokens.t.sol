@@ -6,6 +6,7 @@ import {PaymentOperator} from "../src/operator/arbitration/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
+import {ProtocolFeeConfig} from "../src/fees/ProtocolFeeConfig.sol";
 import {MockFeeOnTransferToken} from "./mocks/MockFeeOnTransferToken.sol";
 import {MockRebasingToken} from "./mocks/MockRebasingToken.sol";
 
@@ -19,6 +20,7 @@ contract WeirdTokensTest is Test {
     PaymentOperatorFactory public factory;
     AuthCaptureEscrow public escrow;
     PreApprovalPaymentCollector public collector;
+    ProtocolFeeConfig public protocolFeeConfig;
 
     MockFeeOnTransferToken public feeToken;
     MockRebasingToken public rebaseToken;
@@ -28,8 +30,6 @@ contract WeirdTokensTest is Test {
     address public payer;
     address public receiver;
 
-    uint256 public constant MAX_TOTAL_FEE_RATE = 50;
-    uint256 public constant PROTOCOL_FEE_PERCENTAGE = 25;
     uint256 public constant PAYMENT_AMOUNT = 1000 * 10 ** 18;
 
     function setUp() public {
@@ -41,13 +41,15 @@ contract WeirdTokensTest is Test {
         // Deploy infrastructure
         escrow = new AuthCaptureEscrow();
         collector = new PreApprovalPaymentCollector(address(escrow));
+        protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
         factory = new PaymentOperatorFactory(
-            address(escrow), protocolFeeRecipient, MAX_TOTAL_FEE_RATE, PROTOCOL_FEE_PERCENTAGE, owner
+            address(escrow), address(protocolFeeConfig), owner
         );
 
         // Deploy operator
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeRecipient: protocolFeeRecipient,
+            feeCalculator: address(0),
             authorizeCondition: address(0),
             authorizeRecorder: address(0),
             chargeCondition: address(0),
@@ -76,8 +78,8 @@ contract WeirdTokensTest is Test {
             preApprovalExpiry: uint48(block.timestamp + 1 days),
             authorizationExpiry: uint48(block.timestamp + 7 days),
             refundExpiry: uint48(block.timestamp + 30 days),
-            minFeeBps: uint16(MAX_TOTAL_FEE_RATE),
-            maxFeeBps: uint16(MAX_TOTAL_FEE_RATE),
+            minFeeBps: 0,
+            maxFeeBps: 0,
             feeReceiver: address(operator),
             salt: 12345
         });

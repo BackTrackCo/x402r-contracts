@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import {Test, console} from "forge-std/Test.sol";
 import {PaymentOperator} from "../src/operator/arbitration/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
+import {ProtocolFeeConfig} from "../src/fees/ProtocolFeeConfig.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
@@ -12,6 +13,7 @@ import {MaliciousRecorder} from "./mocks/MaliciousRecorder.sol";
 contract ReentrancyAttackTest is Test {
     PaymentOperator public operator;
     PaymentOperatorFactory public factory;
+    ProtocolFeeConfig public protocolFeeConfig;
     MockERC20 public token;
     AuthCaptureEscrow public escrow;
     PreApprovalPaymentCollector public collector;
@@ -22,8 +24,6 @@ contract ReentrancyAttackTest is Test {
     address public receiver;
     address public payer;
 
-    uint256 public constant MAX_TOTAL_FEE_RATE = 50;
-    uint256 public constant PROTOCOL_FEE_PERCENTAGE = 25;
     uint256 public constant INITIAL_BALANCE = 1000000 * 10 ** 18;
     uint256 public constant PAYMENT_AMOUNT = 1000 * 10 ** 18;
 
@@ -36,9 +36,8 @@ contract ReentrancyAttackTest is Test {
         escrow = new AuthCaptureEscrow();
         token = new MockERC20("Test Token", "TEST");
         collector = new PreApprovalPaymentCollector(address(escrow));
-        factory = new PaymentOperatorFactory(
-            address(escrow), protocolFeeRecipient, MAX_TOTAL_FEE_RATE, PROTOCOL_FEE_PERCENTAGE, owner
-        );
+        protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
+        factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), owner);
 
         token.mint(payer, INITIAL_BALANCE);
         token.mint(receiver, INITIAL_BALANCE);
@@ -55,6 +54,7 @@ contract ReentrancyAttackTest is Test {
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeRecipient: protocolFeeRecipient,
+            feeCalculator: address(0),
             authorizeCondition: address(0),
             authorizeRecorder: recorderSlot == 0 ? address(maliciousRecorder) : address(0),
             chargeCondition: address(0),
@@ -80,8 +80,8 @@ contract ReentrancyAttackTest is Test {
             preApprovalExpiry: uint48(block.timestamp + 1 days),
             authorizationExpiry: uint48(block.timestamp + 7 days),
             refundExpiry: uint48(block.timestamp + 30 days),
-            minFeeBps: uint16(MAX_TOTAL_FEE_RATE),
-            maxFeeBps: uint16(MAX_TOTAL_FEE_RATE),
+            minFeeBps: 0,
+            maxFeeBps: 0,
             feeReceiver: _operator,
             salt: uint256(keccak256(abi.encodePacked(_operator, payer, receiver, block.timestamp)))
         });
@@ -99,7 +99,7 @@ contract ReentrancyAttackTest is Test {
         bytes32 hash = escrow.getHash(paymentInfo);
         (bool hasCollected, uint256 capturableAmount, uint256 refundableAmount) = escrow.paymentState(hash);
 
-        // ✅ FIXED: Malicious recorder attack is now BLOCKED
+        // FIXED: Malicious recorder attack is now BLOCKED
         // PaymentOperator now has nonReentrant guards on all functions
         // The recorder attempted to call release() but was blocked by reentrancy guard
         assertTrue(hasCollected);
@@ -122,8 +122,8 @@ contract ReentrancyAttackTest is Test {
         operator.release(paymentInfo, PAYMENT_AMOUNT);
         uint256 receiverBalanceAfter = token.balanceOf(receiver);
 
-        uint256 expectedFee = (PAYMENT_AMOUNT * MAX_TOTAL_FEE_RATE) / 10000;
-        uint256 expectedReceiverAmount = PAYMENT_AMOUNT - expectedFee;
+        // No fee calculators configured (both address(0)), so fee is 0
+        uint256 expectedReceiverAmount = PAYMENT_AMOUNT;
 
         assertEq(receiverBalanceAfter - receiverBalanceBefore, expectedReceiverAmount);
         assertEq(maliciousRecorder.reentrancyCount(), 1);

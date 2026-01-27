@@ -35,6 +35,7 @@ contract PaymentOperatorFactory is Ownable {
     /// @notice Configuration struct for deploying operators
     struct OperatorConfig {
         address feeRecipient;
+        address feeCalculator;
         address authorizeCondition;
         address authorizeRecorder;
         address chargeCondition;
@@ -49,30 +50,19 @@ contract PaymentOperatorFactory is Ownable {
 
     // Immutable configuration shared by all deployed operators
     address public immutable ESCROW;
-    address public immutable PROTOCOL_FEE_RECIPIENT;
-    uint256 public immutable MAX_TOTAL_FEE_RATE;
-    uint256 public immutable PROTOCOL_FEE_PERCENTAGE;
+    address public immutable PROTOCOL_FEE_CONFIG;
 
     // keccak256(config) => operator address
     mapping(bytes32 => address) public operators;
 
-    constructor(
-        address _escrow,
-        address _protocolFeeRecipient,
-        uint256 _maxTotalFeeRate,
-        uint256 _protocolFeePercentage,
-        address _owner
-    ) {
+    constructor(address _escrow, address _protocolFeeConfig, address _owner) {
         if (_escrow == address(0)) revert ZeroAddress();
-        if (_protocolFeeRecipient == address(0)) revert ZeroAddress();
+        if (_protocolFeeConfig == address(0)) revert ZeroAddress();
         if (_owner == address(0)) revert ZeroAddress();
-        if (_maxTotalFeeRate == 0) revert ZeroAmount();
         _initializeOwner(_owner);
 
         ESCROW = _escrow;
-        PROTOCOL_FEE_RECIPIENT = _protocolFeeRecipient;
-        MAX_TOTAL_FEE_RATE = _maxTotalFeeRate;
-        PROTOCOL_FEE_PERCENTAGE = _protocolFeePercentage;
+        PROTOCOL_FEE_CONFIG = _protocolFeeConfig;
     }
 
     /**
@@ -145,10 +135,9 @@ contract PaymentOperatorFactory is Ownable {
         address deployed = address(
             new PaymentOperator{salt: key}(
                 ESCROW,
-                PROTOCOL_FEE_RECIPIENT,
-                MAX_TOTAL_FEE_RATE,
-                PROTOCOL_FEE_PERCENTAGE,
+                PROTOCOL_FEE_CONFIG,
                 config.feeRecipient,
+                config.feeCalculator,
                 owner(),
                 conditions
             )
@@ -176,6 +165,7 @@ contract PaymentOperatorFactory is Ownable {
         return keccak256(
             abi.encodePacked(
                 config.feeRecipient,
+                config.feeCalculator,
                 config.authorizeCondition,
                 config.authorizeRecorder,
                 config.chargeCondition,
@@ -209,10 +199,9 @@ contract PaymentOperatorFactory is Ownable {
             type(PaymentOperator).creationCode,
             abi.encode(
                 ESCROW,
-                PROTOCOL_FEE_RECIPIENT,
-                MAX_TOTAL_FEE_RATE,
-                PROTOCOL_FEE_PERCENTAGE,
+                PROTOCOL_FEE_CONFIG,
                 config.feeRecipient,
+                config.feeCalculator,
                 owner(),
                 conditions
             )

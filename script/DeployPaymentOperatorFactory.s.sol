@@ -3,21 +3,24 @@ pragma solidity ^0.8.23;
 
 import {Script, console} from "forge-std/Script.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
+import {ProtocolFeeConfig} from "../src/fees/ProtocolFeeConfig.sol";
+import {StaticFeeCalculator} from "../src/fees/StaticFeeCalculator.sol";
 import {StaticAddressCondition} from "../src/conditions/StaticAddressCondition.sol";
 
 /**
  * @title DeployPaymentOperatorFactory
- * @notice Deploys the PaymentOperatorFactory contract and example StaticAddressCondition
+ * @notice Deploys ProtocolFeeConfig and PaymentOperatorFactory contracts
  * @dev This script deploys:
- *      1. PaymentOperatorFactory - Generic payment operator factory
- *      2. StaticAddressCondition (optional example) - Designated address condition
+ *      1. StaticFeeCalculator (optional) - Protocol fee calculator
+ *      2. ProtocolFeeConfig - Shared protocol fee configuration
+ *      3. PaymentOperatorFactory - Generic payment operator factory
+ *      4. StaticAddressCondition (optional example) - Designated address condition
  *
  *      Environment variables:
  *      - ESCROW_ADDRESS: Base Commerce Payments escrow contract address (required)
  *      - PROTOCOL_FEE_RECIPIENT: Address to receive protocol fees (required)
- *      - MAX_TOTAL_FEE_RATE: Maximum total fee rate in basis points (default: 5 = 0.05%)
- *      - PROTOCOL_FEE_PERCENTAGE: Protocol fee percentage 0-100 (default: 25 = 25%)
- *      - OWNER_ADDRESS: Owner of the factory contract (required)
+ *      - PROTOCOL_FEE_BPS: Protocol fee in basis points (default: 0 = no protocol fee)
+ *      - OWNER_ADDRESS: Owner of the factory and config contracts (required)
  *      - EXAMPLE_DESIGNATED_ADDRESS: Deploy example StaticAddressCondition with this address (optional)
  *
  *      Usage:
@@ -35,32 +38,40 @@ contract DeployPaymentOperatorFactory is Script {
         address owner = vm.envAddress("OWNER_ADDRESS");
 
         // Get fee configuration from environment variables or use defaults
-        uint256 maxTotalFeeRate = vm.envOr("MAX_TOTAL_FEE_RATE", uint256(5));
-        uint256 protocolFeePercentage = vm.envOr("PROTOCOL_FEE_PERCENTAGE", uint256(25));
+        uint256 protocolFeeBps = vm.envOr("PROTOCOL_FEE_BPS", uint256(0));
 
         // Optional: Example designated address for StaticAddressCondition
         address exampleDesignatedAddress = vm.envOr("EXAMPLE_DESIGNATED_ADDRESS", address(0));
 
         vm.startBroadcast();
 
-        console.log("=== Deploying PaymentOperatorFactory ===");
+        console.log("=== Deploying Modular Fee System ===");
         console.log("Escrow address:", escrow);
         console.log("Protocol fee recipient:", protocolFeeRecipient);
-        console.log("Max total fee rate (basis points):", maxTotalFeeRate);
-        console.log("Protocol fee percentage:", protocolFeePercentage);
+        console.log("Protocol fee (bps):", protocolFeeBps);
         console.log("Owner:", owner);
+
+        // Deploy protocol fee calculator (if > 0 bps)
+        address calculatorAddr = address(0);
+        if (protocolFeeBps > 0) {
+            StaticFeeCalculator calculator = new StaticFeeCalculator(protocolFeeBps);
+            calculatorAddr = address(calculator);
+            console.log("StaticFeeCalculator:", calculatorAddr);
+        }
+
+        // Deploy ProtocolFeeConfig
+        ProtocolFeeConfig protocolFeeConfig = new ProtocolFeeConfig(calculatorAddr, protocolFeeRecipient, owner);
+        console.log("ProtocolFeeConfig:", address(protocolFeeConfig));
 
         // Deploy PaymentOperatorFactory
         PaymentOperatorFactory factory =
-            new PaymentOperatorFactory(escrow, protocolFeeRecipient, maxTotalFeeRate, protocolFeePercentage, owner);
+            new PaymentOperatorFactory(escrow, address(protocolFeeConfig), owner);
 
         console.log("\n=== Deployment Summary ===");
         console.log("PaymentOperatorFactory:", address(factory));
         console.log("Owner:", factory.owner());
         console.log("Escrow:", factory.ESCROW());
-        console.log("Protocol fee recipient:", factory.PROTOCOL_FEE_RECIPIENT());
-        console.log("Max total fee rate:", factory.MAX_TOTAL_FEE_RATE());
-        console.log("Protocol fee percentage:", factory.PROTOCOL_FEE_PERCENTAGE());
+        console.log("ProtocolFeeConfig:", factory.PROTOCOL_FEE_CONFIG());
 
         // Deploy example StaticAddressCondition if requested
         if (exampleDesignatedAddress != address(0)) {
@@ -75,11 +86,7 @@ contract DeployPaymentOperatorFactory is Script {
 
         console.log("\n=== Configuration ===");
         console.log("PAYMENT_OPERATOR_FACTORY_ADDRESS=", address(factory));
-        console.log("\nNote: Deploy StaticAddressCondition instances as needed for your use case:");
-        console.log("  - Marketplace: StaticAddressCondition(arbiterAddress)");
-        console.log("  - Subscriptions: StaticAddressCondition(serviceProviderAddress)");
-        console.log("  - DAO: StaticAddressCondition(daoMultisigAddress)");
-        console.log("  - Platform: StaticAddressCondition(platformTreasuryAddress)");
+        console.log("PROTOCOL_FEE_CONFIG_ADDRESS=", address(protocolFeeConfig));
 
         vm.stopBroadcast();
     }

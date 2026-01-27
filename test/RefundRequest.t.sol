@@ -5,6 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {RefundRequest} from "../src/requests/refund/RefundRequest.sol";
 import {PaymentOperator} from "../src/operator/arbitration/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
+import {ProtocolFeeConfig} from "../src/fees/ProtocolFeeConfig.sol";
 import {StaticAddressCondition} from "../src/conditions/StaticAddressCondition.sol";
 import {RequestStatus} from "../src/requests/types/Types.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
@@ -15,6 +16,7 @@ contract RefundRequestTest is Test {
     RefundRequest public refundRequest;
     PaymentOperator public operator;
     PaymentOperatorFactory public operatorFactory;
+    ProtocolFeeConfig public protocolFeeConfig;
     AuthCaptureEscrow public escrow;
     PreApprovalPaymentCollector public collector;
     MockERC20 public token;
@@ -26,8 +28,6 @@ contract RefundRequestTest is Test {
     address public designatedAddress;
     address public payer;
 
-    uint256 public constant MAX_TOTAL_FEE_RATE = 50;
-    uint256 public constant PROTOCOL_FEE_PERCENTAGE = 25;
     uint256 public constant INITIAL_BALANCE = 1000000 * 10 ** 18;
     uint256 public constant PAYMENT_AMOUNT = 1000 * 10 ** 18;
 
@@ -48,14 +48,18 @@ contract RefundRequestTest is Test {
         // Deploy designated address condition for refunds
         designatedAddressCondition = new StaticAddressCondition(designatedAddress);
 
+        // Deploy protocol fee config (calculator=address(0) means no fees)
+        protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
+
         // Deploy operator factory
         operatorFactory = new PaymentOperatorFactory(
-            address(escrow), protocolFeeRecipient, MAX_TOTAL_FEE_RATE, PROTOCOL_FEE_PERCENTAGE, owner
+            address(escrow), address(protocolFeeConfig), owner
         );
 
         // Deploy operator with designated address condition for refunds
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeRecipient: protocolFeeRecipient,
+            feeCalculator: address(0),
             authorizeCondition: address(0),
             authorizeRecorder: address(0),
             chargeCondition: address(0),
@@ -93,8 +97,8 @@ contract RefundRequestTest is Test {
             preApprovalExpiry: uint48(block.timestamp + 1 days),
             authorizationExpiry: uint48(block.timestamp + 7 days),
             refundExpiry: uint48(block.timestamp + 30 days),
-            minFeeBps: uint16(MAX_TOTAL_FEE_RATE),
-            maxFeeBps: uint16(MAX_TOTAL_FEE_RATE),
+            minFeeBps: uint16(0),
+            maxFeeBps: uint16(0),
             feeReceiver: address(operator),
             salt: 12345
         });

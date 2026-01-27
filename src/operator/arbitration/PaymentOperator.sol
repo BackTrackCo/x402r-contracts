@@ -8,16 +8,7 @@ import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.so
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PaymentOperatorAccess} from "./PaymentOperatorAccess.sol";
 import {ZeroAddress, ZeroAmount} from "../../types/Errors.sol";
-import {ZeroEscrow} from "../types/Errors.sol";
-import {
-    TotalFeeRateExceedsMax,
-    InvalidFeeBps,
-    InvalidFeeReceiver,
-    ETHTransferFailed,
-    ConditionNotMet,
-    TimelockNotElapsed,
-    NoPendingChange
-} from "../types/Errors.sol";
+import {ZeroEscrow, InvalidFeeReceiver, ETHTransferFailed, ConditionNotMet} from "../types/Errors.sol";
 import {IOperator} from "../types/IOperator.sol";
 import {ICondition} from "../../conditions/ICondition.sol";
 import {IRecorder} from "../../conditions/IRecorder.sol";
@@ -27,11 +18,10 @@ import {
     ChargeExecuted,
     ReleaseExecuted,
     RefundExecuted,
-    ProtocolFeesEnabledUpdated,
-    FeesEnabledChangeQueued,
-    FeesEnabledChangeCancelled,
     FeesDistributed
 } from "../types/Events.sol";
+import {IFeeCalculator} from "../../fees/IFeeCalculator.sol";
+import {ProtocolFeeConfig} from "../../fees/ProtocolFeeConfig.sol";
 
 /**
  * @title PaymentOperator
@@ -55,6 +45,13 @@ import {
  *
  *      Flow for each action:
  *      User -> operator.action() -> [condition.check()?] -> escrow -> [recorder.record()?]
+ *
+ * FEE SYSTEM (Modular, Additive):
+ *      - Protocol fees come from shared ProtocolFeeConfig (timelocked swappable IFeeCalculator)
+ *      - Operator fees come from per-operator IFeeCalculator (set at deploy, immutable)
+ *      - totalFee = protocolFee + operatorFee (additive)
+ *      - Protocol fees tracked per-token in mapping for accurate distribution
+ *      - Fee recipients: protocolFeeRecipient on ProtocolFeeConfig, FEE_RECIPIENT on operator
  *
  * ARCHITECTURE: Implements IOperator. Users call operator methods directly:
  *        User -> operator.authorize() -> escrow.authorize()
@@ -89,11 +86,10 @@ contract PaymentOperator is Ownable, ReentrancyGuardTransient, PaymentOperatorAc
     address public immutable FEE_RECIPIENT;
     mapping(bytes32 => AuthCaptureEscrow.PaymentInfo) public paymentInfos;
 
-    // ============ Fee Configuration ============
-    uint256 public constant BASIS_POINTS = 10000;
-    uint256 public immutable MAX_TOTAL_FEE_RATE;
-    uint256 public immutable PROTOCOL_FEE_PERCENTAGE;
-    uint256 public immutable MAX_OPERATOR_FEE_RATE;
+    // ============ Fee Configuration (Modular) ============
+    IFeeCalculator public immutable FEE_CALCULATOR;
+    ProtocolFeeConfig public immutable PROTOCOL_FEE_CONFIG;
+    mapping(address token => uint256) public accumulatedProtocolFees;
 
     // ============ Condition Slots (before-action checks) ============
     // address(0) = always allow (default behavior)
@@ -111,42 +107,25 @@ contract PaymentOperator is Ownable, ReentrancyGuardTransient, PaymentOperatorAc
     IRecorder public immutable REFUND_IN_ESCROW_RECORDER;
     IRecorder public immutable REFUND_POST_ESCROW_RECORDER;
 
-    address public immutable protocolFeeRecipient;
-    bool public feesEnabled;
-
-    // ============ Timelock for Fee Changes ============
-    /// @notice Delay before fee changes take effect (24 hours)
-    uint256 public constant TIMELOCK_DELAY = 24 hours;
-    /// @notice Pending fee enabled state (only valid if pendingFeesEnabledTimestamp > 0)
-    bool public pendingFeesEnabled;
-    /// @notice Timestamp when pending fee change can be executed (0 = no pending change)
-    uint256 public pendingFeesEnabledTimestamp;
-
     constructor(
         address _escrow,
-        address _protocolFeeRecipient,
-        uint256 _maxTotalFeeRate,
-        uint256 _protocolFeePercentage,
+        address _protocolFeeConfig,
         address _feeRecipient,
+        address _feeCalculator,
         address _owner,
         ConditionConfig memory _conditions
     ) {
         if (_escrow == address(0)) revert ZeroEscrow();
         if (_feeRecipient == address(0)) revert ZeroAddress();
+        if (_protocolFeeConfig == address(0)) revert ZeroAddress();
+        if (_owner == address(0)) revert ZeroAddress();
+
         ESCROW = AuthCaptureEscrow(_escrow);
         FEE_RECIPIENT = _feeRecipient;
-        if (_protocolFeeRecipient == address(0)) revert ZeroAddress();
-        if (_owner == address(0)) revert ZeroAddress();
+        PROTOCOL_FEE_CONFIG = ProtocolFeeConfig(_protocolFeeConfig);
+        FEE_CALCULATOR = IFeeCalculator(_feeCalculator);
+
         _initializeOwner(_owner);
-        if (_maxTotalFeeRate == 0) revert ZeroAmount();
-        if (_protocolFeePercentage > 100) revert TotalFeeRateExceedsMax();
-
-        protocolFeeRecipient = _protocolFeeRecipient;
-        feesEnabled = false;
-
-        MAX_TOTAL_FEE_RATE = _maxTotalFeeRate;
-        PROTOCOL_FEE_PERCENTAGE = _protocolFeePercentage;
-        MAX_OPERATOR_FEE_RATE = (_maxTotalFeeRate * (100 - _protocolFeePercentage)) / 100;
 
         // Set condition slots (address(0) = always allow)
         AUTHORIZE_CONDITION = ICondition(_conditions.authorizeCondition);
@@ -163,39 +142,30 @@ contract PaymentOperator is Ownable, ReentrancyGuardTransient, PaymentOperatorAc
         REFUND_POST_ESCROW_RECORDER = IRecorder(_conditions.refundPostEscrowRecorder);
     }
 
-    // ============ Owner Functions (Timelocked) ============
+    // ============ Internal Fee Calculation ============
 
     /**
-     * @notice Queue a change to protocol fees enabled state
-     * @dev Change takes effect after TIMELOCK_DELAY (24 hours)
-     * @param enabled New fees enabled state
+     * @notice Calculate total fee (protocol + operator) for a payment action
+     * @param paymentInfo The payment info struct
+     * @param amount The payment amount
+     * @return totalFeeBps Combined fee in basis points
+     * @return protocolFeeAmount Protocol fee in token units (for tracking)
      */
-    function queueFeesEnabled(bool enabled) external onlyOwner {
-        pendingFeesEnabled = enabled;
-        pendingFeesEnabledTimestamp = block.timestamp + TIMELOCK_DELAY;
-        emit FeesEnabledChangeQueued(enabled, pendingFeesEnabledTimestamp);
-    }
+    function _calculateFees(
+        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
+        uint256 amount
+    ) internal view returns (uint16 totalFeeBps, uint256 protocolFeeAmount) {
+        // Protocol fee from shared config (returns 0 if calculator is address(0))
+        uint256 protocolFeeBps = PROTOCOL_FEE_CONFIG.getProtocolFeeBps(paymentInfo, amount, msg.sender);
+        protocolFeeAmount = (amount * protocolFeeBps) / 10000;
 
-    /**
-     * @notice Execute a queued fee change after timelock delay
-     * @dev Reverts if no pending change or timelock not elapsed
-     */
-    function executeFeesEnabled() external onlyOwner {
-        if (pendingFeesEnabledTimestamp == 0) revert NoPendingChange();
-        if (block.timestamp < pendingFeesEnabledTimestamp) revert TimelockNotElapsed();
+        // Operator fee (from calculator, or 0 if no calculator)
+        uint256 operatorFeeBps;
+        if (address(FEE_CALCULATOR) != address(0)) {
+            operatorFeeBps = FEE_CALCULATOR.calculateFee(paymentInfo, amount, msg.sender);
+        }
 
-        feesEnabled = pendingFeesEnabled;
-        pendingFeesEnabledTimestamp = 0;
-        emit ProtocolFeesEnabledUpdated(feesEnabled);
-    }
-
-    /**
-     * @notice Cancel a pending fee change
-     */
-    function cancelFeesEnabled() external onlyOwner {
-        if (pendingFeesEnabledTimestamp == 0) revert NoPendingChange();
-        pendingFeesEnabledTimestamp = 0;
-        emit FeesEnabledChangeCancelled();
+        totalFeeBps = uint16(protocolFeeBps + operatorFeeBps);
     }
 
     // ============ Payment Functions ============
@@ -205,7 +175,6 @@ contract PaymentOperator is Ownable, ReentrancyGuardTransient, PaymentOperatorAc
      * @dev Checks AUTHORIZE_CONDITION, performs authorization, then calls AUTHORIZE_RECORDER
      * @param paymentInfo PaymentInfo struct with required values:
      *        - operator == address(this)
-     *        - minFeeBps == maxFeeBps == MAX_TOTAL_FEE_RATE
      *        - feeReceiver == address(this)
      *        authorizationExpiry can be set to any value (use type(uint48).max for no expiry)
      * @param amount Amount to authorize
@@ -217,7 +186,7 @@ contract PaymentOperator is Ownable, ReentrancyGuardTransient, PaymentOperatorAc
         uint256 amount,
         address tokenCollector,
         bytes calldata collectorData
-    ) external nonReentrant validOperator(paymentInfo) validFees(paymentInfo, MAX_TOTAL_FEE_RATE) {
+    ) external nonReentrant validOperator(paymentInfo) validFees(paymentInfo) {
         // ============ CHECKS ============
         // Check AUTHORIZE_CONDITION (address(0) = always allow)
         if (address(AUTHORIZE_CONDITION) != address(0)) {
@@ -250,7 +219,6 @@ contract PaymentOperator is Ownable, ReentrancyGuardTransient, PaymentOperatorAc
      *      Refunds are only possible via refundPostEscrow().
      * @param paymentInfo PaymentInfo struct with required values:
      *        - operator == address(this)
-     *        - minFeeBps == maxFeeBps == MAX_TOTAL_FEE_RATE
      *        - feeReceiver == address(this)
      * @param amount Amount to charge
      * @param tokenCollector Address of the token collector
@@ -261,7 +229,7 @@ contract PaymentOperator is Ownable, ReentrancyGuardTransient, PaymentOperatorAc
         uint256 amount,
         address tokenCollector,
         bytes calldata collectorData
-    ) external nonReentrant validOperator(paymentInfo) validFees(paymentInfo, MAX_TOTAL_FEE_RATE) {
+    ) external nonReentrant validOperator(paymentInfo) validFees(paymentInfo) {
         // ============ CHECKS ============
         // Check CHARGE_CONDITION (address(0) = always allow)
         if (address(CHARGE_CONDITION) != address(0)) {
@@ -270,19 +238,20 @@ contract PaymentOperator is Ownable, ReentrancyGuardTransient, PaymentOperatorAc
             }
         }
 
-        uint16 feeBps = uint16(MAX_TOTAL_FEE_RATE);
+        (uint16 totalFeeBps, uint256 protocolFeeAmount) = _calculateFees(paymentInfo, amount);
         address feeReceiver = address(this);
 
         // ============ EFFECTS ============
         // Compute hash and update state before external call (CEI pattern)
         bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
         paymentInfos[paymentInfoHash] = paymentInfo;
+        accumulatedProtocolFees[paymentInfo.token] += protocolFeeAmount;
 
         // Emit event before external calls (CEI pattern)
         emit ChargeExecuted(paymentInfoHash, paymentInfo.payer, paymentInfo.receiver, amount, block.timestamp);
 
         // ============ INTERACTIONS ============
-        ESCROW.charge(paymentInfo, amount, tokenCollector, collectorData, feeBps, feeReceiver);
+        ESCROW.charge(paymentInfo, amount, tokenCollector, collectorData, totalFeeBps, feeReceiver);
 
         // Call CHARGE_RECORDER (address(0) = no-op)
         if (address(CHARGE_RECORDER) != address(0)) {
@@ -309,16 +278,18 @@ contract PaymentOperator is Ownable, ReentrancyGuardTransient, PaymentOperatorAc
             }
         }
 
-        uint16 feeBps = uint16(MAX_TOTAL_FEE_RATE);
+        (uint16 totalFeeBps, uint256 protocolFeeAmount) = _calculateFees(paymentInfo, amount);
         address feeReceiver = address(this);
 
         // ============ EFFECTS ============
+        accumulatedProtocolFees[paymentInfo.token] += protocolFeeAmount;
+
         // Emit event before external calls (CEI pattern)
         emit ReleaseExecuted(paymentInfo, amount, block.timestamp);
 
         // ============ INTERACTIONS ============
         // Forward to escrow - escrow validates payment exists
-        ESCROW.capture(paymentInfo, amount, feeBps, feeReceiver);
+        ESCROW.capture(paymentInfo, amount, totalFeeBps, feeReceiver);
 
         // Call RELEASE_RECORDER (address(0) = no-op)
         if (address(RELEASE_RECORDER) != address(0)) {
@@ -400,7 +371,8 @@ contract PaymentOperator is Ownable, ReentrancyGuardTransient, PaymentOperatorAc
     }
 
     /**
-     * @notice Distribute collected fees to protocol and arbiter
+     * @notice Distribute collected fees to protocol and operator
+     * @dev Protocol gets tracked accumulated amount, operator gets remainder
      * @param token The token address to distribute fees for
      */
     function distributeFees(address token) external {
@@ -409,27 +381,26 @@ contract PaymentOperator is Ownable, ReentrancyGuardTransient, PaymentOperatorAc
         uint256 balance = SafeTransferLib.balanceOf(token, address(this));
         if (balance == 0) return;
 
-        uint256 protocolAmount = 0;
-        uint256 operatorAmount = 0;
-
-        if (feesEnabled) {
-            protocolAmount = (balance * PROTOCOL_FEE_PERCENTAGE) / 100;
-            operatorAmount = balance - protocolAmount;
-        } else {
-            operatorAmount = balance;
+        uint256 protocolShare = accumulatedProtocolFees[token];
+        // Cap protocol share to balance (safety: rounding could theoretically exceed)
+        if (protocolShare > balance) {
+            protocolShare = balance;
         }
+        uint256 operatorShare = balance - protocolShare;
 
         // ============ EFFECTS ============
+        accumulatedProtocolFees[token] = 0;
+
         // Emit event before external calls (CEI pattern)
-        emit FeesDistributed(token, protocolAmount, operatorAmount);
+        emit FeesDistributed(token, protocolShare, operatorShare);
 
         // ============ INTERACTIONS ============
-        if (protocolAmount > 0) {
-            SafeTransferLib.safeTransfer(token, protocolFeeRecipient, protocolAmount);
+        if (protocolShare > 0) {
+            SafeTransferLib.safeTransfer(token, PROTOCOL_FEE_CONFIG.getProtocolFeeRecipient(), protocolShare);
         }
 
-        if (operatorAmount > 0) {
-            SafeTransferLib.safeTransfer(token, FEE_RECIPIENT, operatorAmount);
+        if (operatorShare > 0) {
+            SafeTransferLib.safeTransfer(token, FEE_RECIPIENT, operatorShare);
         }
     }
 

@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {InvalidOperator} from "../../types/Errors.sol";
-import {InvalidFeeBps, InvalidFeeReceiver} from "../types/Errors.sol";
+import {InvalidFeeReceiver} from "../types/Errors.sol";
 
 /**
  * @title PaymentOperatorAccess
@@ -24,15 +24,11 @@ abstract contract PaymentOperatorAccess {
     }
 
     /**
-     * @notice Modifier to validate fee configuration in PaymentInfo
-     * @dev Ensures minFeeBps == maxFeeBps == maxTotalFeeRate and feeReceiver == address(this)
+     * @notice Modifier to validate fee receiver is this contract
+     * @dev Ensures feeReceiver == address(this) so fees accumulate on the operator
      * @param paymentInfo The PaymentInfo struct to validate
-     * @param maxTotalFeeRate The expected fee rate for both minFeeBps and maxFeeBps
      */
-    modifier validFees(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 maxTotalFeeRate) {
-        if (paymentInfo.minFeeBps != maxTotalFeeRate || paymentInfo.maxFeeBps != maxTotalFeeRate) {
-            revert InvalidFeeBps();
-        }
+    modifier validFees(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
         if (paymentInfo.feeReceiver != address(this)) revert InvalidFeeReceiver();
         _;
     }
