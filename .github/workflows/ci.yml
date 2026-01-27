@@ -67,7 +67,7 @@ jobs:
 
       - name: Check coverage threshold
         run: |
-          # Calculate coverage for src/commerce-payments files only
+          # Calculate coverage for src/ files only
           COVERED=0
           TOTAL=0
 
@@ -80,7 +80,7 @@ jobs:
               COVERED=$((COVERED + C))
               TOTAL=$((TOTAL + T))
             fi
-          done < <(grep "src/commerce-payments" coverage-output.txt)
+          done < <(grep "src/" coverage-output.txt)
 
           if [ "$TOTAL" -eq 0 ]; then
             echo "Error: No coverage data found for src/"
