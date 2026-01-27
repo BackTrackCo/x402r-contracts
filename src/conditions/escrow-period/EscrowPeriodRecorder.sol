@@ -3,7 +3,7 @@
 pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {IRecorder} from "../IRecorder.sol";
+import {AuthorizationTimeRecorder, IArbitrationOperator} from "../AuthorizationTimeRecorder.sol";
 import {IFreezePolicy} from "./freeze-policy/IFreezePolicy.sol";
 import {
     InvalidEscrowPeriod,
@@ -15,22 +15,19 @@ import {
     UnauthorizedFreeze,
     Unauthorized
 } from "./types/Errors.sol";
-import {AuthorizationTimeRecorded, PaymentFrozen, PaymentUnfrozen} from "./types/Events.sol";
-
-/// @notice Forward declaration for reading escrow from operator
-interface IArbitrationOperator {
-    function ESCROW() external view returns (AuthCaptureEscrow);
-}
+import {PaymentFrozen, PaymentUnfrozen} from "./types/Events.sol";
 
 /**
  * @title EscrowPeriodRecorder
- * @notice Records authorization times for payments and manages freeze/unfreeze state.
- *         Implements IRecorder to be called after authorization.
+ * @notice Extends AuthorizationTimeRecorder with escrow period enforcement and freeze/unfreeze state.
  *         Provides state that EscrowPeriodCondition reads from.
  *
- * @dev This contract owns the state:
- *      - authorizationTimes: when each payment was authorized
- *      - frozen: whether each payment is frozen
+ * @dev Inherits from AuthorizationTimeRecorder for timestamp recording.
+ *      Adds freeze state management on top:
+ *      - frozenUntil: when each payment's freeze expires
+ *      - freeze()/unfreeze(): manage freeze state
+ *      - ESCROW_PERIOD: duration constraint
+ *      - FREEZE_POLICY: who can freeze/unfreeze
  *
  * TRUST ASSUMPTIONS:
  *      - FREEZE_POLICY: The freeze policy contract is trusted to correctly determine who can
@@ -57,16 +54,12 @@ interface IArbitrationOperator {
  *      eliminate the risk. There is no on-chain solution that prevents races at deadline
  *      boundaries without adding commit-reveal complexity.
  */
-contract EscrowPeriodRecorder is IRecorder {
+contract EscrowPeriodRecorder is AuthorizationTimeRecorder {
     /// @notice Duration of the escrow period in seconds
     uint256 public immutable ESCROW_PERIOD;
 
     /// @notice Optional freeze policy contract (address(0) = no freeze support)
     IFreezePolicy public immutable FREEZE_POLICY;
-
-    /// @notice Stores the authorization time for each payment
-    /// @dev Key: paymentInfoHash
-    mapping(bytes32 => uint256) public authorizationTimes;
 
     /// @notice Tracks when freeze expires for each payment (0 = not frozen)
     /// @dev Key: paymentInfoHash, Value: timestamp when freeze expires
@@ -78,23 +71,7 @@ contract EscrowPeriodRecorder is IRecorder {
         FREEZE_POLICY = IFreezePolicy(_freezePolicy);
     }
 
-    // ============ IRecorder Implementation ============
-
-    /**
-     * @notice Record authorization time for a payment
-     * @dev Called by the operator after a payment is authorized
-     * @param paymentInfo PaymentInfo struct
-     */
-    function record(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address) external override {
-        // Verify caller is the operator
-        if (msg.sender != paymentInfo.operator) revert Unauthorized();
-
-        AuthCaptureEscrow escrow = IArbitrationOperator(paymentInfo.operator).ESCROW();
-        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
-        authorizationTimes[paymentInfoHash] = block.timestamp;
-
-        emit AuthorizationTimeRecorded(paymentInfo, block.timestamp);
-    }
+    // Note: record() inherited from AuthorizationTimeRecorder
 
     // ============ Freeze Functions ============
 
@@ -111,8 +88,7 @@ contract EscrowPeriodRecorder is IRecorder {
         (bool allowed, uint256 freezeDuration) = FREEZE_POLICY.canFreeze(paymentInfo, msg.sender);
         if (!allowed) revert UnauthorizedFreeze();
 
-        AuthCaptureEscrow escrow = IArbitrationOperator(paymentInfo.operator).ESCROW();
-        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+        bytes32 paymentInfoHash = _getPaymentHash(paymentInfo);
 
         // Check escrow period hasn't expired
         uint256 authTime = authorizationTimes[paymentInfoHash];
@@ -148,8 +124,7 @@ contract EscrowPeriodRecorder is IRecorder {
         // Check authorization via policy
         if (!FREEZE_POLICY.canUnfreeze(paymentInfo, msg.sender)) revert UnauthorizedFreeze();
 
-        AuthCaptureEscrow escrow = IArbitrationOperator(paymentInfo.operator).ESCROW();
-        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+        bytes32 paymentInfoHash = _getPaymentHash(paymentInfo);
 
         if (frozenUntil[paymentInfoHash] <= block.timestamp) revert NotFrozen();
 
@@ -160,15 +135,7 @@ contract EscrowPeriodRecorder is IRecorder {
 
     // ============ View Functions ============
 
-    /**
-     * @notice Get the authorization time for a payment
-     * @param paymentInfo PaymentInfo struct
-     * @return The timestamp when the payment was authorized (0 if not authorized through this recorder)
-     */
-    function getAuthorizationTime(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external view returns (uint256) {
-        AuthCaptureEscrow escrow = IArbitrationOperator(paymentInfo.operator).ESCROW();
-        return authorizationTimes[escrow.getHash(paymentInfo)];
-    }
+    // Note: getAuthorizationTime() inherited from AuthorizationTimeRecorder
 
     /**
      * @notice Check if a payment is currently frozen (not expired)
@@ -176,8 +143,7 @@ contract EscrowPeriodRecorder is IRecorder {
      * @return True if the payment is frozen and freeze hasn't expired
      */
     function isFrozen(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external view returns (bool) {
-        AuthCaptureEscrow escrow = IArbitrationOperator(paymentInfo.operator).ESCROW();
-        return frozenUntil[escrow.getHash(paymentInfo)] > block.timestamp;
+        return frozenUntil[_getPaymentHash(paymentInfo)] > block.timestamp;
     }
 
     /**
@@ -191,8 +157,7 @@ contract EscrowPeriodRecorder is IRecorder {
         view
         returns (bool passed, uint256 authTime)
     {
-        AuthCaptureEscrow escrow = IArbitrationOperator(paymentInfo.operator).ESCROW();
-        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+        bytes32 paymentInfoHash = _getPaymentHash(paymentInfo);
         authTime = authorizationTimes[paymentInfoHash];
         if (authTime == 0) {
             return (false, 0);
