@@ -231,17 +231,17 @@ Typical gas costs for common operations (measured with via-IR optimization and r
 
 ### Core Operations
 
-| Operation | Gas Cost | Previous | Savings | Notes |
-|-----------|----------|----------|---------|-------|
-| **Payment Authorization (First)** | ~404,000 | ~473,000 | **-69k (-14.6%)** | First payment to/from address (new storage slots) |
-| **Payment Authorization (Subsequent)** | ~287,000 | ~473,000 | **-186k (-39.3%)** | Additional payments (existing storage) |
+| Operation | Gas Cost | With Indexing | Notes |
+|-----------|----------|---------------|-------|
+| **Payment Authorization (First)** | ~404,000 | ~459,000 | First payment to/from address (new storage slots) |
+| **Payment Authorization (Subsequent)** | ~287,000 | ~340,000 | Additional payments (existing storage) |
 | **Payment Release** | ~552,000 | ~552,000 | 0 | Release after escrow period with fee distribution |
 | **Refund Request** | ~591,000 | ~591,000 | 0 | Create refund request with tracking |
 | **Refund Approval** | ~677,000 | ~677,000 | 0 | Complete refund workflow (includes escrow call) |
 | **Cancel Refund** | ~617,000 | ~617,000 | 0 | Cancel pending refund request |
 | **Freeze Payment** | ~486,000 | ~486,000 | 0 | Payer freezes payment during escrow |
 
-**Implementation**: Payment indexing is now **optional** via `PaymentIndexRecorder`. Deploy with indexing for on-chain queries (mapping + counter pattern: 22k gas first write, 5k subsequent) or skip for gas savings when using external indexers (The Graph).
+**Implementation**: Payment indexing is now **optional** via `PaymentIndexRecorder`. Deploy with indexing for on-chain queries (stores hash + amount + timestamp: 44k gas first write, 10k subsequent) or skip for gas savings when using external indexers (The Graph).
 
 ### Condition Evaluation
 
@@ -305,11 +305,14 @@ Estimated transaction costs on different networks (at typical gas prices):
 
 | Query Type | Gas Cost | Notes |
 |------------|----------|-------|
-| **Get 10 payments** | ~10,000 | Paginated query (offset + count) |
-| **Get 50 payments** | ~32,000 | Scales linearly with count |
-| **Get single payment** | ~1,100 | Direct index access |
+| **Get 10 payments** | ~20,000 | Paginated query (hash + amount + timestamp) |
+| **Get 50 payments** | ~82,000 | Scales linearly with count |
+| **Get single payment** | ~2,000 | Direct index access |
 
-**API**: `PaymentIndexRecorder.getPayerPayments(address, offset, count)` returns paginated results
+**API**: `PaymentIndexRecorder.getPayerPayments(address, offset, count)` returns array of `PaymentRecord` structs with:
+- `paymentHash`: Payment hash for escrow lookup
+- `amount`: Amount authorized/charged
+- `timestamp`: Block timestamp when recorded
 - **With indexing**: On-chain queries available, no external indexer needed
 - **Without indexing**: Use external indexer (The Graph) for lower gas costs
 - Fully on-chain, decentralized when enabled
@@ -435,12 +438,17 @@ PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.Ope
     // ...
 });
 
-// Query payments (requires indexing enabled)
-(bytes32[] memory payments, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 10);
+// Query payments with full context (requires indexing enabled)
+(PaymentIndexRecorder.PaymentRecord[] memory records, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 10);
+// records[0].paymentHash - Payment hash for escrow lookup
+// records[0].amount - Amount authorized/charged
+// records[0].timestamp - When payment was recorded
 ```
 
 **Benefits:**
-- **Gas Savings**: ~10k per authorization without indexing
+- **Rich Data**: Stores hash, amount, and timestamp in a single query
+- **No Extra Lookups**: Get payment context without querying escrow
+- **Gas Savings**: ~55k per authorization when indexing disabled
 - **Flexibility**: Deploy with or without on-chain queries
 - **Composability**: Combine with other recorders via `RecorderCombinator`
 

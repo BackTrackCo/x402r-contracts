@@ -87,8 +87,10 @@ contract PaymentIndexingTest is Test {
         assertEq(indexRecorder.receiverPaymentCount(receiver), 1, "Should have 1 payment");
 
         // Get payment by index
-        bytes32 hash = indexRecorder.getPayerPayment(payer, 0);
-        assertTrue(hash != bytes32(0), "Hash should not be zero");
+        PaymentIndexRecorder.PaymentRecord memory record = indexRecorder.getPayerPayment(payer, 0);
+        assertTrue(record.paymentHash != bytes32(0), "Hash should not be zero");
+        assertEq(record.amount, PAYMENT_AMOUNT, "Amount should match");
+        assertGt(record.timestamp, 0, "Timestamp should be set");
     }
 
     /**
@@ -109,8 +111,10 @@ contract PaymentIndexingTest is Test {
 
         // Verify each payment
         for (uint256 i = 0; i < numPayments; i++) {
-            bytes32 hash = indexRecorder.getPayerPayment(payer, i);
-            assertEq(hash, expectedHashes[i], "Hash should match");
+            PaymentIndexRecorder.PaymentRecord memory record = indexRecorder.getPayerPayment(payer, i);
+            assertEq(record.paymentHash, expectedHashes[i], "Hash should match");
+            assertEq(record.amount, PAYMENT_AMOUNT, "Amount should match");
+            assertGt(record.timestamp, 0, "Timestamp should be set");
         }
     }
 
@@ -126,13 +130,13 @@ contract PaymentIndexingTest is Test {
         }
 
         // Get first 5 payments
-        (bytes32[] memory payments, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 5);
+        (PaymentIndexRecorder.PaymentRecord[] memory payments, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 5);
 
         assertEq(total, 10, "Total should be 10");
         assertEq(payments.length, 5, "Should return 5 payments");
 
         // Get next 5 payments
-        (bytes32[] memory payments2, uint256 total2) = indexRecorder.getPayerPayments(payer, 5, 5);
+        (PaymentIndexRecorder.PaymentRecord[] memory payments2, uint256 total2) = indexRecorder.getPayerPayments(payer, 5, 5);
 
         assertEq(total2, 10, "Total should still be 10");
         assertEq(payments2.length, 5, "Should return 5 payments");
@@ -140,7 +144,7 @@ contract PaymentIndexingTest is Test {
         // Verify no overlap
         for (uint256 i = 0; i < 5; i++) {
             for (uint256 j = 0; j < 5; j++) {
-                assertTrue(payments[i] != payments2[j], "Should have no overlap");
+                assertTrue(payments[i].paymentHash != payments2[j].paymentHash, "Should have no overlap");
             }
         }
     }
@@ -155,7 +159,7 @@ contract PaymentIndexingTest is Test {
         }
 
         // Request 10 payments (only 3 exist)
-        (bytes32[] memory payments, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 10);
+        (PaymentIndexRecorder.PaymentRecord[] memory payments, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 10);
 
         assertEq(total, 3, "Total should be 3");
         assertEq(payments.length, 3, "Should return only 3 payments");
@@ -171,7 +175,7 @@ contract PaymentIndexingTest is Test {
         }
 
         // Request from offset 10 (beyond total of 5)
-        (bytes32[] memory payments, uint256 total) = indexRecorder.getPayerPayments(payer, 10, 5);
+        (PaymentIndexRecorder.PaymentRecord[] memory payments, uint256 total) = indexRecorder.getPayerPayments(payer, 10, 5);
 
         assertEq(total, 5, "Total should still be 5");
         assertEq(payments.length, 0, "Should return empty array");
@@ -189,12 +193,12 @@ contract PaymentIndexingTest is Test {
         _authorizePayment(payer, receiver2, PAYMENT_AMOUNT, 3);
 
         // Check receiver1 has 2 payments
-        (bytes32[] memory payments, uint256 total) = indexRecorder.getReceiverPayments(receiver, 0, 10);
+        (PaymentIndexRecorder.PaymentRecord[] memory payments, uint256 total) = indexRecorder.getReceiverPayments(receiver, 0, 10);
         assertEq(total, 2, "Receiver should have 2 payments");
         assertEq(payments.length, 2, "Should return 2 payments");
 
         // Check receiver2 has 1 payment
-        (bytes32[] memory payments2, uint256 total2) = indexRecorder.getReceiverPayments(receiver2, 0, 10);
+        (PaymentIndexRecorder.PaymentRecord[] memory payments2, uint256 total2) = indexRecorder.getReceiverPayments(receiver2, 0, 10);
         assertEq(total2, 1, "Receiver2 should have 1 payment");
         assertEq(payments2.length, 1, "Should return 1 payment");
     }
@@ -312,7 +316,7 @@ contract PaymentIndexingTest is Test {
      * @notice Test pagination with zero payments
      */
     function test_Pagination_ZeroPayments() public {
-        (bytes32[] memory payments, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 10);
+        (PaymentIndexRecorder.PaymentRecord[] memory payments, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 10);
 
         assertEq(total, 0, "Total should be 0");
         assertEq(payments.length, 0, "Should return empty array");
@@ -324,7 +328,7 @@ contract PaymentIndexingTest is Test {
     function test_Pagination_ZeroCount() public {
         _authorizePayment(payer, receiver, PAYMENT_AMOUNT, 1);
 
-        (bytes32[] memory payments, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 0);
+        (PaymentIndexRecorder.PaymentRecord[] memory payments, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 0);
 
         assertEq(total, 1, "Total should be 1");
         assertEq(payments.length, 0, "Should return empty array");
@@ -349,7 +353,7 @@ contract PaymentIndexingTest is Test {
         uint256 totalRetrieved = 0;
 
         for (uint256 offset = 0; offset < numPayments; offset += pageSize) {
-            (bytes32[] memory payments,) = indexRecorder.getPayerPayments(payer, offset, pageSize);
+            (PaymentIndexRecorder.PaymentRecord[] memory payments,) = indexRecorder.getPayerPayments(payer, offset, pageSize);
             totalRetrieved += payments.length;
         }
 
