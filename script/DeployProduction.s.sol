@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
-import {PaymentOperator} from "../src/operator/arbitration/PaymentOperator.sol";
+import {PaymentOperator} from "../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
 import {ProtocolFeeConfig} from "../src/fees/ProtocolFeeConfig.sol";
 import {StaticFeeCalculator} from "../src/fees/StaticFeeCalculator.sol";
@@ -76,9 +76,7 @@ contract DeployProduction is Script {
         console.log("ProtocolFeeConfig:", address(protocolFeeConfig));
 
         // Deploy factory
-        PaymentOperatorFactory factory = new PaymentOperatorFactory(
-            escrow, address(protocolFeeConfig), msg.sender
-        );
+        PaymentOperatorFactory factory = new PaymentOperatorFactory(escrow, address(protocolFeeConfig));
 
         console.log("Factory deployed:", address(factory));
 
@@ -102,8 +100,7 @@ contract DeployProduction is Script {
 
         console.log("PaymentOperator deployed:", address(operator));
 
-        // Transfer ownership to multisig
-        factory.transferOwnership(owner);
+        // Transfer ProtocolFeeConfig ownership to multisig
         protocolFeeConfig.transferOwnership(owner);
 
         vm.stopBroadcast();
@@ -114,10 +111,9 @@ contract DeployProduction is Script {
 
         console.log("\n=== DEPLOYMENT SUCCESSFUL ===");
         console.log("\nNext Steps:");
-        console.log("1. Complete ownership transfer (2-step):");
+        console.log("1. Complete ProtocolFeeConfig ownership transfer (2-step):");
         console.log("   Call requestOwnershipHandover() from multisig, then completeOwnershipHandover()");
         console.log("2. Verify contracts on block explorer");
-        console.log("3. Update DEPLOYMENT_CHECKLIST.md");
     }
 
     function _validateOwnerIsMultisig(address owner) internal view {
@@ -157,11 +153,7 @@ contract DeployProduction is Script {
         return false;
     }
 
-    function _validateConfiguration(
-        address escrow,
-        address protocolFeeRecipient,
-        address feeRecipient
-    ) internal pure {
+    function _validateConfiguration(address escrow, address protocolFeeRecipient, address feeRecipient) internal pure {
         require(escrow != address(0), "Invalid escrow address");
         require(protocolFeeRecipient != address(0), "Invalid protocol fee recipient");
         require(feeRecipient != address(0), "Invalid fee recipient");

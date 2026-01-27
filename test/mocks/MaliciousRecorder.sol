@@ -2,8 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {IRecorder} from "../../src/conditions/IRecorder.sol";
-import {IOperator} from "../../src/operator/types/IOperator.sol";
-import {PaymentOperator} from "../../src/operator/arbitration/PaymentOperator.sol";
+import {PaymentOperator} from "../../src/operator/payment/PaymentOperator.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
 /**
@@ -21,7 +20,7 @@ contract MaliciousRecorder is IRecorder {
     }
 
     AttackType public attackType;
-    IOperator public targetOperator;
+    PaymentOperator public targetOperator;
     AuthCaptureEscrow.PaymentInfo public storedPaymentInfo;
     uint256 public storedAmount;
     uint256 public reentrancyCount;
@@ -49,7 +48,7 @@ contract MaliciousRecorder is IRecorder {
         // Store for potential reuse
         storedPaymentInfo = paymentInfo;
         storedAmount = amount;
-        targetOperator = IOperator(msg.sender);
+        targetOperator = PaymentOperator(msg.sender);
 
         // Increment counter
         reentrancyCount++;

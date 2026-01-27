@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
-import {PaymentOperator} from "../../src/operator/arbitration/PaymentOperator.sol";
+import {PaymentOperator} from "../../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../../src/operator/PaymentOperatorFactory.sol";
 import {EscrowPeriodConditionFactory} from "../../src/conditions/escrow-period/EscrowPeriodConditionFactory.sol";
 import {EscrowPeriodCondition} from "../../src/conditions/escrow-period/EscrowPeriodCondition.sol";
@@ -37,8 +37,7 @@ contract EscrowPeriodConditionInvariants is Test {
 
         ProtocolFeeConfig protocolFeeConfig = new ProtocolFeeConfig(address(0), address(this), address(this));
 
-        PaymentOperatorFactory operatorFactory =
-            new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), address(this));
+        PaymentOperatorFactory operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeRecipient: address(this),

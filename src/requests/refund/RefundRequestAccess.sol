@@ -3,7 +3,7 @@
 pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {IOperator} from "../../operator/types/IOperator.sol";
+import {PaymentOperator} from "../../operator/payment/PaymentOperator.sol";
 import {NotReceiver, NotPayer, InvalidOperator} from "../../types/Errors.sol";
 
 /**
@@ -43,8 +43,8 @@ abstract contract RefundRequestAccess {
      */
     modifier onlyAuthorizedForRefundStatus(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
         // Get escrow state to determine if in escrow or post-escrow
-        IOperator operator = IOperator(paymentInfo.operator);
-        AuthCaptureEscrow escrow = AuthCaptureEscrow(operator.ESCROW());
+        PaymentOperator operator = PaymentOperator(paymentInfo.operator);
+        AuthCaptureEscrow escrow = operator.ESCROW();
         (, uint120 capturableAmount,) = escrow.paymentState(escrow.getHash(paymentInfo));
 
         // In escrow: receiver can update (operator's conditions will handle additional auth like arbiter)

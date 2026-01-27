@@ -3,7 +3,7 @@
 pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {PaymentOperator} from "../../operator/arbitration/PaymentOperator.sol";
+import {PaymentOperator} from "../../operator/payment/PaymentOperator.sol";
 import {RefundRequestAccess} from "./RefundRequestAccess.sol";
 import {RequestStatus} from "../types/Types.sol";
 import {

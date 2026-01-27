@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {Test, console} from "forge-std/Test.sol";
-import {PaymentOperator} from "../src/operator/arbitration/PaymentOperator.sol";
+import {PaymentOperator} from "../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
@@ -60,7 +60,7 @@ contract ArithmeticEdgeCasesTest is Test {
         protocolFeeConfig = new ProtocolFeeConfig(address(protocolCalculator), protocolFeeRecipient, owner);
 
         // Deploy operator factory
-        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), owner);
+        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         // Deploy operator with operator fee calculator
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({

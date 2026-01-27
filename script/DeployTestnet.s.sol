@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
-import {PaymentOperator} from "../src/operator/arbitration/PaymentOperator.sol";
+import {PaymentOperator} from "../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
 import {ProtocolFeeConfig} from "../src/fees/ProtocolFeeConfig.sol";
 import {StaticFeeCalculator} from "../src/fees/StaticFeeCalculator.sol";
@@ -63,8 +63,7 @@ contract DeployTestnet is Script {
         console.log("ProtocolFeeConfig:", address(protocolFeeConfig));
 
         // Deploy factory
-        PaymentOperatorFactory factory =
-            new PaymentOperatorFactory(escrow, address(protocolFeeConfig), owner);
+        PaymentOperatorFactory factory = new PaymentOperatorFactory(escrow, address(protocolFeeConfig));
 
         console.log("Factory deployed:", address(factory));
 

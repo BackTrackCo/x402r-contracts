@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {Test, console} from "forge-std/Test.sol";
-import {PaymentOperator} from "../src/operator/arbitration/PaymentOperator.sol";
+import {PaymentOperator} from "../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
 import {PaymentIndexRecorder} from "../src/conditions/PaymentIndexRecorder.sol";
 import {ProtocolFeeConfig} from "../src/fees/ProtocolFeeConfig.sol";
@@ -46,9 +46,7 @@ contract PaymentIndexingTest is Test {
         protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
 
         // Deploy operator factory
-        operatorFactory = new PaymentOperatorFactory(
-            address(escrow), address(protocolFeeConfig), owner
-        );
+        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         // Deploy payment index recorder
         indexRecorder = new PaymentIndexRecorder(address(escrow));

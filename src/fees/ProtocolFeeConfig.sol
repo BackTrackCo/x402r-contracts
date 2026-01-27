@@ -52,11 +52,11 @@ contract ProtocolFeeConfig is Ownable {
 
     /// @notice Get protocol fee in basis points for a payment action
     /// @dev Returns 0 if calculator is address(0)
-    function getProtocolFeeBps(
-        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
-        uint256 amount,
-        address caller
-    ) external view returns (uint256) {
+    function getProtocolFeeBps(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount, address caller)
+        external
+        view
+        returns (uint256)
+    {
         if (address(calculator) == address(0)) return 0;
         return calculator.calculateFee(paymentInfo, amount, caller);
     }

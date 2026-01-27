@@ -2,14 +2,12 @@
 // CONTRACTS UNAUDITED: USE AT YOUR OWN RISK
 pragma solidity ^0.8.28;
 
-import {Ownable} from "solady/auth/Ownable.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PaymentOperatorAccess} from "./PaymentOperatorAccess.sol";
 import {ZeroAddress, ZeroAmount} from "../../types/Errors.sol";
-import {ZeroEscrow, InvalidFeeReceiver, ETHTransferFailed, ConditionNotMet} from "../types/Errors.sol";
-import {IOperator} from "../types/IOperator.sol";
+import {ZeroEscrow, InvalidFeeReceiver, ConditionNotMet} from "../types/Errors.sol";
 import {ICondition} from "../../conditions/ICondition.sol";
 import {IRecorder} from "../../conditions/IRecorder.sol";
 import {PaymentState} from "../types/Types.sol";
@@ -53,20 +51,12 @@ import {ProtocolFeeConfig} from "../../fees/ProtocolFeeConfig.sol";
  *      - Protocol fees tracked per-token in mapping for accurate distribution
  *      - Fee recipients: protocolFeeRecipient on ProtocolFeeConfig, FEE_RECIPIENT on operator
  *
- * ARCHITECTURE: Implements IOperator. Users call operator methods directly:
+ * ARCHITECTURE: Users call operator methods directly:
  *        User -> operator.authorize() -> escrow.authorize()
  *        User -> operator.charge() -> escrow.charge()
  *        User -> operator.release() -> escrow.capture()
- *
- * OWNERSHIP: Uses Solady's Ownable with built-in 2-step transfer for safety:
- *        1. New owner calls requestOwnershipHandover()
- *        2. Current owner calls completeOwnershipHandover(newOwner) within 48 hours
- *        This prevents accidental transfers to wrong addresses.
- *
- * PRODUCTION REQUIREMENT: Owner MUST be a multisig (e.g., Gnosis Safe) in production.
- *        Single EOA ownership is only acceptable for testing/development.
  */
-contract PaymentOperator is Ownable, ReentrancyGuardTransient, PaymentOperatorAccess, IOperator {
+contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
     /// @notice Configuration struct for condition/recorder slots
     struct ConditionConfig {
         address authorizeCondition;
@@ -112,20 +102,16 @@ contract PaymentOperator is Ownable, ReentrancyGuardTransient, PaymentOperatorAc
         address _protocolFeeConfig,
         address _feeRecipient,
         address _feeCalculator,
-        address _owner,
         ConditionConfig memory _conditions
     ) {
         if (_escrow == address(0)) revert ZeroEscrow();
         if (_feeRecipient == address(0)) revert ZeroAddress();
         if (_protocolFeeConfig == address(0)) revert ZeroAddress();
-        if (_owner == address(0)) revert ZeroAddress();
 
         ESCROW = AuthCaptureEscrow(_escrow);
         FEE_RECIPIENT = _feeRecipient;
         PROTOCOL_FEE_CONFIG = ProtocolFeeConfig(_protocolFeeConfig);
         FEE_CALCULATOR = IFeeCalculator(_feeCalculator);
-
-        _initializeOwner(_owner);
 
         // Set condition slots (address(0) = always allow)
         AUTHORIZE_CONDITION = ICondition(_conditions.authorizeCondition);
@@ -151,10 +137,11 @@ contract PaymentOperator is Ownable, ReentrancyGuardTransient, PaymentOperatorAc
      * @return totalFeeBps Combined fee in basis points
      * @return protocolFeeAmount Protocol fee in token units (for tracking)
      */
-    function _calculateFees(
-        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
-        uint256 amount
-    ) internal view returns (uint16 totalFeeBps, uint256 protocolFeeAmount) {
+    function _calculateFees(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount)
+        internal
+        view
+        returns (uint16 totalFeeBps, uint256 protocolFeeAmount)
+    {
         // Protocol fee from shared config (returns 0 if calculator is address(0))
         uint256 protocolFeeBps = PROTOCOL_FEE_CONFIG.getProtocolFeeBps(paymentInfo, amount, msg.sender);
         protocolFeeAmount = (amount * protocolFeeBps) / 10000;
@@ -401,16 +388,6 @@ contract PaymentOperator is Ownable, ReentrancyGuardTransient, PaymentOperatorAc
 
         if (operatorShare > 0) {
             SafeTransferLib.safeTransfer(token, FEE_RECIPIENT, operatorShare);
-        }
-    }
-
-    /// @notice Rescue any ETH accidentally sent to this contract
-    /// @dev Solady's Ownable has payable functions; this allows recovery of any stuck ETH
-    function rescueETH() external onlyOwner {
-        uint256 balance = address(this).balance;
-        if (balance > 0) {
-            (bool success,) = msg.sender.call{value: balance}("");
-            if (!success) revert ETHTransferFailed();
         }
     }
 

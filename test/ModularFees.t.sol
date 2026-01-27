@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {Test, console} from "forge-std/Test.sol";
-import {PaymentOperator} from "../src/operator/arbitration/PaymentOperator.sol";
+import {PaymentOperator} from "../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
@@ -114,9 +114,7 @@ contract ModularFeesTest is Test {
         ProtocolFeeConfig protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
         StaticFeeCalculator opCalc = new StaticFeeCalculator(operatorBps);
 
-        PaymentOperatorFactory factory = new PaymentOperatorFactory(
-            address(escrow), address(protocolFeeConfig), owner
-        );
+        PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         PaymentOperatorFactory.OperatorConfig memory config = _createOperatorConfig(address(opCalc));
         PaymentOperator op = PaymentOperator(factory.deployOperator(config));
@@ -263,9 +261,7 @@ contract ModularFeesTest is Test {
         // Deploy operator calculator (or address(0) if 0 bps)
         address opCalcAddr = operatorBps > 0 ? address(new StaticFeeCalculator(operatorBps)) : address(0);
 
-        PaymentOperatorFactory factory = new PaymentOperatorFactory(
-            address(escrow), address(protocolFeeConfig), owner
-        );
+        PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         PaymentOperatorFactory.OperatorConfig memory config = _createOperatorConfig(opCalcAddr);
         op = PaymentOperator(factory.deployOperator(config));

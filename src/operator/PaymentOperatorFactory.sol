@@ -2,8 +2,7 @@
 // CONTRACTS UNAUDITED: USE AT YOUR OWN RISK
 pragma solidity ^0.8.28;
 
-import {Ownable} from "solady/auth/Ownable.sol";
-import {PaymentOperator} from "./arbitration/PaymentOperator.sol";
+import {PaymentOperator} from "./payment/PaymentOperator.sol";
 import {ZeroAddress, ZeroAmount} from "../types/Errors.sol";
 import {OperatorDeployed} from "./types/Events.sol";
 
@@ -19,19 +18,11 @@ import {OperatorDeployed} from "./types/Events.sol";
  *      - Recorders implement IRecorder.record() -> updates state after action
  *      - Conditions can be composed using combinators (Or, And, Not)
  *      - Client signs ERC-3009 with operator in PaymentInfo, committing to all conditions
- *      - Factory owner controls fee settings on all deployed operators
+ *      - Factory deploys deterministic operator instances via CREATE2
  *      - Works with Base Commerce Payments as designed
  *
- * OWNERSHIP: Uses Solady's Ownable with built-in 2-step transfer for safety:
- *        1. New owner calls requestOwnershipHandover()
- *        2. Current owner calls completeOwnershipHandover(newOwner) within 48 hours
- *        This prevents accidental transfers to wrong addresses.
- *
- * PRODUCTION REQUIREMENT: Owner MUST be a multisig (e.g., Gnosis Safe) in production.
- *        Single EOA ownership is only acceptable for testing/development.
- *        Factory owner controls all deployed operators, so securing this is critical.
  */
-contract PaymentOperatorFactory is Ownable {
+contract PaymentOperatorFactory {
     /// @notice Configuration struct for deploying operators
     struct OperatorConfig {
         address feeRecipient;
@@ -55,11 +46,9 @@ contract PaymentOperatorFactory is Ownable {
     // keccak256(config) => operator address
     mapping(bytes32 => address) public operators;
 
-    constructor(address _escrow, address _protocolFeeConfig, address _owner) {
+    constructor(address _escrow, address _protocolFeeConfig) {
         if (_escrow == address(0)) revert ZeroAddress();
         if (_protocolFeeConfig == address(0)) revert ZeroAddress();
-        if (_owner == address(0)) revert ZeroAddress();
-        _initializeOwner(_owner);
 
         ESCROW = _escrow;
         PROTOCOL_FEE_CONFIG = _protocolFeeConfig;
@@ -90,7 +79,6 @@ contract PaymentOperatorFactory is Ownable {
     /**
      * @notice Deploy an operator with full configuration
      * @dev Idempotent - returns existing operator if already deployed.
-     *      Factory owner becomes the operator owner (controls fee settings).
      *      Uses CREATE2 for deterministic addresses.
      * @param config The operator configuration
      * @return operator The operator address
@@ -134,12 +122,7 @@ contract PaymentOperatorFactory is Ownable {
         });
         address deployed = address(
             new PaymentOperator{salt: key}(
-                ESCROW,
-                PROTOCOL_FEE_CONFIG,
-                config.feeRecipient,
-                config.feeCalculator,
-                owner(),
-                conditions
+                ESCROW, PROTOCOL_FEE_CONFIG, config.feeRecipient, config.feeCalculator, conditions
             )
         );
 
@@ -147,16 +130,6 @@ contract PaymentOperatorFactory is Ownable {
         assert(deployed == operator);
 
         return operator;
-    }
-
-    /// @notice Rescue any ETH accidentally sent to this contract
-    /// @dev Solady's Ownable has payable functions; this allows recovery of any stuck ETH
-    function rescueETH() external onlyOwner {
-        uint256 balance = address(this).balance;
-        if (balance > 0) {
-            (bool success,) = msg.sender.call{value: balance}("");
-            require(success);
-        }
     }
 
     // ============ Internal Helpers ============
@@ -197,14 +170,7 @@ contract PaymentOperatorFactory is Ownable {
 
         return abi.encodePacked(
             type(PaymentOperator).creationCode,
-            abi.encode(
-                ESCROW,
-                PROTOCOL_FEE_CONFIG,
-                config.feeRecipient,
-                config.feeCalculator,
-                owner(),
-                conditions
-            )
+            abi.encode(ESCROW, PROTOCOL_FEE_CONFIG, config.feeRecipient, config.feeCalculator, conditions)
         );
     }
 }

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {Test, console} from "forge-std/Test.sol";
-import {PaymentOperator} from "../src/operator/arbitration/PaymentOperator.sol";
+import {PaymentOperator} from "../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
 import {ProtocolFeeConfig} from "../src/fees/ProtocolFeeConfig.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
@@ -37,7 +37,7 @@ contract ReentrancyAttackTest is Test {
         token = new MockERC20("Test Token", "TEST");
         collector = new PreApprovalPaymentCollector(address(escrow));
         protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
-        factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), owner);
+        factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         token.mint(payer, INITIAL_BALANCE);
         token.mint(receiver, INITIAL_BALANCE);

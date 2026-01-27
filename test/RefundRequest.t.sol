@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 import {Test, console} from "forge-std/Test.sol";
 import {RefundRequest} from "../src/requests/refund/RefundRequest.sol";
-import {PaymentOperator} from "../src/operator/arbitration/PaymentOperator.sol";
+import {PaymentOperator} from "../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
 import {ProtocolFeeConfig} from "../src/fees/ProtocolFeeConfig.sol";
 import {StaticAddressCondition} from "../src/conditions/StaticAddressCondition.sol";
@@ -52,9 +52,7 @@ contract RefundRequestTest is Test {
         protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
 
         // Deploy operator factory
-        operatorFactory = new PaymentOperatorFactory(
-            address(escrow), address(protocolFeeConfig), owner
-        );
+        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         // Deploy operator with designated address condition for refunds
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({

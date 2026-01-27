@@ -9,7 +9,6 @@ error ReleaseLocked();
 // ============ PaymentInfo Validation Errors ============
 error InvalidFeeReceiver();
 error UnauthorizedCaller();
-error ETHTransferFailed();
 
 // ============ Condition Errors ============
 error ConditionNotMet();

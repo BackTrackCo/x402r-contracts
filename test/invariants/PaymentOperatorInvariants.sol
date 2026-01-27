@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
-import {PaymentOperator} from "../../src/operator/arbitration/PaymentOperator.sol";
+import {PaymentOperator} from "../../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../../src/operator/PaymentOperatorFactory.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
@@ -53,9 +53,7 @@ contract PaymentOperatorInvariants is Test {
         protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, address(this));
 
         // Deploy operator
-        PaymentOperatorFactory factory = new PaymentOperatorFactory(
-            address(escrow), address(protocolFeeConfig), owner
-        );
+        PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeRecipient: protocolFeeRecipient,

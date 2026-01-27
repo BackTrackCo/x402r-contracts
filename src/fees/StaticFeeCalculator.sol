@@ -17,11 +17,12 @@ contract StaticFeeCalculator is IFeeCalculator {
     }
 
     /// @inheritdoc IFeeCalculator
-    function calculateFee(
-        AuthCaptureEscrow.PaymentInfo calldata,
-        uint256,
-        address
-    ) external view override returns (uint256 feeBps) {
+    function calculateFee(AuthCaptureEscrow.PaymentInfo calldata, uint256, address)
+        external
+        view
+        override
+        returns (uint256 feeBps)
+    {
         return FEE_BPS;
     }
 }

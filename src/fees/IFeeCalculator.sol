@@ -16,9 +16,8 @@ interface IFeeCalculator {
     /// @param amount The payment amount
     /// @param caller The address initiating the action
     /// @return feeBps The fee in basis points (e.g., 50 = 0.5%)
-    function calculateFee(
-        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
-        uint256 amount,
-        address caller
-    ) external view returns (uint256 feeBps);
+    function calculateFee(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount, address caller)
+        external
+        view
+        returns (uint256 feeBps);
 }
