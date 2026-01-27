@@ -90,7 +90,6 @@ contract PaymentIndexingTest is Test {
         PaymentIndexRecorder.PaymentRecord memory record = indexRecorder.getPayerPayment(payer, 0);
         assertTrue(record.paymentHash != bytes32(0), "Hash should not be zero");
         assertEq(record.amount, PAYMENT_AMOUNT, "Amount should match");
-        assertGt(record.timestamp, 0, "Timestamp should be set");
     }
 
     /**
@@ -114,7 +113,6 @@ contract PaymentIndexingTest is Test {
             PaymentIndexRecorder.PaymentRecord memory record = indexRecorder.getPayerPayment(payer, i);
             assertEq(record.paymentHash, expectedHashes[i], "Hash should match");
             assertEq(record.amount, PAYMENT_AMOUNT, "Amount should match");
-            assertGt(record.timestamp, 0, "Timestamp should be set");
         }
     }
 

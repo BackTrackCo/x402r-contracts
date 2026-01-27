@@ -241,7 +241,7 @@ Typical gas costs for common operations (measured with via-IR optimization and r
 | **Cancel Refund** | ~617,000 | ~617,000 | 0 | Cancel pending refund request |
 | **Freeze Payment** | ~486,000 | ~486,000 | 0 | Payer freezes payment during escrow |
 
-**Implementation**: Payment indexing is now **optional** via `PaymentIndexRecorder`. Deploy with indexing for on-chain queries (stores hash + amount + timestamp: 44k gas first write, 10k subsequent) or skip for gas savings when using external indexers (The Graph).
+**Implementation**: Payment indexing is now **optional** via `PaymentIndexRecorder`. Deploy with indexing for on-chain queries (stores hash + amount: 44k gas first write, 10k subsequent) or skip for gas savings when using external indexers (The Graph).
 
 ### Condition Evaluation
 
@@ -305,14 +305,15 @@ Estimated transaction costs on different networks (at typical gas prices):
 
 | Query Type | Gas Cost | Notes |
 |------------|----------|-------|
-| **Get 10 payments** | ~20,000 | Paginated query (hash + amount + timestamp) |
+| **Get 10 payments** | ~20,000 | Paginated query (hash + amount) |
 | **Get 50 payments** | ~82,000 | Scales linearly with count |
 | **Get single payment** | ~2,000 | Direct index access |
 
 **API**: `PaymentIndexRecorder.getPayerPayments(address, offset, count)` returns array of `PaymentRecord` structs with:
 - `paymentHash`: Payment hash for escrow lookup
 - `amount`: Amount authorized/charged
-- `timestamp`: Block timestamp when recorded
+
+**Note**: For timestamps, use `EscrowPeriodRecorder` which tracks escrow period start times (avoids duplication).
 - **With indexing**: On-chain queries available, no external indexer needed
 - **Without indexing**: Use external indexer (The Graph) for lower gas costs
 - Fully on-chain, decentralized when enabled
@@ -438,19 +439,20 @@ PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.Ope
     // ...
 });
 
-// Query payments with full context (requires indexing enabled)
+// Query payments with amount context (requires indexing enabled)
 (PaymentIndexRecorder.PaymentRecord[] memory records, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 10);
 // records[0].paymentHash - Payment hash for escrow lookup
 // records[0].amount - Amount authorized/charged
-// records[0].timestamp - When payment was recorded
+// For timestamps: use EscrowPeriodRecorder
 ```
 
 **Benefits:**
-- **Rich Data**: Stores hash, amount, and timestamp in a single query
-- **No Extra Lookups**: Get payment context without querying escrow
+- **Rich Data**: Stores hash and amount in a single query
+- **No Extra Lookups**: Get payment amount without querying escrow
 - **Gas Savings**: ~55k per authorization when indexing disabled
 - **Flexibility**: Deploy with or without on-chain queries
 - **Composability**: Combine with other recorders via `RecorderCombinator`
+- **No Duplication**: Use `EscrowPeriodRecorder` for timestamps (avoids redundant data)
 
 **When to use indexing:**
 - ✅ Need on-chain payment history queries

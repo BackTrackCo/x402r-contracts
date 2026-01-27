@@ -13,26 +13,26 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
  *      Skip (use address(0)) when using external indexer (The Graph).
  *
  * PATTERN: Mapping + counter for gas-efficient indexing
- *          - First write: 44k gas (2 storage slots: hash + amount/timestamp)
+ *          - First write: 44k gas (2 storage slots: hash + amount)
  *          - Subsequent: 10k gas (update existing)
- *          - Stores: payment hash, amount, timestamp
+ *          - Stores: payment hash, amount
+ *          - For timestamp: use EscrowPeriodRecorder (avoids duplication)
  *
- * GAS COST: ~20k per authorization (both payer + receiver indexing with full context)
+ * GAS COST: ~20k per authorization (both payer + receiver indexing)
  *
  * USAGE:
  *   // Deploy once, share across operators
  *   PaymentIndexRecorder indexRecorder = new PaymentIndexRecorder(escrow);
  *
- *   // Query payments with full context
+ *   // Query payments with amount context
  *   (PaymentRecord[] memory records, uint256 total) = indexRecorder.getPayerPayments(alice, 0, 10);
- *   // records[0].paymentHash, records[0].amount, records[0].timestamp
+ *   // records[0].paymentHash, records[0].amount
  */
 contract PaymentIndexRecorder is IRecorder {
-    /// @notice Payment record with hash, amount, and timestamp
+    /// @notice Payment record with hash and amount
     struct PaymentRecord {
         bytes32 paymentHash; // 32 bytes (slot 1)
-        uint120 amount; // 15 bytes
-        uint48 timestamp; // 6 bytes (slot 1 total: 21 bytes)
+        uint120 amount; // 15 bytes (slot 2)
     }
 
     /// @notice Escrow contract for payment hash calculation
@@ -55,7 +55,7 @@ contract PaymentIndexRecorder is IRecorder {
         bytes32 indexed paymentHash,
         address indexed payer,
         address indexed receiver,
-        uint256 amount,
+        uint120 amount,
         uint256 payerIndex,
         uint256 receiverIndex
     );
@@ -82,8 +82,7 @@ contract PaymentIndexRecorder is IRecorder {
         bytes32 hash = ESCROW.getHash(paymentInfo);
 
         // Create payment record
-        PaymentRecord memory paymentRecord =
-            PaymentRecord({paymentHash: hash, amount: uint120(amount), timestamp: uint48(block.timestamp)});
+        PaymentRecord memory paymentRecord = PaymentRecord({paymentHash: hash, amount: uint120(amount)});
 
         // Index for payer
         uint256 payerIndex = payerPaymentCount[paymentInfo.payer];
@@ -95,7 +94,7 @@ contract PaymentIndexRecorder is IRecorder {
         receiverPayments[paymentInfo.receiver][receiverIndex] = paymentRecord;
         receiverPaymentCount[paymentInfo.receiver]++;
 
-        emit PaymentIndexed(hash, paymentInfo.payer, paymentInfo.receiver, amount, payerIndex, receiverIndex);
+        emit PaymentIndexed(hash, paymentInfo.payer, paymentInfo.receiver, uint120(amount), payerIndex, receiverIndex);
     }
 
     /**
@@ -103,7 +102,7 @@ contract PaymentIndexRecorder is IRecorder {
      * @param payer Address of the payer
      * @param offset Starting index (0-based)
      * @param count Number of payments to return
-     * @return records Array of payment records (hash, amount, timestamp)
+     * @return records Array of payment records (hash, amount)
      * @return total Total number of payments for this payer
      */
     function getPayerPayments(address payer, uint256 offset, uint256 count)
@@ -147,7 +146,7 @@ contract PaymentIndexRecorder is IRecorder {
      * @param receiver Address of the receiver
      * @param offset Starting index (0-based)
      * @param count Number of payments to return
-     * @return records Array of payment records (hash, amount, timestamp)
+     * @return records Array of payment records (hash, amount)
      * @return total Total number of payments for this receiver
      */
     function getReceiverPayments(address receiver, uint256 offset, uint256 count)
