@@ -2,22 +2,16 @@
 pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
-import {PaymentOperator} from "../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
-import {MockERC20} from "./mocks/MockERC20.sol";
-import {ProtocolFeeConfig} from "../src/fees/ProtocolFeeConfig.sol";
-import {StaticFeeCalculator} from "../src/fees/StaticFeeCalculator.sol";
-import {StaticFeeCalculatorFactory} from "../src/fees/StaticFeeCalculatorFactory.sol";
-import {EscrowPeriodConditionFactory} from "../src/conditions/escrow-period/EscrowPeriodConditionFactory.sol";
-import {EscrowPeriodRecorder} from "../src/conditions/escrow-period/EscrowPeriodRecorder.sol";
-import {EscrowPeriodCondition} from "../src/conditions/escrow-period/EscrowPeriodCondition.sol";
-import {FreezePolicyFactory} from "../src/conditions/escrow-period/freeze-policy/FreezePolicyFactory.sol";
-import {FreezePolicy} from "../src/conditions/escrow-period/freeze-policy/FreezePolicy.sol";
-import {PayerCondition} from "../src/conditions/access/PayerCondition.sol";
-import {ReceiverCondition} from "../src/conditions/access/ReceiverCondition.sol";
-import {AlwaysTrueCondition} from "../src/conditions/access/AlwaysTrueCondition.sol";
+import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
+import {StaticFeeCalculator} from "../src/plugins/fees/StaticFeeCalculator.sol";
+import {StaticFeeCalculatorFactory} from "../src/plugins/fees/StaticFeeCalculatorFactory.sol";
+import {EscrowPeriodFactory} from "../src/plugins/escrow-period/EscrowPeriodFactory.sol";
+import {FreezePolicyFactory} from "../src/plugins/escrow-period/freeze-policy/FreezePolicyFactory.sol";
+import {FreezePolicy} from "../src/plugins/escrow-period/freeze-policy/FreezePolicy.sol";
+import {PayerCondition} from "../src/plugins/conditions/access/PayerCondition.sol";
+import {ReceiverCondition} from "../src/plugins/conditions/access/ReceiverCondition.sol";
 
 /**
  * @title FactoryCoverageTest
@@ -101,71 +95,65 @@ contract FactoryCoverageTest is Test {
         assertEq(key1, factory.getKey(100), "Same BPS should produce same key");
     }
 
-    // ============ EscrowPeriodConditionFactory ============
+    // ============ EscrowPeriodFactory ============
 
-    function test_EscrowPeriodConditionFactory_Deploy() public {
-        EscrowPeriodConditionFactory factory = new EscrowPeriodConditionFactory(address(escrow));
+    function test_EscrowPeriodFactory_Deploy() public {
+        EscrowPeriodFactory factory = new EscrowPeriodFactory(address(escrow));
         PayerCondition payerCond = new PayerCondition();
         FreezePolicy freezePolicy = new FreezePolicy(address(payerCond), address(payerCond), 3 days);
 
-        (address recorder, address condition) = factory.deploy(7 days, address(freezePolicy), bytes32(0));
-        assertTrue(recorder != address(0), "Recorder should be deployed");
-        assertTrue(condition != address(0), "Condition should be deployed");
+        address escrowPeriodAddr = factory.deploy(7 days, address(freezePolicy), bytes32(0));
+        assertTrue(escrowPeriodAddr != address(0), "EscrowPeriod should be deployed");
     }
 
-    function test_EscrowPeriodConditionFactory_IdempotentDeploy() public {
-        EscrowPeriodConditionFactory factory = new EscrowPeriodConditionFactory(address(escrow));
+    function test_EscrowPeriodFactory_IdempotentDeploy() public {
+        EscrowPeriodFactory factory = new EscrowPeriodFactory(address(escrow));
         PayerCondition payerCond = new PayerCondition();
         FreezePolicy freezePolicy = new FreezePolicy(address(payerCond), address(payerCond), 3 days);
 
-        (address r1, address c1) = factory.deploy(7 days, address(freezePolicy), bytes32(0));
-        (address r2, address c2) = factory.deploy(7 days, address(freezePolicy), bytes32(0));
-        assertEq(r1, r2, "Same config should return same recorder");
-        assertEq(c1, c2, "Same config should return same condition");
+        address first = factory.deploy(7 days, address(freezePolicy), bytes32(0));
+        address second = factory.deploy(7 days, address(freezePolicy), bytes32(0));
+        assertEq(first, second, "Same config should return same address");
     }
 
-    function test_EscrowPeriodConditionFactory_GetDeployed() public {
-        EscrowPeriodConditionFactory factory = new EscrowPeriodConditionFactory(address(escrow));
+    function test_EscrowPeriodFactory_GetDeployed() public {
+        EscrowPeriodFactory factory = new EscrowPeriodFactory(address(escrow));
         PayerCondition payerCond = new PayerCondition();
         FreezePolicy freezePolicy = new FreezePolicy(address(payerCond), address(payerCond), 3 days);
 
-        (address rBefore, address cBefore) = factory.getDeployed(7 days, address(freezePolicy), bytes32(0));
-        assertEq(rBefore, address(0), "Should be zero before deployment");
-        assertEq(cBefore, address(0), "Should be zero before deployment");
+        address before = factory.getDeployed(7 days, address(freezePolicy), bytes32(0));
+        assertEq(before, address(0), "Should be zero before deployment");
 
-        (address r, address c) = factory.deploy(7 days, address(freezePolicy), bytes32(0));
+        address deployed = factory.deploy(7 days, address(freezePolicy), bytes32(0));
 
-        (address rAfter, address cAfter) = factory.getDeployed(7 days, address(freezePolicy), bytes32(0));
-        assertEq(rAfter, r, "Should return deployed recorder");
-        assertEq(cAfter, c, "Should return deployed condition");
+        address after_ = factory.getDeployed(7 days, address(freezePolicy), bytes32(0));
+        assertEq(after_, deployed, "Should return deployed address");
     }
 
-    function test_EscrowPeriodConditionFactory_ComputeAddresses() public {
-        EscrowPeriodConditionFactory factory = new EscrowPeriodConditionFactory(address(escrow));
+    function test_EscrowPeriodFactory_ComputeAddress() public {
+        EscrowPeriodFactory factory = new EscrowPeriodFactory(address(escrow));
         PayerCondition payerCond = new PayerCondition();
         FreezePolicy freezePolicy = new FreezePolicy(address(payerCond), address(payerCond), 3 days);
 
-        (address predictedR, address predictedC) = factory.computeAddresses(7 days, address(freezePolicy), bytes32(0));
-        (address actualR, address actualC) = factory.deploy(7 days, address(freezePolicy), bytes32(0));
+        address predicted = factory.computeAddress(7 days, address(freezePolicy), bytes32(0));
+        address actual = factory.deploy(7 days, address(freezePolicy), bytes32(0));
 
-        assertEq(predictedR, actualR, "Predicted recorder should match actual");
-        assertEq(predictedC, actualC, "Predicted condition should match actual");
+        assertEq(predicted, actual, "Predicted address should match actual");
     }
 
-    function test_EscrowPeriodConditionFactory_ZeroEscrow_Reverts() public {
+    function test_EscrowPeriodFactory_ZeroEscrow_Reverts() public {
         vm.expectRevert();
-        new EscrowPeriodConditionFactory(address(0));
+        new EscrowPeriodFactory(address(0));
     }
 
-    function test_EscrowPeriodConditionFactory_NoFreezePolicy() public {
-        EscrowPeriodConditionFactory factory = new EscrowPeriodConditionFactory(address(escrow));
-        (address recorder, address condition) = factory.deploy(7 days, address(0), bytes32(0));
-        assertTrue(recorder != address(0), "Should work with no freeze policy");
-        assertTrue(condition != address(0), "Should work with no freeze policy");
+    function test_EscrowPeriodFactory_NoFreezePolicy() public {
+        EscrowPeriodFactory factory = new EscrowPeriodFactory(address(escrow));
+        address escrowPeriodAddr = factory.deploy(7 days, address(0), bytes32(0));
+        assertTrue(escrowPeriodAddr != address(0), "Should work with no freeze policy");
     }
 
-    function test_EscrowPeriodConditionFactory_GetKey() public {
-        EscrowPeriodConditionFactory factory = new EscrowPeriodConditionFactory(address(escrow));
+    function test_EscrowPeriodFactory_GetKey() public {
+        EscrowPeriodFactory factory = new EscrowPeriodFactory(address(escrow));
         bytes32 key1 = factory.getKey(7 days, address(0), bytes32(0));
         bytes32 key2 = factory.getKey(14 days, address(0), bytes32(0));
         assertTrue(key1 != key2, "Different configs should produce different keys");

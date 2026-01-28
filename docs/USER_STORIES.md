@@ -65,7 +65,7 @@ Formal user stories for all payment flows in x402r-contracts.
 **so that** the payer had a dispute window before I receive funds.
 
 **Acceptance criteria:**
-- `EscrowPeriodCondition.check()` returns `true` (timestamp >= authTime + escrowPeriod)
+- `EscrowPeriod.check()` returns `true` (timestamp >= authTime + escrowPeriod)
 - Payment is not frozen (`frozenUntil <= block.timestamp`)
 - Release proceeds as in US-3/US-4
 
@@ -222,7 +222,7 @@ Formal user stories for all payment flows in x402r-contracts.
 **so that** I can configure my operator with a release delay.
 
 **Acceptance criteria:**
-- Call `EscrowPeriodConditionFactory.deploy(escrowPeriod, freezePolicy, codehash)`
+- Call `EscrowPeriodFactory.deploy(escrowPeriod, freezePolicy, codehash)`
 - Both recorder and condition are deployed with deterministic addresses
 - Idempotent: calling again with same params returns existing addresses
 
@@ -234,7 +234,7 @@ Formal user stories for all payment flows in x402r-contracts.
 **Acceptance criteria:**
 - Call `factory.computeAddress(params)` or `factory.computeAddresses(params)`
 - Returned address matches the actual deployed address
-- Works for all factories: PaymentOperatorFactory, StaticFeeCalculatorFactory, EscrowPeriodConditionFactory, FreezePolicyFactory
+- Works for all factories: PaymentOperatorFactory, StaticFeeCalculatorFactory, EscrowPeriodFactory, FreezePolicyFactory
 
 ---
 

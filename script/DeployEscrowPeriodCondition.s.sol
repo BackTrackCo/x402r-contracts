@@ -2,12 +2,12 @@
 pragma solidity ^0.8.23;
 
 import {Script, console} from "forge-std/Script.sol";
-import {EscrowPeriodConditionFactory} from "../src/conditions/escrow-period/EscrowPeriodConditionFactory.sol";
+import {EscrowPeriodFactory} from "../src/plugins/escrow-period/EscrowPeriodFactory.sol";
 
 /**
  * @title DeployEscrowPeriodCondition
- * @notice Deploys the EscrowPeriodConditionFactory
- * @dev This script deploys only the EscrowPeriodConditionFactory.
+ * @notice Deploys the EscrowPeriodFactory
+ * @dev This script deploys only the EscrowPeriodFactory.
  *      Factory instances should be deployed on-demand via the SDK or by calling
  *      the factory's deploy() method directly.
  *
@@ -20,20 +20,20 @@ contract DeployEscrowPeriodCondition is Script {
 
         vm.startBroadcast();
 
-        console.log("=== Deploying EscrowPeriodConditionFactory ===");
+        console.log("=== Deploying EscrowPeriodFactory ===");
         console.log("Escrow address:", escrowAddress);
 
         // Deploy factory with escrow reference
-        EscrowPeriodConditionFactory factory = new EscrowPeriodConditionFactory(escrowAddress);
+        EscrowPeriodFactory factory = new EscrowPeriodFactory(escrowAddress);
         console.log("Factory deployed at:", address(factory));
 
         console.log("\n=== Deployment Summary ===");
-        console.log("EscrowPeriodConditionFactory:", address(factory));
+        console.log("EscrowPeriodFactory:", address(factory));
 
         console.log("\n=== Next Steps ===");
-        console.log("Use the factory to deploy condition instances on-demand:");
-        console.log("CONDITION_FACTORY_ADDRESS=", address(factory));
-        console.log("\nExample: factory.deployCondition(escrowPeriod, freezePolicy)");
+        console.log("Use the factory to deploy EscrowPeriod instances on-demand:");
+        console.log("ESCROW_PERIOD_FACTORY_ADDRESS=", address(factory));
+        console.log("\nExample: factory.deploy(escrowPeriod, freezePolicy, authorizedCodehash)");
 
         vm.stopBroadcast();
     }

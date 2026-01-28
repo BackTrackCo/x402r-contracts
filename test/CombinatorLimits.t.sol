@@ -2,16 +2,16 @@
 pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
-import {ICondition} from "../src/conditions/ICondition.sol";
-import {IRecorder} from "../src/conditions/IRecorder.sol";
-import {AndCondition} from "../src/conditions/combinators/AndCondition.sol";
-import {OrCondition} from "../src/conditions/combinators/OrCondition.sol";
-import {NotCondition} from "../src/conditions/combinators/NotCondition.sol";
-import {RecorderCombinator} from "../src/conditions/combinators/RecorderCombinator.sol";
-import {AlwaysTrueCondition} from "../src/conditions/access/AlwaysTrueCondition.sol";
-import {PayerCondition} from "../src/conditions/access/PayerCondition.sol";
+import {ICondition} from "../src/plugins/conditions/ICondition.sol";
+import {IRecorder} from "../src/plugins/recorders/IRecorder.sol";
+import {AndCondition} from "../src/plugins/conditions/combinators/AndCondition.sol";
+import {OrCondition} from "../src/plugins/conditions/combinators/OrCondition.sol";
+import {NotCondition} from "../src/plugins/conditions/combinators/NotCondition.sol";
+import {RecorderCombinator} from "../src/plugins/recorders/combinators/RecorderCombinator.sol";
+import {AlwaysTrueCondition} from "../src/plugins/conditions/access/AlwaysTrueCondition.sol";
+import {PayerCondition} from "../src/plugins/conditions/access/PayerCondition.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {AuthorizationTimeRecorder} from "../src/conditions/AuthorizationTimeRecorder.sol";
+import {AuthorizationTimeRecorder} from "../src/plugins/recorders/AuthorizationTimeRecorder.sol";
 
 /**
  * @title CombinatorLimitsTest

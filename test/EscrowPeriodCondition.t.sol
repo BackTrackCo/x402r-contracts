@@ -4,12 +4,11 @@ pragma solidity ^0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {PaymentOperator} from "../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
-import {ProtocolFeeConfig} from "../src/fees/ProtocolFeeConfig.sol";
-import {EscrowPeriodCondition} from "../src/conditions/escrow-period/EscrowPeriodCondition.sol";
-import {EscrowPeriodConditionFactory} from "../src/conditions/escrow-period/EscrowPeriodConditionFactory.sol";
-import {EscrowPeriodRecorder} from "../src/conditions/escrow-period/EscrowPeriodRecorder.sol";
-import {FreezePolicy} from "../src/conditions/escrow-period/freeze-policy/FreezePolicy.sol";
-import {PayerCondition} from "../src/conditions/access/PayerCondition.sol";
+import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
+import {EscrowPeriod} from "../src/plugins/escrow-period/EscrowPeriod.sol";
+import {EscrowPeriodFactory} from "../src/plugins/escrow-period/EscrowPeriodFactory.sol";
+import {FreezePolicy} from "../src/plugins/escrow-period/freeze-policy/FreezePolicy.sol";
+import {PayerCondition} from "../src/plugins/conditions/access/PayerCondition.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
@@ -18,7 +17,7 @@ import {
     NotFrozen,
     UnauthorizedFreeze,
     NoFreezePolicy
-} from "../src/conditions/escrow-period/types/Errors.sol";
+} from "../src/plugins/escrow-period/types/Errors.sol";
 
 contract EscrowPeriodConditionTest is Test {
     PaymentOperator public operator;
@@ -26,8 +25,7 @@ contract EscrowPeriodConditionTest is Test {
     ProtocolFeeConfig public protocolFeeConfig;
     AuthCaptureEscrow public escrow;
     PreApprovalPaymentCollector public collector;
-    EscrowPeriodCondition public escrowCondition;
-    EscrowPeriodRecorder public recorder;
+    EscrowPeriod public escrowPeriod;
     MockERC20 public token;
 
     address public owner;
@@ -50,13 +48,11 @@ contract EscrowPeriodConditionTest is Test {
         collector = new PreApprovalPaymentCollector(address(escrow));
 
         // Deploy via factory
-        EscrowPeriodConditionFactory conditionFactory = new EscrowPeriodConditionFactory(address(escrow));
+        EscrowPeriodFactory escrowPeriodFactory = new EscrowPeriodFactory(address(escrow));
         PayerCondition payerCondition = new PayerCondition();
         FreezePolicy freezePolicy = new FreezePolicy(address(payerCondition), address(payerCondition), FREEZE_DURATION);
-        (address recorderAddr, address conditionAddr) =
-            conditionFactory.deploy(ESCROW_PERIOD, address(freezePolicy), bytes32(0));
-        recorder = EscrowPeriodRecorder(recorderAddr);
-        escrowCondition = EscrowPeriodCondition(conditionAddr);
+        address escrowPeriodAddr = escrowPeriodFactory.deploy(ESCROW_PERIOD, address(freezePolicy), bytes32(0));
+        escrowPeriod = EscrowPeriod(escrowPeriodAddr);
 
         protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
         operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
@@ -65,10 +61,10 @@ contract EscrowPeriodConditionTest is Test {
             feeRecipient: protocolFeeRecipient,
             feeCalculator: address(0),
             authorizeCondition: address(0),
-            authorizeRecorder: address(recorder),
+            authorizeRecorder: address(escrowPeriod),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(escrowCondition),
+            releaseCondition: address(escrowPeriod),
             releaseRecorder: address(0),
             refundInEscrowCondition: address(0),
             refundInEscrowRecorder: address(0),
@@ -137,9 +133,9 @@ contract EscrowPeriodConditionTest is Test {
         operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
         vm.prank(payer);
-        recorder.freeze(paymentInfo);
+        escrowPeriod.freeze(paymentInfo);
 
-        assertTrue(recorder.isFrozen(paymentInfo));
+        assertTrue(escrowPeriod.isFrozen(paymentInfo));
     }
 
     // ============ Freeze Edge Cases ============
@@ -149,10 +145,9 @@ contract EscrowPeriodConditionTest is Test {
         PayerCondition payerCond = new PayerCondition();
         FreezePolicy permFreezePolicy = new FreezePolicy(address(payerCond), address(payerCond), 0);
 
-        EscrowPeriodConditionFactory condFactory = new EscrowPeriodConditionFactory(address(escrow));
-        (address rec2Addr, address cond2Addr) =
-            condFactory.deploy(ESCROW_PERIOD, address(permFreezePolicy), bytes32(uint256(200)));
-        EscrowPeriodRecorder rec2 = EscrowPeriodRecorder(rec2Addr);
+        EscrowPeriodFactory condFactory = new EscrowPeriodFactory(address(escrow));
+        address ep2Addr = condFactory.deploy(ESCROW_PERIOD, address(permFreezePolicy), bytes32(uint256(200)));
+        EscrowPeriod ep2 = EscrowPeriod(ep2Addr);
 
         ProtocolFeeConfig pfc2 = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
         PaymentOperatorFactory opFactory2 = new PaymentOperatorFactory(address(escrow), address(pfc2));
@@ -161,10 +156,10 @@ contract EscrowPeriodConditionTest is Test {
             feeRecipient: protocolFeeRecipient,
             feeCalculator: address(0),
             authorizeCondition: address(0),
-            authorizeRecorder: address(rec2),
+            authorizeRecorder: address(ep2),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: cond2Addr,
+            releaseCondition: address(ep2),
             releaseRecorder: address(0),
             refundInEscrowCondition: address(0),
             refundInEscrowRecorder: address(0),
@@ -194,13 +189,13 @@ contract EscrowPeriodConditionTest is Test {
 
         // Permanently freeze
         vm.prank(payer);
-        rec2.freeze(paymentInfo);
+        ep2.freeze(paymentInfo);
 
         // Warp past escrow period
         vm.warp(block.timestamp + ESCROW_PERIOD + 1);
 
         // Still frozen (permanent), release should revert
-        assertTrue(rec2.isFrozen(paymentInfo));
+        assertTrue(ep2.isFrozen(paymentInfo));
         vm.prank(receiver);
         vm.expectRevert();
         op2.release(paymentInfo, PAYMENT_AMOUNT);
@@ -213,9 +208,9 @@ contract EscrowPeriodConditionTest is Test {
         vm.warp(block.timestamp + ESCROW_PERIOD / 2);
 
         vm.prank(payer);
-        recorder.freeze(paymentInfo);
+        escrowPeriod.freeze(paymentInfo);
 
-        assertTrue(recorder.isFrozen(paymentInfo));
+        assertTrue(escrowPeriod.isFrozen(paymentInfo));
     }
 
     function test_FreezeAfterEscrowPeriod_Reverts() public {
@@ -226,7 +221,7 @@ contract EscrowPeriodConditionTest is Test {
 
         vm.prank(payer);
         vm.expectRevert(EscrowPeriodExpired.selector);
-        recorder.freeze(paymentInfo);
+        escrowPeriod.freeze(paymentInfo);
     }
 
     function test_FreezeAtExactBoundary_Reverts() public {
@@ -237,7 +232,7 @@ contract EscrowPeriodConditionTest is Test {
 
         vm.prank(payer);
         vm.expectRevert(EscrowPeriodExpired.selector);
-        recorder.freeze(paymentInfo);
+        escrowPeriod.freeze(paymentInfo);
     }
 
     function test_FreezeOneSecondBeforeBoundary_Succeeds() public {
@@ -247,9 +242,9 @@ contract EscrowPeriodConditionTest is Test {
         vm.warp(block.timestamp + ESCROW_PERIOD - 1);
 
         vm.prank(payer);
-        recorder.freeze(paymentInfo);
+        escrowPeriod.freeze(paymentInfo);
 
-        assertTrue(recorder.isFrozen(paymentInfo));
+        assertTrue(escrowPeriod.isFrozen(paymentInfo));
     }
 
     // ============ Unfreeze Edge Cases ============
@@ -259,13 +254,13 @@ contract EscrowPeriodConditionTest is Test {
 
         // Freeze
         vm.prank(payer);
-        recorder.freeze(paymentInfo);
-        assertTrue(recorder.isFrozen(paymentInfo));
+        escrowPeriod.freeze(paymentInfo);
+        assertTrue(escrowPeriod.isFrozen(paymentInfo));
 
         // Unfreeze
         vm.prank(payer);
-        recorder.unfreeze(paymentInfo);
-        assertFalse(recorder.isFrozen(paymentInfo));
+        escrowPeriod.unfreeze(paymentInfo);
+        assertFalse(escrowPeriod.isFrozen(paymentInfo));
 
         // Warp past escrow period
         vm.warp(block.timestamp + ESCROW_PERIOD + 1);
@@ -281,19 +276,19 @@ contract EscrowPeriodConditionTest is Test {
 
         vm.prank(payer);
         vm.expectRevert(NotFrozen.selector);
-        recorder.unfreeze(paymentInfo);
+        escrowPeriod.unfreeze(paymentInfo);
     }
 
     function test_UnfreezeByUnauthorizedCaller_Reverts() public {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizePayment();
 
         vm.prank(payer);
-        recorder.freeze(paymentInfo);
+        escrowPeriod.freeze(paymentInfo);
 
         // Receiver cannot unfreeze (PayerCondition for unfreeze)
         vm.prank(receiver);
         vm.expectRevert(UnauthorizedFreeze.selector);
-        recorder.unfreeze(paymentInfo);
+        escrowPeriod.unfreeze(paymentInfo);
     }
 
     // ============ Freeze Expiry ============
@@ -302,28 +297,28 @@ contract EscrowPeriodConditionTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizePayment();
 
         vm.prank(payer);
-        recorder.freeze(paymentInfo);
-        assertTrue(recorder.isFrozen(paymentInfo));
+        escrowPeriod.freeze(paymentInfo);
+        assertTrue(escrowPeriod.isFrozen(paymentInfo));
 
         // Warp past freeze duration
         vm.warp(block.timestamp + FREEZE_DURATION + 1);
 
         // Freeze should have expired
-        assertFalse(recorder.isFrozen(paymentInfo));
+        assertFalse(escrowPeriod.isFrozen(paymentInfo));
     }
 
     function test_FreezeExpiry_StillBlocksBeforeExpiry() public {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizePayment();
 
         vm.prank(payer);
-        recorder.freeze(paymentInfo);
+        escrowPeriod.freeze(paymentInfo);
 
         // Warp to before freeze duration expires but past escrow period
         // This only works if FREEZE_DURATION > ESCROW_PERIOD isn't the case here
         // FREEZE_DURATION = 3 days, ESCROW_PERIOD = 7 days
         // Warp to 2 days (within freeze duration)
         vm.warp(block.timestamp + FREEZE_DURATION - 1);
-        assertTrue(recorder.isFrozen(paymentInfo), "Should still be frozen before expiry");
+        assertTrue(escrowPeriod.isFrozen(paymentInfo), "Should still be frozen before expiry");
     }
 
     // ============ Multiple Cycles ============
@@ -333,21 +328,21 @@ contract EscrowPeriodConditionTest is Test {
 
         // Cycle 1: freeze then unfreeze
         vm.prank(payer);
-        recorder.freeze(paymentInfo);
-        assertTrue(recorder.isFrozen(paymentInfo));
+        escrowPeriod.freeze(paymentInfo);
+        assertTrue(escrowPeriod.isFrozen(paymentInfo));
 
         vm.prank(payer);
-        recorder.unfreeze(paymentInfo);
-        assertFalse(recorder.isFrozen(paymentInfo));
+        escrowPeriod.unfreeze(paymentInfo);
+        assertFalse(escrowPeriod.isFrozen(paymentInfo));
 
         // Cycle 2: freeze again (still within escrow period)
         vm.prank(payer);
-        recorder.freeze(paymentInfo);
-        assertTrue(recorder.isFrozen(paymentInfo));
+        escrowPeriod.freeze(paymentInfo);
+        assertTrue(escrowPeriod.isFrozen(paymentInfo));
 
         vm.prank(payer);
-        recorder.unfreeze(paymentInfo);
-        assertFalse(recorder.isFrozen(paymentInfo));
+        escrowPeriod.unfreeze(paymentInfo);
+        assertFalse(escrowPeriod.isFrozen(paymentInfo));
     }
 
     function test_RefreezeAfterExpiry() public {
@@ -355,16 +350,16 @@ contract EscrowPeriodConditionTest is Test {
 
         // First freeze
         vm.prank(payer);
-        recorder.freeze(paymentInfo);
+        escrowPeriod.freeze(paymentInfo);
 
         // Wait for freeze to expire
         vm.warp(block.timestamp + FREEZE_DURATION + 1);
-        assertFalse(recorder.isFrozen(paymentInfo));
+        assertFalse(escrowPeriod.isFrozen(paymentInfo));
 
         // Refreeze (still within escrow period: ESCROW_PERIOD=7d > FREEZE_DURATION=3d)
         vm.prank(payer);
-        recorder.freeze(paymentInfo);
-        assertTrue(recorder.isFrozen(paymentInfo));
+        escrowPeriod.freeze(paymentInfo);
+        assertTrue(escrowPeriod.isFrozen(paymentInfo));
     }
 
     // ============ Authorization & View Functions ============
@@ -374,7 +369,7 @@ contract EscrowPeriodConditionTest is Test {
 
         vm.prank(receiver);
         vm.expectRevert(UnauthorizedFreeze.selector);
-        recorder.freeze(paymentInfo);
+        escrowPeriod.freeze(paymentInfo);
     }
 
     function test_ReleaseWhileFrozen_Reverts() public {
@@ -382,10 +377,9 @@ contract EscrowPeriodConditionTest is Test {
         PayerCondition payerCond = new PayerCondition();
         FreezePolicy permFreezePolicy = new FreezePolicy(address(payerCond), address(payerCond), 0);
 
-        EscrowPeriodConditionFactory condFactory = new EscrowPeriodConditionFactory(address(escrow));
-        (address rec2Addr, address cond2Addr) =
-            condFactory.deploy(ESCROW_PERIOD, address(permFreezePolicy), bytes32(uint256(99)));
-        EscrowPeriodRecorder rec2 = EscrowPeriodRecorder(rec2Addr);
+        EscrowPeriodFactory condFactory = new EscrowPeriodFactory(address(escrow));
+        address ep2Addr = condFactory.deploy(ESCROW_PERIOD, address(permFreezePolicy), bytes32(uint256(99)));
+        EscrowPeriod ep2 = EscrowPeriod(ep2Addr);
 
         ProtocolFeeConfig pfc2 = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
         PaymentOperatorFactory opFactory2 = new PaymentOperatorFactory(address(escrow), address(pfc2));
@@ -394,10 +388,10 @@ contract EscrowPeriodConditionTest is Test {
             feeRecipient: protocolFeeRecipient,
             feeCalculator: address(0),
             authorizeCondition: address(0),
-            authorizeRecorder: address(rec2),
+            authorizeRecorder: address(ep2),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: cond2Addr,
+            releaseCondition: address(ep2),
             releaseRecorder: address(0),
             refundInEscrowCondition: address(0),
             refundInEscrowRecorder: address(0),
@@ -427,14 +421,14 @@ contract EscrowPeriodConditionTest is Test {
 
         // Permanent freeze
         vm.prank(payer);
-        rec2.freeze(pi);
-        assertTrue(rec2.isFrozen(pi));
+        ep2.freeze(pi);
+        assertTrue(ep2.isFrozen(pi));
 
         // Warp past escrow period
         vm.warp(block.timestamp + ESCROW_PERIOD + 1);
 
         // Still frozen (permanent)
-        assertTrue(rec2.isFrozen(pi));
+        assertTrue(ep2.isFrozen(pi));
 
         // Release should revert
         vm.prank(receiver);
@@ -444,15 +438,15 @@ contract EscrowPeriodConditionTest is Test {
 
     function test_NoFreezePolicyDeployed_FreezeReverts() public {
         // Deploy without freeze policy
-        EscrowPeriodConditionFactory conditionFactory2 = new EscrowPeriodConditionFactory(address(escrow));
-        (address recorderAddr2,) = conditionFactory2.deploy(ESCROW_PERIOD, address(0), bytes32(uint256(1)));
-        EscrowPeriodRecorder recorder2 = EscrowPeriodRecorder(recorderAddr2);
+        EscrowPeriodFactory epFactory2 = new EscrowPeriodFactory(address(escrow));
+        address ep2Addr = epFactory2.deploy(ESCROW_PERIOD, address(0), bytes32(uint256(1)));
+        EscrowPeriod ep2 = EscrowPeriod(ep2Addr);
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
 
         vm.prank(payer);
         vm.expectRevert(NoFreezePolicy.selector);
-        recorder2.freeze(paymentInfo);
+        ep2.freeze(paymentInfo);
     }
 
     function test_CanReleaseAfterFreezeExpiresAndEscrowPeriodPasses() public {
@@ -460,13 +454,13 @@ contract EscrowPeriodConditionTest is Test {
 
         // Freeze
         vm.prank(payer);
-        recorder.freeze(paymentInfo);
+        escrowPeriod.freeze(paymentInfo);
 
         // Warp past both freeze duration AND escrow period
         vm.warp(block.timestamp + ESCROW_PERIOD + 1);
 
         // Freeze duration (3 days) < escrow period (7 days), so freeze is already expired
-        assertFalse(recorder.isFrozen(paymentInfo));
+        assertFalse(escrowPeriod.isFrozen(paymentInfo));
 
         // Release should succeed
         vm.prank(receiver);
@@ -478,14 +472,14 @@ contract EscrowPeriodConditionTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizePayment();
 
         // Before: not passed
-        (bool passedBefore,) = recorder.isEscrowPeriodPassed(paymentInfo);
+        (bool passedBefore,) = escrowPeriod.isEscrowPeriodPassed(paymentInfo);
         assertFalse(passedBefore, "Escrow period should not be passed initially");
 
         // Warp past escrow period
         vm.warp(block.timestamp + ESCROW_PERIOD);
 
         // After: passed
-        (bool passedAfter,) = recorder.isEscrowPeriodPassed(paymentInfo);
+        (bool passedAfter,) = escrowPeriod.isEscrowPeriodPassed(paymentInfo);
         assertTrue(passedAfter, "Escrow period should be passed after warp");
     }
 
@@ -493,13 +487,13 @@ contract EscrowPeriodConditionTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizePayment();
 
         // Initially: cannot release (escrow period not passed)
-        assertFalse(recorder.canRelease(paymentInfo));
+        assertFalse(escrowPeriod.canRelease(paymentInfo));
 
         // Warp past escrow period
         vm.warp(block.timestamp + ESCROW_PERIOD + 1);
 
         // Now can release
-        assertTrue(recorder.canRelease(paymentInfo));
+        assertTrue(escrowPeriod.canRelease(paymentInfo));
     }
 
     // ============ Internal Helpers ============

@@ -3,7 +3,7 @@
 pragma solidity ^0.8.28;
 
 import {PaymentOperator} from "./payment/PaymentOperator.sol";
-import {ZeroAddress, ZeroAmount} from "../types/Errors.sol";
+import {ZeroAddress} from "../types/Errors.sol";
 import {OperatorDeployed} from "./types/Events.sol";
 
 /**

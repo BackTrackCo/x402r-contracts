@@ -5,15 +5,15 @@ import {Test} from "forge-std/Test.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
 // Conditions
-import {ICondition} from "../src/conditions/ICondition.sol";
-import {IRecorder} from "../src/conditions/IRecorder.sol";
-import {AlwaysTrueCondition} from "../src/conditions/access/AlwaysTrueCondition.sol";
-import {ReceiverCondition} from "../src/conditions/access/ReceiverCondition.sol";
-import {PayerCondition} from "../src/conditions/access/PayerCondition.sol";
-import {NotCondition} from "../src/conditions/combinators/NotCondition.sol";
-import {RecorderCombinator} from "../src/conditions/combinators/RecorderCombinator.sol";
-import {FreezePolicyFactory} from "../src/conditions/escrow-period/freeze-policy/FreezePolicyFactory.sol";
-import {FreezePolicy} from "../src/conditions/escrow-period/freeze-policy/FreezePolicy.sol";
+import {ICondition} from "../src/plugins/conditions/ICondition.sol";
+import {IRecorder} from "../src/plugins/recorders/IRecorder.sol";
+import {AlwaysTrueCondition} from "../src/plugins/conditions/access/AlwaysTrueCondition.sol";
+import {ReceiverCondition} from "../src/plugins/conditions/access/ReceiverCondition.sol";
+import {PayerCondition} from "../src/plugins/conditions/access/PayerCondition.sol";
+import {NotCondition} from "../src/plugins/conditions/combinators/NotCondition.sol";
+import {RecorderCombinator} from "../src/plugins/recorders/combinators/RecorderCombinator.sol";
+import {FreezePolicyFactory} from "../src/plugins/escrow-period/freeze-policy/FreezePolicyFactory.sol";
+import {FreezePolicy} from "../src/plugins/escrow-period/freeze-policy/FreezePolicy.sol";
 
 /// @notice Mock recorder for testing RecorderCombinator
 contract MockRecorder is IRecorder {

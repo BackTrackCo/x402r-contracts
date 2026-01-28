@@ -7,12 +7,11 @@ import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
-import {ProtocolFeeConfig} from "../src/fees/ProtocolFeeConfig.sol";
-import {AuthorizationTimeRecorder} from "../src/conditions/AuthorizationTimeRecorder.sol";
-import {PaymentIndexRecorder} from "../src/conditions/PaymentIndexRecorder.sol";
-import {RecorderCombinator} from "../src/conditions/combinators/RecorderCombinator.sol";
-import {IRecorder} from "../src/conditions/IRecorder.sol";
-import {BaseRecorder} from "../src/conditions/BaseRecorder.sol";
+import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
+import {AuthorizationTimeRecorder} from "../src/plugins/recorders/AuthorizationTimeRecorder.sol";
+import {PaymentIndexRecorder} from "../src/plugins/recorders/PaymentIndexRecorder.sol";
+import {RecorderCombinator} from "../src/plugins/recorders/combinators/RecorderCombinator.sol";
+import {IRecorder} from "../src/plugins/recorders/IRecorder.sol";
 
 /**
  * @title RecorderCoverageTest

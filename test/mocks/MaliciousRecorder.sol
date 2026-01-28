@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {IRecorder} from "../../src/conditions/IRecorder.sol";
+import {IRecorder} from "../../src/plugins/recorders/IRecorder.sol";
 import {PaymentOperator} from "../../src/operator/payment/PaymentOperator.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 

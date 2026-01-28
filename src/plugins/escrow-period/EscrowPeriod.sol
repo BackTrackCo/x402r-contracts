@@ -3,31 +3,30 @@
 pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {AuthorizationTimeRecorder} from "../AuthorizationTimeRecorder.sol";
+import {AuthorizationTimeRecorder} from "../recorders/AuthorizationTimeRecorder.sol";
+import {ICondition} from "../conditions/ICondition.sol";
 import {IFreezePolicy} from "./freeze-policy/IFreezePolicy.sol";
 import {
     InvalidEscrowPeriod,
-    FundsFrozen,
     EscrowPeriodExpired,
     AlreadyFrozen,
     NotFrozen,
     NoFreezePolicy,
-    UnauthorizedFreeze,
-    Unauthorized
+    UnauthorizedFreeze
 } from "./types/Errors.sol";
 import {PaymentFrozen, PaymentUnfrozen} from "./types/Events.sol";
 
 /**
- * @title EscrowPeriodRecorder
- * @notice Extends AuthorizationTimeRecorder with escrow period enforcement and freeze/unfreeze state.
- *         Provides state that EscrowPeriodCondition reads from.
+ * @title EscrowPeriod
+ * @notice Combined escrow period recorder and condition. Extends AuthorizationTimeRecorder
+ *         with escrow period enforcement, freeze/unfreeze state, and ICondition implementation.
  *
- * @dev Inherits from AuthorizationTimeRecorder for timestamp recording.
- *      Adds freeze state management on top:
- *      - frozenUntil: when each payment's freeze expires
- *      - freeze()/unfreeze(): manage freeze state
- *      - ESCROW_PERIOD: duration constraint
- *      - FREEZE_POLICY: who can freeze/unfreeze
+ * @dev Implements both IRecorder (via AuthorizationTimeRecorder inheritance) and ICondition.
+ *      Use the same address for both the AUTHORIZE_RECORDER and RELEASE_CONDITION slots
+ *      on PaymentOperator.
+ *
+ *      Previous design used two contracts (EscrowPeriodRecorder + EscrowPeriodCondition).
+ *      This merged contract eliminates the extra deployment and removes the thin wrapper.
  *
  * TRUST ASSUMPTIONS:
  *      - FREEZE_POLICY: The freeze policy contract is trusted to correctly determine who can
@@ -38,7 +37,7 @@ import {PaymentFrozen, PaymentUnfrozen} from "./types/Events.sol";
  * SECURITY NOTE - Freeze/Release Race Condition:
  *      At the exact moment the escrow period expires (block.timestamp == authTime + ESCROW_PERIOD):
  *      - freeze() will revert with EscrowPeriodExpired
- *      - EscrowPeriodCondition.check() will return true (release allowed)
+ *      - check() will return true (release allowed)
  *
  *      MEV RISK: A malicious block builder could censor/delay a payer's freeze transaction
  *      until after the escrow period expires, allowing the receiver to release.
@@ -54,7 +53,7 @@ import {PaymentFrozen, PaymentUnfrozen} from "./types/Events.sol";
  *      eliminate the risk. There is no on-chain solution that prevents races at deadline
  *      boundaries without adding commit-reveal complexity.
  */
-contract EscrowPeriodRecorder is AuthorizationTimeRecorder {
+contract EscrowPeriod is AuthorizationTimeRecorder, ICondition {
     /// @notice Duration of the escrow period in seconds
     uint256 public immutable ESCROW_PERIOD;
 
@@ -74,6 +73,22 @@ contract EscrowPeriodRecorder is AuthorizationTimeRecorder {
     }
 
     // Note: record() inherited from AuthorizationTimeRecorder
+
+    // ============ ICondition Implementation ============
+
+    /**
+     * @notice Check if funds can be released (escrow period passed and not frozen)
+     * @param paymentInfo PaymentInfo struct
+     * @return allowed True if escrow period has passed and payment is not frozen
+     */
+    function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address)
+        external
+        view
+        override(ICondition)
+        returns (bool allowed)
+    {
+        return canRelease(paymentInfo);
+    }
 
     // ============ Freeze Functions ============
 
@@ -169,11 +184,11 @@ contract EscrowPeriodRecorder is AuthorizationTimeRecorder {
 
     /**
      * @notice Check if a payment can be released (escrow period passed and not frozen)
-     * @dev Used by EscrowPeriodCondition. Combines all three release checks in one call.
+     * @dev Combines all three release checks in one call.
      * @param paymentInfo PaymentInfo struct
      * @return True if escrow period has passed and payment is not frozen
      */
-    function canRelease(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external view returns (bool) {
+    function canRelease(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) public view returns (bool) {
         bytes32 paymentInfoHash = _getPaymentHash(paymentInfo);
 
         // Check if frozen (and freeze hasn't expired)

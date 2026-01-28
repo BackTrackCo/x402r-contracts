@@ -4,9 +4,8 @@ pragma solidity ^0.8.28;
 import {Script, console} from "forge-std/Script.sol";
 import {PaymentOperator} from "../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
-import {ProtocolFeeConfig} from "../src/fees/ProtocolFeeConfig.sol";
-import {StaticFeeCalculator} from "../src/fees/StaticFeeCalculator.sol";
-import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
+import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
+import {StaticFeeCalculator} from "../src/plugins/fees/StaticFeeCalculator.sol";
 
 /**
  * @title DeployProduction

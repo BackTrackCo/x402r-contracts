@@ -24,8 +24,7 @@
 | **PaymentOperatorFactory.sol** | ~200 | Factory for deploying operators |
 | **RefundRequest.sol** | ~300 | Refund request management with status tracking |
 | **RefundRequestAccess.sol** | ~80 | Refund access control |
-| **EscrowPeriodCondition.sol** | ~80 | Time-based release condition |
-| **EscrowPeriodRecorder.sol** | ~160 | Authorization time tracking + freeze/unfreeze |
+| **EscrowPeriod.sol** | ~210 | Combined escrow period recorder + condition + freeze/unfreeze |
 | **FreezePolicyFactory.sol** | ~120 | Factory for freeze policy instances |
 | **FreezePolicy.sol** | ~60 | Generic freeze policy using ICondition contracts |
 
@@ -91,8 +90,8 @@ PaymentOperatorFactory
                       ├── REFUND_POST_ESCROW_CONDITION (optional)
                       └── REFUND_POST_ESCROW_RECORDER (optional)
 
-EscrowPeriodConditionFactory
-    └── deploys → EscrowPeriodCondition + EscrowPeriodRecorder
+EscrowPeriodFactory
+    └── deploys → EscrowPeriod (combined condition + recorder)
 
 FreezePolicyFactory
     └── deploys → FreezePolicy instances (configured with ICondition contracts)
@@ -163,7 +162,7 @@ See `OPTIMIZATION_SUMMARY.md` for full details.
 2. **Access Control**
    - Condition system gates each operation
    - Immutable operator address prevents unauthorized calls
-   - Timelock on fee changes (24 hours)
+   - Timelock on fee changes (7 days)
 
 3. **Integer Safety**
    - Solidity 0.8.28 automatic overflow checks
@@ -178,7 +177,7 @@ See `OPTIMIZATION_SUMMARY.md` for full details.
 5. **Freeze/Release Race Condition**
    - MEV risk at escrow period expiry boundary
    - Mitigated by freezing early + private mempool
-   - Documented in EscrowPeriodRecorder.sol
+   - Documented in EscrowPeriod.sol
 
 ### Known Limitations
 

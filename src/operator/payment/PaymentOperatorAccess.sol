@@ -19,7 +19,7 @@ abstract contract PaymentOperatorAccess {
      * @param paymentInfo The PaymentInfo struct
      */
     modifier validOperator(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
-        if (paymentInfo.operator != address(this)) revert InvalidOperator();
+        _checkValidOperator(paymentInfo);
         _;
     }
 
@@ -29,7 +29,15 @@ abstract contract PaymentOperatorAccess {
      * @param paymentInfo The PaymentInfo struct to validate
      */
     modifier validFees(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
-        if (paymentInfo.feeReceiver != address(this)) revert InvalidFeeReceiver();
+        _checkValidFees(paymentInfo);
         _;
+    }
+
+    function _checkValidOperator(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) internal view {
+        if (paymentInfo.operator != address(this)) revert InvalidOperator();
+    }
+
+    function _checkValidFees(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) internal view {
+        if (paymentInfo.feeReceiver != address(this)) revert InvalidFeeReceiver();
     }
 }

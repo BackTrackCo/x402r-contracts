@@ -6,8 +6,8 @@ import {PaymentOperator} from "../../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../../src/operator/PaymentOperatorFactory.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
-import {ProtocolFeeConfig} from "../../src/fees/ProtocolFeeConfig.sol";
-import {StaticFeeCalculator} from "../../src/fees/StaticFeeCalculator.sol";
+import {ProtocolFeeConfig} from "../../src/plugins/fees/ProtocolFeeConfig.sol";
+import {StaticFeeCalculator} from "../../src/plugins/fees/StaticFeeCalculator.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MaliciousRecorder} from "../mocks/MaliciousRecorder.sol";
 

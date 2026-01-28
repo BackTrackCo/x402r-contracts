@@ -10,6 +10,43 @@ forge test
 forge fmt --check
 ```
 
+## Pre-Commit Checklist
+
+Run all of these before committing. CI will reject failures.
+
+```bash
+forge fmt                # Format all files
+forge fmt --check        # Verify formatting (CI runs this)
+forge build --sizes      # Build with contract size report
+forge test -vvv          # Run all tests (CI runs this)
+forge build 2>&1 | grep "^note\["  # Check for lint notes (should be empty)
+```
+
+## Pre-Deploy Checklist
+
+Before deploying contracts to any network:
+
+```bash
+# 1. All CI checks must pass
+forge fmt --check
+forge build --sizes
+forge test -vvv
+
+# 2. No lint notes
+forge build 2>&1 | grep "^note\[" && echo "FAIL: fix lint notes" || echo "OK"
+
+# 3. Verify .env has required variables
+source .env
+# Required: PRIVATE_KEY, ETHERSCAN_API_KEY
+# Per-script: ESCROW_ADDRESS, OWNER_ADDRESS, PROTOCOL_FEE_RECIPIENT, etc.
+
+# 4. Dry-run deployment (no broadcast)
+forge script script/<Script>.s.sol --rpc-url <RPC_URL> -vvvv
+
+# 5. Deploy with broadcast + verification
+forge script script/<Script>.s.sol --rpc-url <RPC_URL> --broadcast --verify -vvvv
+```
+
 ## Code Standards
 
 - **CEI Pattern (Checks-Effects-Interactions)**: All state-modifying functions MUST follow CEI ordering:
@@ -21,12 +58,17 @@ forge fmt --check
 
 - **Formatting**: Run `forge fmt` before every commit. Verify with `forge fmt --check` — CI will reject unformatted code.
 
+- **Lint**: `foundry.toml` configures `[lint]` with `exclude_lints` for convention-conflicting rules. `forge build` output should show zero `note[...]` lines. Fix unused imports and wrap modifier logic rather than suppressing.
+
 ## Architecture
 
 - `src/operator/payment/` — PaymentOperator and access control
 - `src/operator/PaymentOperatorFactory.sol` — Deterministic CREATE2 factory
-- `src/fees/` — Modular fee system (ProtocolFeeConfig, IFeeCalculator, StaticFeeCalculator)
-- `src/conditions/` — Pluggable condition/recorder system (ICondition, IRecorder, combinators)
+- `src/plugins/` — All pluggable modules:
+  - `plugins/conditions/` — ICondition, access conditions (PayerCondition, ReceiverCondition, StaticAddressCondition, AlwaysTrueCondition), combinators (And/Or/Not)
+  - `plugins/recorders/` — IRecorder, BaseRecorder, AuthorizationTimeRecorder, PaymentIndexRecorder, RecorderCombinator
+  - `plugins/escrow-period/` — EscrowPeriod (merged recorder+condition), EscrowPeriodFactory, freeze-policy (FreezePolicy, FreezePolicyFactory, IFreezePolicy)
+  - `plugins/fees/` — ProtocolFeeConfig, IFeeCalculator, StaticFeeCalculator, StaticFeeCalculatorFactory
 - `src/requests/` — Refund request flow
 - `script/` — Deployment scripts (testnet and production)
 

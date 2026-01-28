@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {BaseRecorder} from "./BaseRecorder.sol";
-import {AuthorizationTimeRecorded} from "./escrow-period/types/Events.sol";
+import {AuthorizationTimeRecorded} from "../escrow-period/types/Events.sol";
 
 /**
  * @title AuthorizationTimeRecorder

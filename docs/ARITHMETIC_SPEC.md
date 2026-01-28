@@ -132,7 +132,7 @@ nonce must be unique per (payer, paymentHash) pair
 canRelease = (block.timestamp >= authorizationTime + ESCROW_PERIOD) && !frozen
 ```
 
-**Code location:** `EscrowPeriodCondition.sol:check()`
+**Code location:** `EscrowPeriod.sol:check()`
 
 **Overflow safety:** `authorizationTime` is `uint256` from `block.timestamp`, `ESCROW_PERIOD` is `uint256`. Sum fits in `uint256` for any realistic values (block.timestamp is ~10^10, escrow periods are ~10^6).
 
@@ -146,7 +146,7 @@ frozenUntil = block.timestamp + FREEZE_DURATION
 isFrozen = (frozenUntil > block.timestamp)
 ```
 
-**Code location:** `EscrowPeriodRecorder.sol:freeze()`
+**Code location:** `EscrowPeriod.sol:freeze()`
 
 **Edge case:** `FREEZE_DURATION = 0` means permanent freeze (until explicit unfreeze sets `frozenUntil = 0`).
 
@@ -219,7 +219,7 @@ address = uint160(uint256(keccak256(
 **Code locations:**
 - `PaymentOperatorFactory.sol:deployOperator()`
 - `StaticFeeCalculatorFactory.sol:deploy()`, `computeAddress()`
-- `EscrowPeriodConditionFactory.sol:deploy()`, `computeAddresses()`
+- `EscrowPeriodFactory.sol:deploy()`, `computeAddress()`
 - `FreezePolicyFactory.sol:deploy()`, `computeAddress()`
 
 **Invariant:** `computeAddress(params) == deploy(params)` for all factories. Verified by `assert(deployed == predicted)` in every factory.

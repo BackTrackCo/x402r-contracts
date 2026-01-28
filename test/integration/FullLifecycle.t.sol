@@ -7,13 +7,12 @@ import {PaymentOperatorFactory} from "../../src/operator/PaymentOperatorFactory.
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
-import {ProtocolFeeConfig} from "../../src/fees/ProtocolFeeConfig.sol";
-import {StaticFeeCalculator} from "../../src/fees/StaticFeeCalculator.sol";
-import {EscrowPeriodCondition} from "../../src/conditions/escrow-period/EscrowPeriodCondition.sol";
-import {EscrowPeriodConditionFactory} from "../../src/conditions/escrow-period/EscrowPeriodConditionFactory.sol";
-import {EscrowPeriodRecorder} from "../../src/conditions/escrow-period/EscrowPeriodRecorder.sol";
-import {FreezePolicy} from "../../src/conditions/escrow-period/freeze-policy/FreezePolicy.sol";
-import {PayerCondition} from "../../src/conditions/access/PayerCondition.sol";
+import {ProtocolFeeConfig} from "../../src/plugins/fees/ProtocolFeeConfig.sol";
+import {StaticFeeCalculator} from "../../src/plugins/fees/StaticFeeCalculator.sol";
+import {EscrowPeriod} from "../../src/plugins/escrow-period/EscrowPeriod.sol";
+import {EscrowPeriodFactory} from "../../src/plugins/escrow-period/EscrowPeriodFactory.sol";
+import {FreezePolicy} from "../../src/plugins/escrow-period/freeze-policy/FreezePolicy.sol";
+import {PayerCondition} from "../../src/plugins/conditions/access/PayerCondition.sol";
 import {RefundRequest} from "../../src/requests/refund/RefundRequest.sol";
 import {RequestStatus} from "../../src/requests/types/Types.sol";
 import {PaymentState} from "../../src/operator/types/Types.sol";
@@ -35,8 +34,7 @@ contract FullLifecycleTest is Test {
     StaticFeeCalculator public operatorCalc;
 
     // Escrow period system
-    EscrowPeriodRecorder public recorder;
-    EscrowPeriodCondition public escrowCondition;
+    EscrowPeriod public escrowPeriod;
     PayerCondition public payerCondition;
     FreezePolicy public freezePolicy;
 
@@ -79,14 +77,12 @@ contract FullLifecycleTest is Test {
         operatorCalc = new StaticFeeCalculator(OPERATOR_BPS);
         protocolFeeConfig = new ProtocolFeeConfig(address(protocolCalc), protocolFeeRecipient, owner);
 
-        // Deploy escrow period condition via factory
-        EscrowPeriodConditionFactory conditionFactory = new EscrowPeriodConditionFactory(address(escrow));
+        // Deploy escrow period via factory
+        EscrowPeriodFactory escrowPeriodFactory = new EscrowPeriodFactory(address(escrow));
         payerCondition = new PayerCondition();
         freezePolicy = new FreezePolicy(address(payerCondition), address(payerCondition), FREEZE_DURATION);
-        (address recorderAddr, address conditionAddr) =
-            conditionFactory.deploy(ESCROW_PERIOD, address(freezePolicy), bytes32(0));
-        recorder = EscrowPeriodRecorder(recorderAddr);
-        escrowCondition = EscrowPeriodCondition(conditionAddr);
+        address escrowPeriodAddr = escrowPeriodFactory.deploy(ESCROW_PERIOD, address(freezePolicy), bytes32(0));
+        escrowPeriod = EscrowPeriod(escrowPeriodAddr);
 
         // Deploy operator with full configuration
         operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
@@ -95,10 +91,10 @@ contract FullLifecycleTest is Test {
             feeRecipient: operatorFeeRecipient,
             feeCalculator: address(operatorCalc),
             authorizeCondition: address(0),
-            authorizeRecorder: address(recorder),
+            authorizeRecorder: address(escrowPeriod),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(escrowCondition),
+            releaseCondition: address(escrowPeriod),
             releaseRecorder: address(0),
             refundInEscrowCondition: address(0),
             refundInEscrowRecorder: address(0),
@@ -140,14 +136,14 @@ contract FullLifecycleTest is Test {
 
         // --- Step 3: FREEZE ---
         vm.prank(payer);
-        recorder.freeze(paymentInfo);
-        assertTrue(recorder.isFrozen(paymentInfo), "Step 3: Must be frozen");
+        escrowPeriod.freeze(paymentInfo);
+        assertTrue(escrowPeriod.isFrozen(paymentInfo), "Step 3: Must be frozen");
 
         // --- Step 4: Warp past both freeze duration and escrow period ---
         vm.warp(block.timestamp + ESCROW_PERIOD + 1);
 
         // --- Step 5: Freeze expired, escrow period passed ---
-        assertFalse(recorder.isFrozen(paymentInfo), "Step 5: Freeze should have expired");
+        assertFalse(escrowPeriod.isFrozen(paymentInfo), "Step 5: Freeze should have expired");
 
         // --- Step 6: RELEASE ---
         uint256 receiverBefore = token.balanceOf(receiver);

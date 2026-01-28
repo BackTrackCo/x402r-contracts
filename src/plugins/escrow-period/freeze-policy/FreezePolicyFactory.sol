@@ -13,7 +13,7 @@ import {FreezePolicy} from "./FreezePolicy.sol";
  *
  *      Example configurations:
  *      - Payer freeze/unfreeze (3 days): deploy(PayerCondition, PayerCondition, 3 days)
- *      - Payer freeze, Arbiter unfreeze: deploy(PayerCondition, ArbiterCondition, 0)
+ *      - Payer freeze, Arbiter unfreeze: deploy(PayerCondition, StaticAddressCondition, 0)
  *      - Anyone freeze, Receiver unfreeze: deploy(AlwaysTrueCondition, ReceiverCondition, 7 days)
  */
 contract FreezePolicyFactory {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {ICondition} from "../../src/conditions/ICondition.sol";
+import {ICondition} from "../../src/plugins/conditions/ICondition.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
 /// @notice Release conditions are not met

@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PaymentOperator} from "../../operator/payment/PaymentOperator.sol";
-import {ICondition} from "../../conditions/ICondition.sol";
+import {ICondition} from "../../plugins/conditions/ICondition.sol";
 import {NotReceiver, NotPayer, NotReceiverOrArbiter, InvalidOperator} from "../../types/Errors.sol";
 
 /**
@@ -21,7 +21,7 @@ abstract contract RefundRequestAccess {
      * @param paymentInfo The PaymentInfo struct
      */
     modifier onlyPayer(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
-        if (msg.sender != paymentInfo.payer) revert NotPayer();
+        _checkOnlyPayer(paymentInfo);
         _;
     }
 
@@ -30,7 +30,7 @@ abstract contract RefundRequestAccess {
      * @param paymentInfo The PaymentInfo struct
      */
     modifier onlyReceiver(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
-        if (msg.sender != paymentInfo.receiver) revert NotReceiver();
+        _checkOnlyReceiver(paymentInfo);
         _;
     }
 
@@ -53,6 +53,32 @@ abstract contract RefundRequestAccess {
      * @param paymentInfo The payment info
      */
     modifier onlyAuthorizedForRefundStatus(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
+        _checkAuthorizedForRefundStatus(paymentInfo);
+        _;
+    }
+
+    // ============ Operator Validation ============
+
+    /**
+     * @notice Modifier to validate operator address is set
+     * @dev Different from PaymentOperatorAccess.validOperator which checks operator == address(this)
+     */
+    modifier operatorNotZero(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
+        _checkOperatorNotZero(paymentInfo);
+        _;
+    }
+
+    // ============ Internal Check Functions ============
+
+    function _checkOnlyPayer(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) internal view {
+        if (msg.sender != paymentInfo.payer) revert NotPayer();
+    }
+
+    function _checkOnlyReceiver(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) internal view {
+        if (msg.sender != paymentInfo.receiver) revert NotReceiver();
+    }
+
+    function _checkAuthorizedForRefundStatus(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) internal view {
         if (msg.sender != paymentInfo.receiver) {
             PaymentOperator operator = PaymentOperator(paymentInfo.operator);
             AuthCaptureEscrow escrow = operator.ESCROW();
@@ -69,17 +95,9 @@ abstract contract RefundRequestAccess {
                 revert NotReceiverOrArbiter();
             }
         }
-        _;
     }
 
-    // ============ Operator Validation ============
-
-    /**
-     * @notice Modifier to validate operator address is set
-     * @dev Different from PaymentOperatorAccess.validOperator which checks operator == address(this)
-     */
-    modifier operatorNotZero(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
+    function _checkOperatorNotZero(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) internal pure {
         if (paymentInfo.operator == address(0)) revert InvalidOperator();
-        _;
     }
 }

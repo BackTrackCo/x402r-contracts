@@ -7,7 +7,7 @@ import {PaymentOperatorFactory} from "../../src/operator/PaymentOperatorFactory.
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
-import {ProtocolFeeConfig} from "../../src/fees/ProtocolFeeConfig.sol";
+import {ProtocolFeeConfig} from "../../src/plugins/fees/ProtocolFeeConfig.sol";
 import {PaymentState} from "../../src/operator/types/Types.sol";
 
 contract PaymentStateFuzzTest is Test {

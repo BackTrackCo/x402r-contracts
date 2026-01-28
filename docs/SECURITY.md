@@ -67,7 +67,7 @@ Please report security vulnerabilities via one of these methods:
 ```
 1. [ ] Disable fees if attack vector involves fee distribution
        - Owner calls: queueFeesEnabled(false) + executeFeesEnabled()
-       - Note: 24h timelock may delay this - consider pre-queued emergency disable
+       - Note: 7-day timelock may delay this - consider pre-queued emergency disable
 
 2. [ ] Alert users via official channels:
        - Twitter/X
@@ -127,7 +127,7 @@ Please report security vulnerabilities via one of these methods:
 
 | Action | Method | Timelock |
 |--------|--------|----------|
-| Disable fees | `queueFeesEnabled(false)` → `executeFeesEnabled()` | 24 hours |
+| Disable fees | `queueFeesEnabled(false)` → `executeFeesEnabled()` | 7 days |
 | Rescue stuck ETH | `rescueETH()` | None (owner only) |
 | Transfer ownership | `requestOwnershipHandover()` → `completeOwnershipHandover()` | 48 hours |
 
@@ -135,8 +135,8 @@ Please report security vulnerabilities via one of these methods:
 
 These contracts are **immutable** - no pause function, no upgrades:
 
-- `ArbitrationOperator` - Cannot pause payments
-- `EscrowPeriodCondition` - Cannot modify escrow period
+- `PaymentOperator` - Cannot pause payments
+- `EscrowPeriod` - Cannot modify escrow period
 - `FreezePolicy` instances - Cannot change freeze rules after deployment
 
 **Mitigation for immutable contracts:**
@@ -153,12 +153,12 @@ To reduce response time for CRITICAL incidents, consider:
 // Run this periodically to maintain a "ready" state
 operator.queueFeesEnabled(false);
 
-// If emergency occurs, execute immediately (if 24h has passed)
+// If emergency occurs, execute immediately (if 7 days has passed)
 operator.executeFeesEnabled();
 
 // Then re-queue for next potential emergency
 operator.queueFeesEnabled(true);
-// ... wait 24h ...
+// ... wait 7 days ...
 operator.executeFeesEnabled();
 operator.queueFeesEnabled(false); // Ready for next emergency
 ```
@@ -175,7 +175,7 @@ Monitor these events for anomalies:
 | `ReleaseExecuted` | PaymentOperator | Rapid releases, unusual patterns |
 | `RefundInEscrowExecuted` | PaymentOperator | High in-escrow refund rate |
 | `RefundPostEscrowExecuted` | PaymentOperator | High post-escrow refund rate |
-| `PaymentFrozen` | EscrowPeriodRecorder | Mass freezing |
+| `PaymentFrozen` | EscrowPeriod | Mass freezing |
 | `FeesDistributed` | PaymentOperator | Unexpected distribution |
 
 For monitoring setup guides (OpenZeppelin Defender, Tenderly, Forta), see [docs.x402r.org/monitoring](https://docs.x402r.org/monitoring).
@@ -203,6 +203,7 @@ The following security properties MUST hold at all times. These are tested via u
 | **P6** | Freeze can only occur during escrow period | EscrowPeriodCondition.t.sol |
 | **P7** | Release cannot occur before escrow period expires (unless unfrozen) | EscrowPeriodCondition.t.sol |
 | **P8** | Frozen payments cannot be released until unfrozen | EscrowPeriodConditionInvariants.sol |
+
 | **P9** | Escrow period clock starts at authorization time | Unit tests |
 | **P10** | If authTime == 0, payment not yet authorized | Unit tests |
 
@@ -211,7 +212,7 @@ The following security properties MUST hold at all times. These are tested via u
 | ID | Property | Test Coverage |
 |----|----------|---------------|
 | **P11** | Only owner can change fee configuration | Unit tests + Echidna |
-| **P12** | Fee changes require 24-hour timelock execution | Unit tests |
+| **P12** | Fee changes require 7-day timelock execution | Unit tests |
 | **P13** | Condition checks are pure/view (no state modification) | Solidity type system |
 | **P14** | Recorders execute after successful action (idempotent) | Code review |
 | **P15** | address(0) condition = always allow (default behavior) | Unit tests |
@@ -367,7 +368,7 @@ AndCondition(
 // Receiver can release after escrow period
 AndCondition(
     ReceiverCondition(),
-    EscrowPeriodCondition(recorder)
+    EscrowPeriod(escrowPeriod, freezePolicy, escrow, codehash)
 )
 ```
 
@@ -506,7 +507,7 @@ RefundRequestBlockerCondition {
 ```
 
 **Mitigation**:
-- ✅ Fee rate changes have 24-hour timelock
+- ✅ Fee rate changes have 7-day timelock
 - ✅ Fees are separate from user funds (cannot steal user funds)
 - ✅ Transparent on-chain fee accumulation
 - ⚠️ Owner should be multisig to prevent single-actor manipulation
@@ -550,7 +551,7 @@ contract MaliciousFrontrunCondition is ICondition {
 **Scenario**: Miner/validator manipulates `block.timestamp` for advantage
 
 ```solidity
-// EscrowPeriodCondition uses block.timestamp
+// EscrowPeriod uses block.timestamp
 function check(PaymentInfo calldata paymentInfo, address) view returns (bool) {
     uint256 authorizedAt = RECORDER.getAuthorizedAt(paymentInfo);
     return block.timestamp >= authorizedAt + ESCROW_PERIOD;

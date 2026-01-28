@@ -539,27 +539,25 @@ contract StaticAddressCondition is ICondition {
 
 ---
 
-#### 5. EscrowPeriodCondition ✅
+#### 5. EscrowPeriod ✅
 ```solidity
-// Blocks release until escrow period expires
-contract EscrowPeriodCondition is ICondition {
+// Combined recorder + condition: records auth time, blocks release until escrow period expires
+contract EscrowPeriod is AuthorizationTimeRecorder, ICondition {
     uint256 public immutable ESCROW_PERIOD;
-    EscrowPeriodRecorder public immutable RECORDER;
 
-    function check(PaymentInfo calldata paymentInfo, address)
+    function check(PaymentInfo calldata paymentInfo, uint256, address)
         external
         view
         returns (bool)
     {
-        uint256 authorizedAt = RECORDER.getAuthorizedAt(paymentInfo);
-        return block.timestamp >= authorizedAt + ESCROW_PERIOD;
+        return canRelease(paymentInfo);
     }
 }
 ```
 
 **Use case**: Payment escrow with dispute period
 **Risk**: None (if recorder is trusted)
-**NOTE**: Requires EscrowPeriodRecorder as AUTHORIZE_RECORDER
+**NOTE**: Use the same EscrowPeriod address for both AUTHORIZE_RECORDER and RELEASE_CONDITION
 
 ---
 
@@ -589,18 +587,13 @@ contract AndCondition is ICondition {
 
 ### Safe Recorders
 
-#### 1. EscrowPeriodRecorder ✅
+#### 1. EscrowPeriod ✅ (also serves as condition)
 ```solidity
-// Records authorization timestamp for escrow period
-contract EscrowPeriodRecorder is IRecorder {
-    mapping(bytes32 => uint256) public authorizedAt;
-
-    function record(PaymentInfo calldata paymentInfo, uint256, address) external {
-        bytes32 hash = keccak256(abi.encode(paymentInfo));
-        if (authorizedAt[hash] == 0) {
-            authorizedAt[hash] = block.timestamp;
-        }
-    }
+// Combined recorder + condition with freeze/unfreeze
+contract EscrowPeriod is AuthorizationTimeRecorder, ICondition {
+    // record() inherited from AuthorizationTimeRecorder
+    // check() delegates to canRelease()
+    // freeze()/unfreeze() for dispute handling
 }
 ```
 
@@ -707,14 +700,14 @@ This is a **race condition** inherent to `address(0)` release conditions. The Re
 
 ### Recommendation
 
-Use `EscrowPeriodCondition` as `RELEASE_CONDITION` for any payment flow that involves:
+Use `EscrowPeriod` as `RELEASE_CONDITION` for any payment flow that involves:
 - Refund requests (RefundRequest contract)
 - Dispute resolution
 - Delivery-based settlement
 
 ```solidity
 // SAFE: Release blocked until escrow period passes
-config.releaseCondition = address(escrowPeriodCondition);
+config.releaseCondition = address(escrowPeriod);
 
 // DANGEROUS: Immediate release, refund requests easily front-run
 config.releaseCondition = address(0);

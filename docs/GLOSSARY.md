@@ -111,13 +111,10 @@ Abstract base class for recorders. Provides `_verifyAndHash()` which validates t
 ## Escrow Period System
 
 ### Escrow Period
-A time window after authorization during which funds are held in escrow before release is permitted. Enforced by `EscrowPeriodCondition` as the `RELEASE_CONDITION`.
+A time window after authorization during which funds are held in escrow before release is permitted. Enforced by `EscrowPeriod` (which implements both `ICondition` and `IRecorder`) as both the `AUTHORIZE_RECORDER` and `RELEASE_CONDITION`.
 
-### EscrowPeriodRecorder
-Records the `block.timestamp` when a payment is authorized. Extends `AuthorizationTimeRecorder` with freeze/unfreeze capabilities.
-
-### EscrowPeriodCondition
-Checks `block.timestamp >= authorizedAt + ESCROW_PERIOD` and `!frozen`. Both conditions must be true for release.
+### EscrowPeriod
+Combined recorder and condition contract. Records `block.timestamp` when a payment is authorized (via `AuthorizationTimeRecorder` inheritance), checks `block.timestamp >= authorizedAt + ESCROW_PERIOD` and `!frozen` for release, and provides freeze/unfreeze capabilities.
 
 ### Freeze
 A mechanism that blocks release during the escrow period. The payer (or authorized party) calls `recorder.freeze(paymentInfo)` to set `frozenUntil = block.timestamp + FREEZE_DURATION`. A frozen payment cannot be released until `frozenUntil` passes or `unfreeze()` is called.

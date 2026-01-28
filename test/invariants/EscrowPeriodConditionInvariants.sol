@@ -4,15 +4,14 @@ pragma solidity ^0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {PaymentOperator} from "../../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../../src/operator/PaymentOperatorFactory.sol";
-import {EscrowPeriodConditionFactory} from "../../src/conditions/escrow-period/EscrowPeriodConditionFactory.sol";
-import {EscrowPeriodCondition} from "../../src/conditions/escrow-period/EscrowPeriodCondition.sol";
-import {EscrowPeriodRecorder} from "../../src/conditions/escrow-period/EscrowPeriodRecorder.sol";
-import {FreezePolicy} from "../../src/conditions/escrow-period/freeze-policy/FreezePolicy.sol";
-import {PayerCondition} from "../../src/conditions/access/PayerCondition.sol";
+import {EscrowPeriodFactory} from "../../src/plugins/escrow-period/EscrowPeriodFactory.sol";
+import {EscrowPeriod} from "../../src/plugins/escrow-period/EscrowPeriod.sol";
+import {FreezePolicy} from "../../src/plugins/escrow-period/freeze-policy/FreezePolicy.sol";
+import {PayerCondition} from "../../src/plugins/conditions/access/PayerCondition.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
-import {ProtocolFeeConfig} from "../../src/fees/ProtocolFeeConfig.sol";
+import {ProtocolFeeConfig} from "../../src/plugins/fees/ProtocolFeeConfig.sol";
 
 /**
  * @title EscrowPeriodConditionInvariants
@@ -26,8 +25,7 @@ contract EscrowPeriodConditionInvariants is Test {
     PaymentOperator public operator;
     AuthCaptureEscrow public escrow;
     PreApprovalPaymentCollector public collector;
-    EscrowPeriodRecorder public recorder;
-    EscrowPeriodCondition public condition;
+    EscrowPeriod public escrowPeriod;
     MockERC20 public token;
 
     address public payer = address(0x1000);
@@ -48,13 +46,11 @@ contract EscrowPeriodConditionInvariants is Test {
         token = new MockERC20("Test Token", "TEST");
         collector = new PreApprovalPaymentCollector(address(escrow));
 
-        EscrowPeriodConditionFactory conditionFactory = new EscrowPeriodConditionFactory(address(escrow));
+        EscrowPeriodFactory escrowPeriodFactory = new EscrowPeriodFactory(address(escrow));
         PayerCondition payerCondition = new PayerCondition();
         FreezePolicy freezePolicy = new FreezePolicy(address(payerCondition), address(payerCondition), FREEZE_DURATION);
-        (address recorderAddr, address conditionAddr) =
-            conditionFactory.deploy(ESCROW_PERIOD, address(freezePolicy), bytes32(0));
-        recorder = EscrowPeriodRecorder(recorderAddr);
-        condition = EscrowPeriodCondition(conditionAddr);
+        address escrowPeriodAddr = escrowPeriodFactory.deploy(ESCROW_PERIOD, address(freezePolicy), bytes32(0));
+        escrowPeriod = EscrowPeriod(escrowPeriodAddr);
 
         ProtocolFeeConfig protocolFeeConfig = new ProtocolFeeConfig(address(0), address(this), address(this));
 
@@ -64,10 +60,10 @@ contract EscrowPeriodConditionInvariants is Test {
             feeRecipient: address(this),
             feeCalculator: address(0),
             authorizeCondition: address(0),
-            authorizeRecorder: address(recorder),
+            authorizeRecorder: address(escrowPeriod),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: conditionAddr,
+            releaseCondition: address(escrowPeriod),
             releaseRecorder: address(0),
             refundInEscrowCondition: address(0),
             refundInEscrowRecorder: address(0),
@@ -106,7 +102,7 @@ contract EscrowPeriodConditionInvariants is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(uint120(PAYMENT_AMOUNT), uint256(hash));
 
         vm.prank(payer);
-        try recorder.freeze(paymentInfo) {
+        try escrowPeriod.freeze(paymentInfo) {
             frozenByUs[hash] = true;
         } catch {}
     }
@@ -119,7 +115,7 @@ contract EscrowPeriodConditionInvariants is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(uint120(PAYMENT_AMOUNT), uint256(hash));
 
         vm.prank(payer);
-        try recorder.unfreeze(paymentInfo) {
+        try escrowPeriod.unfreeze(paymentInfo) {
             frozenByUs[hash] = false;
         } catch {}
     }
@@ -149,7 +145,7 @@ contract EscrowPeriodConditionInvariants is Test {
     function echidna_frozen_payments_cannot_be_released() public view returns (bool) {
         for (uint256 i = 0; i < trackedHashes.length; i++) {
             bytes32 hash = trackedHashes[i];
-            uint256 frozenUntil = recorder.frozenUntil(hash);
+            uint256 frozenUntil = escrowPeriod.frozenUntil(hash);
 
             // If currently frozen
             if (frozenUntil > block.timestamp) {
@@ -165,7 +161,7 @@ contract EscrowPeriodConditionInvariants is Test {
 
     /// @notice Freeze is only possible during escrow period (authTime + ESCROW_PERIOD > block.timestamp)
     function echidna_freeze_only_during_escrow_period() public view returns (bool) {
-        // This invariant is enforced by the revert in recorder.freeze():
+        // This invariant is enforced by the revert in escrowPeriod.freeze():
         // if (authTime == 0 || block.timestamp >= authTime + ESCROW_PERIOD) revert EscrowPeriodExpired()
         // If we got here without reverting on a freeze call, the period was valid
         return true;
@@ -177,7 +173,7 @@ contract EscrowPeriodConditionInvariants is Test {
             bytes32 hash = trackedHashes[i];
             // If we successfully unfroze, frozenUntil should be 0
             if (!frozenByUs[hash]) {
-                uint256 frozenUntil = recorder.frozenUntil(hash);
+                uint256 frozenUntil = escrowPeriod.frozenUntil(hash);
                 // Either never frozen (0) or expired (frozenUntil <= block.timestamp) or explicitly unfrozen (0)
                 if (frozenUntil != 0 && frozenUntil > block.timestamp) {
                     // Still frozen but we think we unfroze — this would be a bug

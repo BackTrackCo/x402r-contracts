@@ -51,7 +51,7 @@
   - Protocol fee evasion vectors?
 
 **4. Freeze/Release Race Condition**
-- **Location**: `EscrowPeriodRecorder.freeze()` + `EscrowPeriodCondition.check()`
+- **Location**: `EscrowPeriod.freeze()` + `EscrowPeriod.check()`
 - **Concern**: MEV exploitation at escrow period expiry boundary
 - **Questions**:
   - Front-running freeze() at boundary?
@@ -118,8 +118,8 @@
 #### 1. Dangerous Strict Equality (incorrect-equality)
 
 **Finding**:
-- `EscrowPeriodRecorder.freeze()`: `authTime == 0 || block.timestamp >= authTime + ESCROW_PERIOD`
-- `EscrowPeriodRecorder.isEscrowPeriodPassed()`: `authTime == 0`
+- `EscrowPeriod.freeze()`: `authTime == 0 || block.timestamp >= authTime + ESCROW_PERIOD`
+- `EscrowPeriod.isEscrowPeriodPassed()`: `authTime == 0`
 
 **Status**: ✅ **ACCEPTABLE**
 
@@ -171,7 +171,7 @@
 #### 4. Timestamp Dependence (timestamp)
 
 **Finding**:
-- `EscrowPeriodCondition.check()`: Uses `block.timestamp` for comparisons
+- `EscrowPeriod.check()`: Uses `block.timestamp` for comparisons
   - `RECORDER.frozenUntil(paymentInfoHash) > block.timestamp`
   - `block.timestamp < authTime + RECORDER.ESCROW_PERIOD()`
 
@@ -236,8 +236,7 @@
 | **PaymentOperatorFactory** | 65.85% | 58.00% | 0.00% | 57.14% |
 | **RefundRequest** | 71.88% | 68.35% | 33.33% | 58.33% |
 | **RefundRequestAccess** | 84.62% | 80.00% | 60.00% | 75.00% |
-| **EscrowPeriodRecorder** | 57.45% | 52.38% | 8.33% | 57.14% |
-| **EscrowPeriodCondition** | 54.55% | 61.54% | 25.00% | 33.33% |
+| **EscrowPeriod** | 57.45% | 52.38% | 8.33% | 57.14% |
 | **AndCondition** | 53.85% | 56.25% | 66.67% | 66.67% |
 | **OrCondition** | 53.85% | 56.25% | 66.67% | 66.67% |
 
@@ -254,7 +253,7 @@
    - Depth limit enforcement
    - Complex condition chains
 
-3. **EscrowPeriodConditionTest** (3 tests)
+3. **EscrowPeriodTest** (3 tests)
    - Time-based release logic
    - Freeze/unfreeze scenarios
    - Escrow period validation
@@ -406,9 +405,8 @@ src/commerce-payments/requests/refund/
   ├── RefundRequestAccess.sol (~80 LoC)
 
 src/commerce-payments/conditions/escrow-period/
-  ├── EscrowPeriodCondition.sol (~80 LoC)
-  ├── EscrowPeriodRecorder.sol (~160 LoC) ⭐ CRITICAL
-  ├── EscrowPeriodConditionFactory.sol (~120 LoC)
+  ├── EscrowPeriod.sol (~210 LoC) ⭐ CRITICAL
+  ├── EscrowPeriodFactory.sol (~120 LoC)
   ├── freeze-policy/
       ├── FreezePolicy.sol (~60 LoC) - Generic freeze policy using ICondition
       ├── FreezePolicyFactory.sol (~120 LoC)
@@ -502,8 +500,8 @@ PaymentOperatorFactory
                       ├── REFUND_POST_ESCROW_CONDITION (optional)
                       └── REFUND_POST_ESCROW_RECORDER (optional)
 
-EscrowPeriodConditionFactory
-    └── deploys → EscrowPeriodCondition + EscrowPeriodRecorder
+EscrowPeriodFactory
+    └── deploys → EscrowPeriod (combined condition + recorder)
 
 FreezePolicyFactory
     └── deploys → FreezePolicy instances (configured with ICondition contracts)
@@ -567,7 +565,7 @@ FreezePolicyFactory
 **Actors**:
 1. **Payer**: Authorizes payments, can freeze (if policy allows), approves refunds
 2. **Receiver**: Releases payments, creates refund requests, executes refunds
-3. **Operator Owner**: Sets fee parameters (with 24h timelock), withdraws protocol fees
+3. **Operator Owner**: Sets fee parameters (with 7-day timelock), withdraws protocol fees
 4. **Factory Owner**: Can deploy new operators
 5. **Freeze Policy**: Determines who can freeze/unfreeze payments (e.g., FreezePolicy with PayerCondition)
 
@@ -627,7 +625,7 @@ FreezePolicyFactory
 - **Protocol Fee**: Portion of total fee going to protocol treasury
 - **Operator Fee**: Portion of total fee going to operator owner
 - **Fee Rate**: Basis points (1 bps = 0.01%)
-- **Fee Timelock**: 24-hour delay before fee changes take effect
+- **Fee Timelock**: 7-day delay before fee changes take effect
 
 **Refund System**:
 - **Refund Request**: Receiver-initiated request for payer approval

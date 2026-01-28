@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {IRecorder} from "./IRecorder.sol";
-import {OnlyOperator, ZeroAddress, PaymentDoesNotExist} from "../types/Errors.sol";
+import {OnlyOperator, ZeroAddress, PaymentDoesNotExist} from "../../types/Errors.sol";
 
 /**
  * @title BaseRecorder

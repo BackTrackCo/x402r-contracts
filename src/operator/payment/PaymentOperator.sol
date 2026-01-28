@@ -6,10 +6,10 @@ import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PaymentOperatorAccess} from "./PaymentOperatorAccess.sol";
-import {ZeroAddress, ZeroAmount} from "../../types/Errors.sol";
-import {ZeroEscrow, InvalidFeeReceiver, ConditionNotMet, FeeTooHigh} from "../types/Errors.sol";
-import {ICondition} from "../../conditions/ICondition.sol";
-import {IRecorder} from "../../conditions/IRecorder.sol";
+import {ZeroAddress} from "../../types/Errors.sol";
+import {ZeroEscrow, ConditionNotMet, FeeTooHigh} from "../types/Errors.sol";
+import {ICondition} from "../../plugins/conditions/ICondition.sol";
+import {IRecorder} from "../../plugins/recorders/IRecorder.sol";
 import {PaymentState} from "../types/Types.sol";
 import {
     AuthorizationCreated,
@@ -19,8 +19,8 @@ import {
     RefundPostEscrowExecuted,
     FeesDistributed
 } from "../types/Events.sol";
-import {IFeeCalculator} from "../../fees/IFeeCalculator.sol";
-import {ProtocolFeeConfig} from "../../fees/ProtocolFeeConfig.sol";
+import {IFeeCalculator} from "../../plugins/fees/IFeeCalculator.sol";
+import {ProtocolFeeConfig} from "../../plugins/fees/ProtocolFeeConfig.sol";
 
 /**
  * @title PaymentOperator

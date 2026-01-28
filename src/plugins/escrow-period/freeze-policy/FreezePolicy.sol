@@ -3,19 +3,19 @@
 pragma solidity ^0.8.28;
 
 import {IFreezePolicy} from "./IFreezePolicy.sol";
-import {ICondition} from "../../ICondition.sol";
+import {ICondition} from "../../conditions/ICondition.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {ZeroAddress} from "../../../types/Errors.sol";
 
 /**
  * @title FreezePolicy
  * @notice Generic IFreezePolicy that delegates authorization to ICondition contracts.
- * @dev Composes with existing conditions (PayerCondition, ReceiverCondition, ArbiterCondition,
+ * @dev Composes with existing conditions (PayerCondition, ReceiverCondition, StaticAddressCondition,
  *      AlwaysTrueCondition) and combinators (AndCondition, OrCondition, NotCondition).
  *
  *      Example configurations:
  *      - Payer freeze/unfreeze (3 days): (PayerCondition, PayerCondition, 3 days)
- *      - Payer freeze, Arbiter unfreeze: (PayerCondition, ArbiterCondition, 0)
+ *      - Payer freeze, Arbiter unfreeze: (PayerCondition, StaticAddressCondition, 0)
  *      - Anyone freeze, Receiver unfreeze: (AlwaysTrueCondition, ReceiverCondition, 7 days)
  */
 contract FreezePolicy is IFreezePolicy {

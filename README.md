@@ -46,7 +46,7 @@ forge fmt --check
 
 ```solidity
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {ProtocolFeeConfig} from "src/fees/ProtocolFeeConfig.sol";
+import {ProtocolFeeConfig} from "src/plugins/fees/ProtocolFeeConfig.sol";
 import {PaymentOperatorFactory} from "src/operator/PaymentOperatorFactory.sol";
 import {PaymentOperator} from "src/operator/payment/PaymentOperator.sol";
 
@@ -97,7 +97,8 @@ op.release(paymentInfo, amount);
 | Contract | Address |
 |----------|---------|
 | **PaymentOperatorFactory** | [`0x48ADf6E37F9b31dC2AAD0462C5862B5422C736B8`](https://sepolia.basescan.org/address/0x48ADf6E37F9b31dC2AAD0462C5862B5422C736B8) |
-| EscrowPeriodConditionFactory | [`0xc9BbA6A2CF9838e7Dd8c19BC8B3BAC620B9D8178`](https://sepolia.basescan.org/address/0xc9BbA6A2CF9838e7Dd8c19BC8B3BAC620B9D8178) |
+| EscrowPeriodFactory | [`0x3D0837fF8Ea36F417261577b9BA568400A840260`](https://sepolia.basescan.org/address/0x3D0837fF8Ea36F417261577b9BA568400A840260) |
+| StaticFeeCalculatorFactory | [`0x35fb2EFEfAc3Ee9f6E52A9AAE5C9655bC08dEc00`](https://sepolia.basescan.org/address/0x35fb2EFEfAc3Ee9f6E52A9AAE5C9655bC08dEc00) |
 | FreezePolicyFactory | [`0x536439b00002CB3c0141391A92aFBB3e1E3f8604`](https://sepolia.basescan.org/address/0x536439b00002CB3c0141391A92aFBB3e1E3f8604) |
 
 #### Condition Singletons
@@ -150,7 +151,7 @@ This repository contains contracts for the x402r refund extension system.
 │  │  REFUND_POST_ESCROW_CONDITION ─────► REFUND_POST_ESCROW_RECORDER    │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                    │                                        │
-│  Owner Functions (24h Timelock):   │                                        │
+│  Owner Functions (7-day Timelock):  │                                        │
 │  - queueFeesEnabled()              │                                        │
 │  - executeFeesEnabled()            │                                        │
 │  - cancelFeesEnabled()             │                                        │
@@ -196,7 +197,7 @@ Conditions are composable plugins that control access to operator actions:
 │  ])                                                              │
 │    └──► AndCondition([                                           │
 │           <above>,                                               │
-│           EscrowPeriodCondition                                  │
+│           EscrowPeriod                                           │
 │         ])                                                       │
 │                                                                   │
 └──────────────────────────────────────────────────────────────────┘
@@ -238,9 +239,9 @@ MEV Protection: Payers should freeze EARLY, not at deadline.
 │                    PLUGGABLE CONDITIONS                      │
 ├─────────────────────────────────────────────────────────────┤
 │  Access Conditions:          │  Time Conditions:            │
-│  - PayerCondition            │  - EscrowPeriodCondition     │
-│  - ReceiverCondition         │    └─► EscrowPeriodRecorder  │
-│  - StaticAddressCondition    │        └─► FreezePolicy      │
+│  - PayerCondition            │  - EscrowPeriod              │
+│  - ReceiverCondition         │    └─► FreezePolicy          │
+│  - StaticAddressCondition    │                              │
 │  - AlwaysTrueCondition       │                              │
 ├─────────────────────────────────────────────────────────────┤
 │  Combinators:                │  Recorders (Optional):       │
@@ -272,7 +273,7 @@ MEV Protection: Payers should freeze EARLY, not at deadline.
 | **Reentrancy Protection** | `ReentrancyGuardTransient` on escrow |
 | **CEI Pattern** | All functions: Checks → Effects → Interactions |
 | **2-Step Ownership** | Solady's `requestOwnershipHandover()` + `completeOwnershipHandover()` |
-| **24h Timelock** | Fee changes require queue → wait → execute |
+| **7-day Timelock** | Fee changes require queue → wait → execute |
 | **Multisig Requirement** | Owner must be Gnosis Safe in production |
 | **Incident Response** | See [SECURITY.md](SECURITY.md) |
 
@@ -366,7 +367,7 @@ Estimated transaction costs on different networks (at typical gas prices):
 - `paymentHash`: Payment hash for escrow lookup
 - `amount`: Amount authorized/charged
 
-**Note**: For timestamps, use `EscrowPeriodRecorder` which tracks escrow period start times (avoids duplication).
+**Note**: For timestamps, use `EscrowPeriod` which tracks escrow period start times (avoids duplication).
 - **With indexing**: On-chain queries available, no external indexer needed
 - **Without indexing**: Use external indexer (The Graph) for lower gas costs
 - Fully on-chain, decentralized when enabled
@@ -395,7 +396,7 @@ The commerce-payments contracts provide refund functionality for Base Commerce P
 
 #### Freeze Policy Options
 
-The `EscrowPeriodRecorder` contract supports an optional freeze policy via the `FREEZE_POLICY` parameter. This determines who can freeze/unfreeze payments during the escrow period.
+The `EscrowPeriod` contract supports an optional freeze policy via the `FREEZE_POLICY` parameter. This determines who can freeze/unfreeze payments during the escrow period.
 
 **FreezePolicy** uses `ICondition` contracts for authorization:
 
@@ -420,7 +421,7 @@ freezePolicyFactory.deploy(payerCondition, designatedAddrCondition, 0);
 freezePolicyFactory.deploy(alwaysTrueCondition, receiverCondition, 7 days);
 ```
 
-**Note:** If `FREEZE_POLICY` is `address(0)` when deploying EscrowPeriodRecorder, freeze/unfreeze calls will revert with `NoFreezePolicy()` error.
+**Note:** If `FREEZE_POLICY` is `address(0)` when deploying EscrowPeriod, freeze/unfreeze calls will revert with `NoFreezePolicy()` error.
 
 #### PaymentOperatorFactory API
 
@@ -429,6 +430,7 @@ The `PaymentOperatorFactory` provides a single generic `deployOperator(OperatorC
 ```solidity
 struct OperatorConfig {
     address feeRecipient;
+    address feeCalculator;
     address authorizeCondition;
     address authorizeRecorder;
     address chargeCondition;
@@ -439,8 +441,6 @@ struct OperatorConfig {
     address refundInEscrowRecorder;
     address refundPostEscrowCondition;
     address refundPostEscrowRecorder;
-    uint16 maxFeeBps;
-    uint8 protocolFeePct;
 }
 ```
 
@@ -450,6 +450,7 @@ address arbiterCondition = address(new StaticAddressCondition(arbiterAddress));
 
 PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
     feeRecipient: arbiterAddress,           // Arbiter earns fees for dispute resolution
+    feeCalculator: address(feeCalc),        // Operator fee calculator
     authorizeCondition: address(0),         // Anyone can authorize
     authorizeRecorder: address(0),          // No recording
     chargeCondition: RECEIVER_CONDITION,    // Only receiver can charge
@@ -459,9 +460,7 @@ PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.Ope
     refundInEscrowCondition: arbiterCondition,  // Only arbiter can refund
     refundInEscrowRecorder: address(0),
     refundPostEscrowCondition: arbiterCondition, // Only arbiter for post-escrow refunds
-    refundPostEscrowRecorder: address(0),
-    maxFeeBps: 5,                           // 0.05% fee
-    protocolFeePct: 25                      // 25% to protocol
+    refundPostEscrowRecorder: address(0)
 });
 address operator = factory.deployOperator(config);
 ```
@@ -496,7 +495,7 @@ PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.Ope
 (PaymentIndexRecorder.PaymentRecord[] memory records, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 10);
 // records[0].paymentHash - Payment hash for escrow lookup
 // records[0].amount - Amount authorized/charged
-// For timestamps: use EscrowPeriodRecorder
+// For timestamps: use EscrowPeriod
 ```
 
 **Benefits:**
@@ -505,7 +504,7 @@ PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.Ope
 - **Gas Savings**: ~55k per authorization when indexing disabled
 - **Flexibility**: Deploy with or without on-chain queries
 - **Composability**: Combine with other recorders via `RecorderCombinator`
-- **No Duplication**: Use `EscrowPeriodRecorder` for timestamps (avoids redundant data)
+- **No Duplication**: Use `EscrowPeriod` for timestamps (avoids redundant data)
 
 **When to use indexing:**
 - ✅ Need on-chain payment history queries

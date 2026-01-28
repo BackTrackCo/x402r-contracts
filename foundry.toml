@@ -28,4 +28,13 @@ base = { key = "${ETHERSCAN_API_KEY}", url = "https://api.basescan.org/api" }
 fuzz = { runs = 1000 }
 invariant = { runs = 1000 }
 
+# Lint configuration
+# Suppress rules that conflict with Foundry conventions or provide low value:
+# - mixed-case-function: echidna_* and handler_* invariant naming conventions
+# - mixed-case-variable: ghost_* variable naming conventions
+# - asm-keccak256: factory contracts called rarely; assembly not worth maintainability cost
+# - unsafe-typecast: all source typecasts are bounds-checked; test casts use known constants
+[lint]
+exclude_lints = ["mixed-case-function", "mixed-case-variable", "asm-keccak256", "unsafe-typecast"]
+
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
