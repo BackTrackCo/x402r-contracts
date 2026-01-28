@@ -25,7 +25,7 @@ base-sepolia = { key = "${ETHERSCAN_API_KEY}", url = "https://api-sepolia.basesc
 base = { key = "${ETHERSCAN_API_KEY}", url = "https://api.basescan.org/api" }
 
 # CI profile - used in GitHub Actions
-# Coverage threshold enforced in .github/workflows/ci.yml (currently 65%)
+# Coverage threshold enforced in .github/workflows/ci.yml (target: 80%)
 [profile.ci]
 fuzz = { runs = 1000 }
 invariant = { runs = 1000 }

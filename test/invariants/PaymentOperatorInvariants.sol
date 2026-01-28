@@ -7,6 +7,7 @@ import {PaymentOperatorFactory} from "../../src/operator/PaymentOperatorFactory.
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {ProtocolFeeConfig} from "../../src/fees/ProtocolFeeConfig.sol";
+import {StaticFeeCalculator} from "../../src/fees/StaticFeeCalculator.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 
 /**
@@ -26,10 +27,22 @@ contract PaymentOperatorInvariants is Test {
 
     address public owner;
     address public protocolFeeRecipient;
+    address public operatorFeeRecipient;
+
+    uint256 public constant PROTOCOL_BPS = 25; // 0.25%
+    uint256 public constant OPERATOR_BPS = 50; // 0.50%
+    uint256 public constant TOTAL_FEE_BPS = PROTOCOL_BPS + OPERATOR_BPS;
 
     // Track all payments for invariant checking
     mapping(bytes32 => PaymentTracking) public payments;
     bytes32[] public paymentHashes;
+
+    // Track fee recipient balance for monotonicity check
+    uint256 public previousProtocolFeeRecipientBalance;
+    uint256 public previousOperatorFeeRecipientBalance;
+
+    // Track total released for fee bound verification
+    uint256 public totalReleasedAmount;
 
     struct PaymentTracking {
         bool exists;
@@ -43,21 +56,26 @@ contract PaymentOperatorInvariants is Test {
     constructor() {
         owner = address(this);
         protocolFeeRecipient = address(0x1234);
+        operatorFeeRecipient = address(0x5678);
 
         // Deploy infrastructure
         escrow = new AuthCaptureEscrow();
         token = new MockERC20("Test Token", "TEST");
         collector = new PreApprovalPaymentCollector(address(escrow));
 
-        // Deploy protocol fee config (calculator=address(0) means no protocol fees)
-        protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, address(this));
+        // Deploy fee calculators for meaningful fee invariant testing
+        StaticFeeCalculator protocolCalc = new StaticFeeCalculator(PROTOCOL_BPS);
+        StaticFeeCalculator operatorCalc = new StaticFeeCalculator(OPERATOR_BPS);
 
-        // Deploy operator
+        // Deploy protocol fee config with actual calculator
+        protocolFeeConfig = new ProtocolFeeConfig(address(protocolCalc), protocolFeeRecipient, address(this));
+
+        // Deploy operator with fee calculators
         PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: protocolFeeRecipient,
-            feeCalculator: address(0),
+            feeRecipient: operatorFeeRecipient,
+            feeCalculator: address(operatorCalc),
             authorizeCondition: address(0),
             authorizeRecorder: address(0),
             chargeCondition: address(0),
@@ -93,8 +111,8 @@ contract PaymentOperatorInvariants is Test {
             preApprovalExpiry: uint48(block.timestamp + 1 days),
             authorizationExpiry: uint48(block.timestamp + 7 days),
             refundExpiry: uint48(block.timestamp + 30 days),
-            minFeeBps: 0,
-            maxFeeBps: 0,
+            minFeeBps: uint16(TOTAL_FEE_BPS),
+            maxFeeBps: uint16(TOTAL_FEE_BPS),
             feeReceiver: address(operator),
             salt: salt
         });
@@ -136,6 +154,17 @@ contract PaymentOperatorInvariants is Test {
         if (payments[hash].exists) {
             payments[hash].capturedAmount += amount;
         }
+        totalReleasedAmount += amount;
+    }
+
+    function _charge(address payer, address receiver, uint256 amount, uint256 salt) internal {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(payer, receiver, amount, salt);
+
+        collector.preApprove(paymentInfo);
+        operator.charge(paymentInfo, amount, address(collector), "");
+
+        _trackPayment(paymentInfo, amount);
+        totalReleasedAmount += amount;
     }
 
     function _refund(AuthCaptureEscrow.PaymentInfo memory paymentInfo, uint120 amount) internal {
@@ -165,11 +194,13 @@ contract PaymentOperatorInvariants is Test {
         return true;
     }
 
-    /// @notice P16: Protocol fee ≤ configured feeBasisPoints
+    /// @notice P16: Accumulated protocol fees never exceed what fee rate would produce
     function echidna_fee_not_excessive() public view returns (bool) {
-        // Fee calculators are modular; with address(0) calculators, fee is 0
-        // This invariant checks that protocol fee config returns a reasonable value
-        return true;
+        uint256 accumulated = operator.accumulatedProtocolFees(address(token));
+        // Max possible protocol fees = totalReleased * PROTOCOL_BPS / 10000
+        // Allow +1 per release for rounding tolerance
+        uint256 maxExpected = (totalReleasedAmount * PROTOCOL_BPS) / 10000 + paymentHashes.length;
+        return accumulated <= maxExpected;
     }
 
     /// @notice P20: Balance validation prevents fee-on-transfer
@@ -179,11 +210,12 @@ contract PaymentOperatorInvariants is Test {
         return true;
     }
 
-    /// @notice P22: Reentrancy protection active
-    function echidna_reentrancy_protected() public view returns (bool) {
-        // All functions have nonReentrant modifier
-        // If we can execute without deadlock, protection is working
-        return true;
+    /// @notice P22: Operator balance is consistent with accumulated fees
+    function echidna_operator_balance_consistent() public view returns (bool) {
+        uint256 accumulated = operator.accumulatedProtocolFees(address(token));
+        uint256 operatorBalance = token.balanceOf(address(operator));
+        // Accumulated protocol fees must never exceed operator's token balance
+        return accumulated <= operatorBalance;
     }
 
     /// @notice Total token balance ≥ sum of all authorized payments
@@ -232,11 +264,15 @@ contract PaymentOperatorInvariants is Test {
         return true;
     }
 
-    /// @notice Protocol fee recipient balance only increases
-    function echidna_fee_recipient_balance_increases() public view returns (bool) {
-        // This would require tracking previous balance
-        // Simplified: fee recipient should never have negative balance
-        return token.balanceOf(protocolFeeRecipient) >= 0;
+    /// @notice Protocol fee recipient balance only increases (monotonic)
+    function echidna_fee_recipient_balance_increases() public returns (bool) {
+        uint256 currentProtocolBalance = token.balanceOf(protocolFeeRecipient);
+        uint256 currentOperatorBalance = token.balanceOf(operatorFeeRecipient);
+        bool result = currentProtocolBalance >= previousProtocolFeeRecipientBalance
+            && currentOperatorBalance >= previousOperatorFeeRecipientBalance;
+        previousProtocolFeeRecipientBalance = currentProtocolBalance;
+        previousOperatorFeeRecipientBalance = currentOperatorBalance;
+        return result;
     }
 
     /// @notice Owner cannot steal user funds directly
@@ -281,6 +317,14 @@ contract PaymentOperatorInvariants is Test {
         _refund(paymentInfo, amount);
     }
 
+    function chargeExternal(address payer, address receiver, uint256 amount, uint256 salt) external {
+        _charge(payer, receiver, amount, salt);
+    }
+
+    function distributeFeesExternal() external {
+        operator.distributeFees(address(token));
+    }
+
     // ============ Echidna Actions (Fuzzing Entry Points) ============
 
     function authorize_fuzz(address payer, address receiver, uint128 amount, uint256 salt) public {
@@ -319,5 +363,17 @@ contract PaymentOperatorInvariants is Test {
             _createPaymentInfo(p.payer, p.receiver, p.authorizedAmount, uint256(hash));
 
         try this.refundExternal(paymentInfo, amount) {} catch {}
+    }
+
+    function charge_fuzz(address payer, address receiver, uint128 amount, uint256 salt) public {
+        // Bound inputs
+        if (payer == address(0) || receiver == address(0)) return;
+        if (amount == 0 || amount > 1000000 * 10 ** 18) return;
+
+        try this.chargeExternal(payer, receiver, amount, salt) {} catch {}
+    }
+
+    function distributeFees_fuzz() public {
+        try this.distributeFeesExternal() {} catch {}
     }
 }
