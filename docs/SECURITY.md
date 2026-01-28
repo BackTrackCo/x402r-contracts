@@ -255,6 +255,62 @@ slither . --exclude-informational --exclude-low
 
 ---
 
+## Escrow Trust Boundary
+
+### Architecture Trust Model
+
+The x402r payment system has a clear trust boundary between the trustless escrow layer and the trusted operator layer:
+
+```
+┌─────────────────────────────────────────────────────┐
+│                  TRUSTLESS LAYER                     │
+│                                                     │
+│  AuthCaptureEscrow + TokenStore                     │
+│  - Enforces payment state machine                   │
+│  - Balance verification on every operation          │
+│  - Reentrancy guards (ReentrancyGuardTransient)     │
+│  - Cannot be manipulated by operator or conditions  │
+└──────────────────────┬──────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────┐
+│                   TRUSTED LAYER                      │
+│                                                     │
+│  PaymentOperator + Conditions + Recorders           │
+│  - Operator deployer chooses all plugins            │
+│  - Immutable after deployment (no upgrades)         │
+│  - Users must trust operator configuration          │
+│  - Conditions can block/allow operations            │
+│  - Recorders execute post-action callbacks          │
+└─────────────────────────────────────────────────────┘
+```
+
+### What the Escrow Protects Against
+
+The escrow layer provides hard guarantees that **no operator, condition, or recorder can violate**:
+
+- **Fund extraction**: Escrow enforces `captured + refunded <= authorized` per payment. No amount of operator manipulation can extract more than what was authorized.
+- **Balance manipulation**: Every token transfer is verified via `balanceAfter == balanceBefore + amount`. Fee-on-transfer or rebasing tokens are rejected.
+- **Double-spend**: Payment state transitions are enforced at the escrow level. A payment cannot be captured and fully refunded simultaneously.
+- **Unauthorized access**: Only the registered operator can call escrow functions for its payments.
+
+### What Operators CAN Do (Trusted Risks)
+
+Operators control the business logic layer. A malicious or buggy operator **can**:
+
+- **Block releases**: A malicious `RELEASE_CONDITION` can return `false` indefinitely, trapping funds until `authorizationExpiry` when the payer can reclaim.
+- **Censor users**: Conditions with blocklists can selectively prevent specific addresses from interacting.
+- **Leak MEV**: Non-`view` conditions (should never be used) could emit events or make external calls that leak payment data to MEV bots.
+- **Front-run refunds**: Without an escrow period (`RELEASE_CONDITION = address(0)`), a receiver can release funds before a refund request is processed.
+- **Gas grief**: Conditions or recorders with unbounded loops can make operations fail with out-of-gas.
+
+### Implications
+
+**For users**: Always verify the operator's condition and recorder contracts before interacting. Use operators deployed by trusted parties with audited conditions from the safe condition library.
+
+**For operators**: Deploy with audited conditions, use escrow periods for dispute resolution, and document trust assumptions for your users. See [OPERATOR_SECURITY.md](./OPERATOR_SECURITY.md) for the full deployment checklist.
+
+---
+
 ## Combinator Depth Limits
 
 ### Maximum Combinator Depth Recommendation

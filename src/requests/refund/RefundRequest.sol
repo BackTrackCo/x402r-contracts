@@ -30,6 +30,9 @@ import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} fro
  *      Each refund request is keyed by (paymentInfoHash, nonce) where nonce is the
  *      record index from PaymentIndexRecorder. This allows multiple refund requests
  *      per payment (one per charge/action).
+ *
+ *      Storage uses mapping+counter pattern (matching PaymentIndexRecorder) for
+ *      gas-efficient writes and paginated reads without unbounded arrays.
  */
 contract RefundRequest is RefundRequestAccess {
     struct RefundRequestData {
@@ -39,14 +42,23 @@ contract RefundRequest is RefundRequestAccess {
         RequestStatus status; // Current status of the request
     }
 
+    // ============ Errors ============
+
+    error IndexOutOfBounds();
+
+    // ============ Storage ============
+
     // compositeKey => refund request
     // compositeKey = keccak256(abi.encodePacked(paymentInfoHash, nonce))
     mapping(bytes32 => RefundRequestData) private refundRequests;
-    // payer => array of composite keys (for iteration)
-    mapping(address => bytes32[]) private payerRefundRequests;
-    // receiver => array of composite keys (for iteration)
-    mapping(address => bytes32[]) private receiverRefundRequests;
-    // O(1) existence checks for array deduplication
+
+    // Mapping+counter pattern for gas-efficient indexing (no unbounded arrays)
+    mapping(address => mapping(uint256 => bytes32)) private payerRefundRequests;
+    mapping(address => uint256) public payerRefundRequestCount;
+    mapping(address => mapping(uint256 => bytes32)) private receiverRefundRequests;
+    mapping(address => uint256) public receiverRefundRequestCount;
+
+    // O(1) existence checks for deduplication
     mapping(address => mapping(bytes32 => bool)) private payerRefundRequestExists;
     mapping(address => mapping(bytes32 => bool)) private receiverRefundRequestExists;
 
@@ -77,7 +89,7 @@ contract RefundRequest is RefundRequestAccess {
             paymentInfoHash: paymentInfoHash, nonce: nonce, amount: amount, status: RequestStatus.Pending
         });
 
-        // Update indexing arrays (only add if not already in arrays)
+        // Update indexing mappings (only add if not already indexed)
         _addPayerRequest(paymentInfo.payer, compositeKey);
         _addReceiverRequest(paymentInfo.receiver, compositeKey);
 
@@ -152,18 +164,20 @@ contract RefundRequest is RefundRequestAccess {
         emit RefundRequestStatusUpdated(paymentInfo, oldStatus, newStatus, msg.sender, nonce);
     }
 
-    /// @notice Add key to payer's request array if not already present (O(1) check)
+    /// @notice Add key to payer's index if not already present (O(1) check)
     function _addPayerRequest(address payer, bytes32 key) internal {
         if (payerRefundRequestExists[payer][key]) return;
         payerRefundRequestExists[payer][key] = true;
-        payerRefundRequests[payer].push(key);
+        payerRefundRequests[payer][payerRefundRequestCount[payer]] = key;
+        payerRefundRequestCount[payer]++;
     }
 
-    /// @notice Add key to receiver's request array if not already present (O(1) check)
+    /// @notice Add key to receiver's index if not already present (O(1) check)
     function _addReceiverRequest(address receiver, bytes32 key) internal {
         if (receiverRefundRequestExists[receiver][key]) return;
         receiverRefundRequestExists[receiver][key] = true;
-        receiverRefundRequests[receiver].push(key);
+        receiverRefundRequests[receiver][receiverRefundRequestCount[receiver]] = key;
+        receiverRefundRequestCount[receiver]++;
     }
 
     // ============ View Functions ============
@@ -215,20 +229,6 @@ contract RefundRequest is RefundRequestAccess {
         return refundRequests[compositeKey].status;
     }
 
-    /// @notice Get all refund request keys for a payer
-    /// @param payer The payer address
-    /// @return Array of composite keys
-    function getPayerRefundRequestKeys(address payer) external view returns (bytes32[] memory) {
-        return payerRefundRequests[payer];
-    }
-
-    /// @notice Get all refund request keys for a receiver (merchant)
-    /// @param receiver The receiver address
-    /// @return Array of composite keys
-    function getReceiverRefundRequestKeys(address receiver) external view returns (bytes32[] memory) {
-        return receiverRefundRequests[receiver];
-    }
-
     /// @notice Get refund request data by composite key
     /// @param compositeKey The keccak256(paymentInfoHash, nonce) key
     /// @return The refund request data
@@ -236,5 +236,81 @@ contract RefundRequest is RefundRequestAccess {
         RefundRequestData memory request = refundRequests[compositeKey];
         if (request.paymentInfoHash == bytes32(0)) revert RequestDoesNotExist();
         return request;
+    }
+
+    // ============ Paginated View Functions ============
+
+    /// @notice Get paginated refund request keys for a payer
+    /// @param payer The payer address
+    /// @param offset Starting index (0-based)
+    /// @param count Number of keys to return
+    /// @return keys Array of composite keys
+    /// @return total Total number of refund requests for this payer
+    function getPayerRefundRequests(address payer, uint256 offset, uint256 count)
+        external
+        view
+        returns (bytes32[] memory keys, uint256 total)
+    {
+        total = payerRefundRequestCount[payer];
+
+        if (offset >= total || count == 0) {
+            return (new bytes32[](0), total);
+        }
+
+        uint256 remaining = total - offset;
+        uint256 actualCount = remaining < count ? remaining : count;
+
+        keys = new bytes32[](actualCount);
+        for (uint256 i = 0; i < actualCount; i++) {
+            keys[i] = payerRefundRequests[payer][offset + i];
+        }
+
+        return (keys, total);
+    }
+
+    /// @notice Get paginated refund request keys for a receiver
+    /// @param receiver The receiver address
+    /// @param offset Starting index (0-based)
+    /// @param count Number of keys to return
+    /// @return keys Array of composite keys
+    /// @return total Total number of refund requests for this receiver
+    function getReceiverRefundRequests(address receiver, uint256 offset, uint256 count)
+        external
+        view
+        returns (bytes32[] memory keys, uint256 total)
+    {
+        total = receiverRefundRequestCount[receiver];
+
+        if (offset >= total || count == 0) {
+            return (new bytes32[](0), total);
+        }
+
+        uint256 remaining = total - offset;
+        uint256 actualCount = remaining < count ? remaining : count;
+
+        keys = new bytes32[](actualCount);
+        for (uint256 i = 0; i < actualCount; i++) {
+            keys[i] = receiverRefundRequests[receiver][offset + i];
+        }
+
+        return (keys, total);
+    }
+
+    /// @notice Get a single refund request key by index for a payer
+    /// @param payer The payer address
+    /// @param index Index of the request (0-based)
+    /// @return The composite key at the specified index
+    function getPayerRefundRequest(address payer, uint256 index) external view returns (bytes32) {
+        if (index >= payerRefundRequestCount[payer]) revert IndexOutOfBounds();
+        return payerRefundRequests[payer][index];
+    }
+
+    /// @notice Get a single refund request key by index for a receiver
+    /// @param receiver The receiver address
+    /// @param index Index of the request (0-based)
+    /// @return The composite key at the specified index
+    function getReceiverRefundRequest(address receiver, uint256 index) external view returns (bytes32) {
+        if (index >= receiverRefundRequestCount[receiver]) revert IndexOutOfBounds();
+        return receiverRefundRequests[receiver][index];
     }
 }

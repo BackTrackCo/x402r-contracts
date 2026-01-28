@@ -367,4 +367,118 @@ contract RefundRequestTest is Test {
         vm.expectRevert();
         refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
     }
+
+    // ============ Pagination Tests ============
+
+    function test_PaginationPayerRefundRequests() public {
+        // Create multiple refund requests with different nonces
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        for (uint256 i = 0; i < 5; i++) {
+            vm.prank(payer);
+            refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT / 5), i);
+        }
+
+        // Check count
+        assertEq(refundRequest.payerRefundRequestCount(payer), 5, "Should have 5 requests");
+
+        // Get first 3
+        (bytes32[] memory keys, uint256 total) = refundRequest.getPayerRefundRequests(payer, 0, 3);
+        assertEq(total, 5, "Total should be 5");
+        assertEq(keys.length, 3, "Should return 3 keys");
+
+        // Get remaining 2
+        (bytes32[] memory keys2, uint256 total2) = refundRequest.getPayerRefundRequests(payer, 3, 3);
+        assertEq(total2, 5, "Total should still be 5");
+        assertEq(keys2.length, 2, "Should return 2 keys");
+
+        // No overlap
+        for (uint256 i = 0; i < keys.length; i++) {
+            for (uint256 j = 0; j < keys2.length; j++) {
+                assertTrue(keys[i] != keys2[j], "Should have no overlap");
+            }
+        }
+    }
+
+    function test_PaginationReceiverRefundRequests() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        for (uint256 i = 0; i < 3; i++) {
+            vm.prank(payer);
+            refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT / 3), i);
+        }
+
+        assertEq(refundRequest.receiverRefundRequestCount(receiver), 3, "Should have 3 requests");
+
+        (bytes32[] memory keys, uint256 total) = refundRequest.getReceiverRefundRequests(receiver, 0, 10);
+        assertEq(total, 3, "Total should be 3");
+        assertEq(keys.length, 3, "Should return 3 keys");
+    }
+
+    function test_PaginationOffsetBeyondTotal() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        (bytes32[] memory keys, uint256 total) = refundRequest.getPayerRefundRequests(payer, 10, 5);
+        assertEq(total, 1, "Total should be 1");
+        assertEq(keys.length, 0, "Should return empty array");
+    }
+
+    function test_PaginationCountExceedsRemaining() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        for (uint256 i = 0; i < 3; i++) {
+            vm.prank(payer);
+            refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT / 3), i);
+        }
+
+        (bytes32[] memory keys, uint256 total) = refundRequest.getPayerRefundRequests(payer, 0, 10);
+        assertEq(total, 3, "Total should be 3");
+        assertEq(keys.length, 3, "Should return 3 keys (not 10)");
+    }
+
+    function test_PaginationZeroCount() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        (bytes32[] memory keys, uint256 total) = refundRequest.getPayerRefundRequests(payer, 0, 0);
+        assertEq(total, 1, "Total should be 1");
+        assertEq(keys.length, 0, "Should return empty array for count=0");
+    }
+
+    function test_SingleRefundRequestByIndex() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        bytes32 payerKey = refundRequest.getPayerRefundRequest(payer, 0);
+        bytes32 receiverKey = refundRequest.getReceiverRefundRequest(receiver, 0);
+
+        assertTrue(payerKey != bytes32(0), "Payer key should not be zero");
+        assertEq(payerKey, receiverKey, "Keys should match for same request");
+
+        // Verify data via key lookup
+        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequestByKey(payerKey);
+        assertEq(data.amount, uint120(PAYMENT_AMOUNT));
+        assertEq(data.nonce, 0);
+    }
+
+    function test_SingleRefundRequestByIndex_RevertsOutOfBounds() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        // Index 1 is out of bounds (only index 0 exists)
+        vm.expectRevert(RefundRequest.IndexOutOfBounds.selector);
+        refundRequest.getPayerRefundRequest(payer, 1);
+
+        vm.expectRevert(RefundRequest.IndexOutOfBounds.selector);
+        refundRequest.getReceiverRefundRequest(receiver, 1);
+    }
 }

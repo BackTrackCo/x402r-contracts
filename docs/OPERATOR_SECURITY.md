@@ -674,6 +674,56 @@ Before deploying a PaymentOperator:
 
 ---
 
+## RELEASE_CONDITION = address(0) Risk
+
+### Warning: Immediate Release Without Escrow Period
+
+When deploying a PaymentOperator with `RELEASE_CONDITION = address(0)`, **anyone can release funds immediately after authorization**. This is the default behavior and is dangerous for most payment use cases.
+
+### Attack Scenario: Front-Running Refund Requests
+
+```
+1. Payer authorizes payment (funds enter escrow)
+2. Payer realizes an issue and submits requestRefund() to the RefundRequest contract
+3. Receiver sees the refund request in the mempool
+4. Receiver front-runs with release() (no condition to block it)
+5. Funds are captured by receiver before refund can be processed
+6. Payer's refund request becomes meaningless (funds already released)
+```
+
+This is a **race condition** inherent to `address(0)` release conditions. The RefundRequest contract only tracks request status — it does not prevent releases.
+
+### When address(0) is Acceptable
+
+- **Trusted receiver relationships**: Both parties know and trust each other (e.g., internal treasury transfers)
+- **Instant settlement**: Use cases where escrow hold is not needed (e.g., point-of-sale)
+- **Charge-only flows**: Using `charge()` instead of `authorize()` (no escrow hold)
+
+### When address(0) is Dangerous
+
+- **Consumer-to-merchant payments**: Consumers expect dispute resolution windows
+- **Marketplace escrow**: Buyers need protection against non-delivery
+- **Any flow using RefundRequest**: Without escrow period, refund requests are trivially front-runnable
+
+### Recommendation
+
+Use `EscrowPeriodCondition` as `RELEASE_CONDITION` for any payment flow that involves:
+- Refund requests (RefundRequest contract)
+- Dispute resolution
+- Delivery-based settlement
+
+```solidity
+// SAFE: Release blocked until escrow period passes
+config.releaseCondition = address(escrowPeriodCondition);
+
+// DANGEROUS: Immediate release, refund requests easily front-run
+config.releaseCondition = address(0);
+```
+
+See [SECURITY.md](./SECURITY.md) for the full escrow trust boundary analysis.
+
+---
+
 ## Incident Response
 
 ### If Malicious Condition/Recorder Detected
