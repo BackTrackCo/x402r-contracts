@@ -10,8 +10,6 @@ via_ir = true
 
 # Remappings
 remappings = [
-    "@aave-v3-core/=lib/aave-v3-core/contracts/",
-    "@createx/=lib/createx/src/",
     "commerce-payments/=lib/commerce-payments/src/",
     "solady/=lib/solady/src/",
     "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/"
