@@ -27,6 +27,59 @@ For auditors and developers:
 | [DEPLOYMENT_CHECKLIST.md](docs/DEPLOYMENT_CHECKLIST.md) | ✅ Production deployment checklist |
 | [GAS_BREAKDOWN.md](docs/GAS_BREAKDOWN.md) | 📊 Detailed gas cost analysis |
 
+## Quick Start
+
+```shell
+# Clone and build
+git clone --recursive https://github.com/x402r/x402r-contracts.git
+cd x402r-contracts
+forge build
+
+# Run tests
+forge test
+
+# Check formatting
+forge fmt --check
+```
+
+### Deploy a Payment Operator (Local)
+
+```solidity
+import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
+import {ProtocolFeeConfig} from "src/fees/ProtocolFeeConfig.sol";
+import {PaymentOperatorFactory} from "src/operator/PaymentOperatorFactory.sol";
+import {PaymentOperator} from "src/operator/payment/PaymentOperator.sol";
+
+// 1. Deploy infrastructure
+AuthCaptureEscrow escrow = new AuthCaptureEscrow();
+ProtocolFeeConfig feeConfig = new ProtocolFeeConfig(address(0), feeRecipient, owner);
+PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(feeConfig));
+
+// 2. Configure and deploy operator
+PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
+    feeRecipient: feeRecipient,
+    feeCalculator: address(0),            // No operator fee
+    authorizeCondition: address(0),        // Anyone can authorize
+    authorizeRecorder: address(0),         // No recording
+    chargeCondition: address(0),
+    chargeRecorder: address(0),
+    releaseCondition: address(0),          // Anyone can release
+    releaseRecorder: address(0),
+    refundInEscrowCondition: address(0),
+    refundInEscrowRecorder: address(0),
+    refundPostEscrowCondition: address(0),
+    refundPostEscrowRecorder: address(0)
+});
+address operator = factory.deployOperator(config);
+
+// 3. Use the operator
+PaymentOperator op = PaymentOperator(operator);
+op.authorize(paymentInfo, amount, tokenCollector, "");
+op.release(paymentInfo, amount);
+```
+
+---
+
 ### Base Sepolia
 
 **Source of truth:** This README. Addresses will eventually be moved to `@x402r/sdk` package.

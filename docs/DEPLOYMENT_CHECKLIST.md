@@ -253,7 +253,8 @@ node scripts/verify-deployment.js
 - [ ] Configure event monitoring
   - [ ] AuthorizationCreated
   - [ ] ReleaseExecuted
-  - [ ] RefundExecuted
+  - [ ] RefundInEscrowExecuted
+  - [ ] RefundPostEscrowExecuted
   - [ ] FeesDistributed
 
 ### Set Up Alerts

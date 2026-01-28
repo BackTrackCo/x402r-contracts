@@ -15,7 +15,8 @@ import {
     AuthorizationCreated,
     ChargeExecuted,
     ReleaseExecuted,
-    RefundExecuted,
+    RefundInEscrowExecuted,
+    RefundPostEscrowExecuted,
     FeesDistributed
 } from "../types/Events.sol";
 import {IFeeCalculator} from "../../fees/IFeeCalculator.sol";
@@ -308,7 +309,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
 
         // ============ EFFECTS ============
         // Emit event before external calls (CEI pattern)
-        emit RefundExecuted(paymentInfo, paymentInfo.payer, amount);
+        emit RefundInEscrowExecuted(paymentInfo, paymentInfo.payer, amount);
 
         // ============ INTERACTIONS ============
         // Forward to escrow's partialVoid - escrow validates payment exists
@@ -347,7 +348,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
 
         // ============ EFFECTS ============
         // Emit event before external calls (CEI pattern)
-        emit RefundExecuted(paymentInfo, paymentInfo.payer, amount);
+        emit RefundPostEscrowExecuted(paymentInfo, paymentInfo.payer, amount);
 
         // ============ INTERACTIONS ============
         // Forward to escrow's refund - token collector enforces permission

@@ -78,7 +78,7 @@ contract MaliciousRecorder is IRecorder {
             try PaymentOperator(payable(msg.sender)).distributeFees(paymentInfo.token) {
             // If this succeeds and causes accounting issues, it's a vulnerability
             }
-                catch {
+            catch {
                 // Revert expected — nonReentrant blocked the call
                 reentrancyBlocked = true;
             }

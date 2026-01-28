@@ -1,0 +1,123 @@
+name: Mutation Testing
+
+on:
+  schedule:
+    - cron: "0 4 * * 0" # Weekly on Sunday at 4 AM UTC
+  workflow_dispatch:
+
+env:
+  FOUNDRY_PROFILE: ci
+
+jobs:
+  mutation-test:
+    name: Gambit Mutation Testing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Install Gambit
+        run: |
+          curl -sSL https://github.com/Certora/gambit/releases/latest/download/gambit-linux-x86_64 -o gambit
+          chmod +x gambit
+          sudo mv gambit /usr/local/bin/
+
+      - name: Generate mutants
+        run: |
+          gambit mutate \
+            --solc-remappings "commerce-payments/=lib/commerce-payments/src/" \
+            --solc-remappings "solady/=lib/solady/src/" \
+            --solc-remappings "forge-std/=lib/forge-std/src/" \
+            --solc-remappings "openzeppelin-contracts/=lib/openzeppelin-contracts/" \
+            --filename src/operator/payment/PaymentOperator.sol \
+            --filename src/fees/ProtocolFeeConfig.sol \
+            --filename src/fees/StaticFeeCalculator.sol \
+            --filename src/conditions/escrow-period/EscrowPeriodRecorder.sol \
+            --filename src/requests/refund/RefundRequest.sol \
+            --outdir gambit_out
+
+      - name: Count mutants
+        id: count
+        run: |
+          MUTANT_COUNT=$(find gambit_out/mutants -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l)
+          echo "mutant_count=$MUTANT_COUNT" >> "$GITHUB_OUTPUT"
+          echo "Generated $MUTANT_COUNT mutants"
+
+      - name: Run mutation tests
+        if: steps.count.outputs.mutant_count != '0'
+        run: |
+          KILLED=0
+          SURVIVED=0
+          ERRORS=0
+          TOTAL=$(find gambit_out/mutants -maxdepth 1 -mindepth 1 -type d | wc -l)
+
+          for mutant_dir in gambit_out/mutants/*/; do
+            mutant_id=$(basename "$mutant_dir")
+            echo "--- Testing mutant $mutant_id / $TOTAL ---"
+
+            # Apply mutant (Gambit stores the original path in the mutant dir)
+            if [ -f "$mutant_dir/gambit_results.json" ]; then
+              continue
+            fi
+
+            # Copy mutant source over original
+            for mutant_file in "$mutant_dir"*.sol; do
+              if [ -f "$mutant_file" ]; then
+                original=$(python3 -c "
+          import json, glob
+          results = glob.glob('gambit_out/gambit_results.json')
+          if results:
+              data = json.load(open(results[0]))
+              for m in data:
+                  if str(m.get('id')) == '$mutant_id':
+                      print(m.get('original', ''))
+                      break
+          ")
+                if [ -n "$original" ] && [ -f "$original" ]; then
+                  cp "$original" "$original.bak"
+                  cp "$mutant_file" "$original"
+                fi
+              fi
+            done
+
+            # Run tests (timeout 120s per mutant)
+            if timeout 120 forge test --no-match-path "test/invariants/*" 2>/dev/null; then
+              SURVIVED=$((SURVIVED + 1))
+              echo "SURVIVED: mutant $mutant_id"
+            else
+              KILLED=$((KILLED + 1))
+              echo "KILLED: mutant $mutant_id"
+            fi
+
+            # Restore original
+            for bak_file in $(find . -name "*.sol.bak" 2>/dev/null); do
+              mv "$bak_file" "${bak_file%.bak}"
+            done
+          done
+
+          echo "============================================"
+          echo "Mutation Testing Results"
+          echo "============================================"
+          echo "Total mutants: $TOTAL"
+          echo "Killed: $KILLED"
+          echo "Survived: $SURVIVED"
+          echo "Errors: $ERRORS"
+          if [ "$TOTAL" -gt 0 ]; then
+            SCORE=$(echo "scale=1; $KILLED * 100 / $TOTAL" | bc)
+            echo "Mutation score: ${SCORE}%"
+          fi
+          echo "============================================"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-results
+          path: gambit_out/
+          retention-days: 30

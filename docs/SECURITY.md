@@ -173,7 +173,8 @@ Monitor these events for anomalies:
 |-------|----------|-----------------|
 | `AuthorizationCreated` | PaymentOperator | Unusual volume, large amounts |
 | `ReleaseExecuted` | PaymentOperator | Rapid releases, unusual patterns |
-| `RefundExecuted` | PaymentOperator | High refund rate |
+| `RefundInEscrowExecuted` | PaymentOperator | High in-escrow refund rate |
+| `RefundPostEscrowExecuted` | PaymentOperator | High post-escrow refund rate |
 | `PaymentFrozen` | EscrowPeriodRecorder | Mass freezing |
 | `FeesDistributed` | PaymentOperator | Unexpected distribution |
 

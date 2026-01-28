@@ -50,7 +50,7 @@ jobs:
     env:
       # Minimum line coverage percentage for src/ files
       # Increase this threshold as coverage improves
-      COVERAGE_THRESHOLD: 65
+      COVERAGE_THRESHOLD: 80
     steps:
       - uses: actions/checkout@v4
         with:
