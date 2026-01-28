@@ -386,8 +386,12 @@ slither . --exclude-dependencies
 
 **Deployment Addresses** (Base Sepolia testnet):
 - AuthCaptureEscrow: `0xb9488351E48b23D798f24e8174514F28B741Eb4f`
-- PaymentOperator: `0xB47a37e754c1e159EE5ECAff6aa2D210D4C1A075`
-- PaymentOperatorFactory: `0x48ADf6E37F9b31dC2AAD0462C5862B5422C736B8`
+- ProtocolFeeConfig: `0xB68C023365EB08021E12f7f7f11a03282443863A`
+- PaymentOperatorFactory: `0x67B63Af4bcdCD3E4263d9995aB04563fbC229944`
+- EscrowPeriodFactory: `0x3D0837fF8Ea36F417261577b9BA568400A840260`
+- StaticFeeCalculatorFactory: `0x35fb2EFEfAc3Ee9f6E52A9AAE5C9655bC08dEc00`
+- FreezePolicyFactory: `0x9D4146EF898c8E60B3e865AE254ef438E7cEd2A0`
+- RefundRequest: `0x6926c05193c714ED4bA3867Ee93d6816Fdc14128`
 
 All contracts verified on BaseScan.
 

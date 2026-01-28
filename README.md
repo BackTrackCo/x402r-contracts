@@ -89,25 +89,25 @@ op.release(paymentInfo, amount);
 | Contract | Address |
 |----------|---------|
 | **AuthCaptureEscrow** | [`0xb9488351E48b23D798f24e8174514F28B741Eb4f`](https://sepolia.basescan.org/address/0xb9488351E48b23D798f24e8174514F28B741Eb4f) |
-| **PaymentOperator** | [`0xB47a37e754c1e159EE5ECAff6aa2D210D4C1A075`](https://sepolia.basescan.org/address/0xB47a37e754c1e159EE5ECAff6aa2D210D4C1A075) |
-| RefundRequest | [`0x26A3d27139b442Be5ECc10c8608c494627B660BF`](https://sepolia.basescan.org/address/0x26A3d27139b442Be5ECc10c8608c494627B660BF) |
+| **ProtocolFeeConfig** | [`0xB68C023365EB08021E12f7f7f11a03282443863A`](https://sepolia.basescan.org/address/0xB68C023365EB08021E12f7f7f11a03282443863A) |
+| RefundRequest | [`0x6926c05193c714ED4bA3867Ee93d6816Fdc14128`](https://sepolia.basescan.org/address/0x6926c05193c714ED4bA3867Ee93d6816Fdc14128) |
 
 #### Factories
 
 | Contract | Address |
 |----------|---------|
-| **PaymentOperatorFactory** | [`0x48ADf6E37F9b31dC2AAD0462C5862B5422C736B8`](https://sepolia.basescan.org/address/0x48ADf6E37F9b31dC2AAD0462C5862B5422C736B8) |
+| **PaymentOperatorFactory** | [`0x67B63Af4bcdCD3E4263d9995aB04563fbC229944`](https://sepolia.basescan.org/address/0x67B63Af4bcdCD3E4263d9995aB04563fbC229944) |
 | EscrowPeriodFactory | [`0x3D0837fF8Ea36F417261577b9BA568400A840260`](https://sepolia.basescan.org/address/0x3D0837fF8Ea36F417261577b9BA568400A840260) |
 | StaticFeeCalculatorFactory | [`0x35fb2EFEfAc3Ee9f6E52A9AAE5C9655bC08dEc00`](https://sepolia.basescan.org/address/0x35fb2EFEfAc3Ee9f6E52A9AAE5C9655bC08dEc00) |
-| FreezePolicyFactory | [`0x536439b00002CB3c0141391A92aFBB3e1E3f8604`](https://sepolia.basescan.org/address/0x536439b00002CB3c0141391A92aFBB3e1E3f8604) |
+| FreezePolicyFactory | [`0x9D4146EF898c8E60B3e865AE254ef438E7cEd2A0`](https://sepolia.basescan.org/address/0x9D4146EF898c8E60B3e865AE254ef438E7cEd2A0) |
 
 #### Condition Singletons
 
 | Contract | Address | Status |
 |----------|---------|--------|
-| PayerCondition | [`0xDc0D800007ceACFf1299b926Ce22B4d4edCE6Ce7`](https://sepolia.basescan.org/address/0xDc0D800007ceACFf1299b926Ce22B4d4edCE6Ce7) | ✅ Active |
-| ReceiverCondition | [`0x138Bf828643350AA3692aedDE8b2254eDF4D07EF`](https://sepolia.basescan.org/address/0x138Bf828643350AA3692aedDE8b2254eDF4D07EF) | ✅ Active |
-| AlwaysTrueCondition | [`0xe2659dc0d716B1226DF6a09A5f47862cd1ff6733`](https://sepolia.basescan.org/address/0xe2659dc0d716B1226DF6a09A5f47862cd1ff6733) | ✅ Active |
+| PayerCondition | [`0xBAF68176FF94CAdD403EF7FbB776bbca548AC09D`](https://sepolia.basescan.org/address/0xBAF68176FF94CAdD403EF7FbB776bbca548AC09D) | ✅ Active |
+| ReceiverCondition | [`0x12EDefd4549c53497689067f165c0f101796Eb6D`](https://sepolia.basescan.org/address/0x12EDefd4549c53497689067f165c0f101796Eb6D) | ✅ Active |
+| AlwaysTrueCondition | [`0x785cC83DEa3d46D5509f3bf7496EAb26D42EE610`](https://sepolia.basescan.org/address/0x785cC83DEa3d46D5509f3bf7496EAb26D42EE610) | ✅ Active |
 
 #### Designated Address Conditions
 
