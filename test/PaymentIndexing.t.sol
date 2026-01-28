@@ -49,7 +49,7 @@ contract PaymentIndexingTest is Test {
         operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         // Deploy payment index recorder
-        indexRecorder = new PaymentIndexRecorder(address(escrow));
+        indexRecorder = new PaymentIndexRecorder(address(escrow), bytes32(0));
 
         // Deploy operator with index recorder
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({

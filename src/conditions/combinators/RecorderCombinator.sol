@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 
 import {IRecorder} from "../IRecorder.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
+import {OnlyOperator} from "../../types/Errors.sol";
 
 /**
  * @title RecorderCombinator
@@ -74,6 +75,8 @@ contract RecorderCombinator is IRecorder {
         external
         override
     {
+        if (msg.sender != paymentInfo.operator) revert OnlyOperator();
+
         uint256 length = recorders.length;
         for (uint256 i = 0; i < length; i++) {
             recorders[i].record(paymentInfo, amount, caller);

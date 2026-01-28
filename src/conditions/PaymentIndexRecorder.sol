@@ -67,7 +67,7 @@ contract PaymentIndexRecorder is BaseRecorder {
         uint256 recordIndex
     );
 
-    constructor(address escrow) BaseRecorder(escrow) {}
+    constructor(address escrow, bytes32 authorizedCodehash) BaseRecorder(escrow, authorizedCodehash) {}
 
     /**
      * @notice Records payment by indexing it for both payer and receiver

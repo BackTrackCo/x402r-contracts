@@ -47,7 +47,8 @@ contract EscrowPeriodConditionTest is Test {
         EscrowPeriodConditionFactory conditionFactory = new EscrowPeriodConditionFactory(address(escrow));
         PayerCondition payerCondition = new PayerCondition();
         FreezePolicy freezePolicy = new FreezePolicy(address(payerCondition), address(payerCondition), FREEZE_DURATION);
-        (address recorderAddr, address conditionAddr) = conditionFactory.deploy(ESCROW_PERIOD, address(freezePolicy));
+        (address recorderAddr, address conditionAddr) =
+            conditionFactory.deploy(ESCROW_PERIOD, address(freezePolicy), bytes32(0));
         recorder = EscrowPeriodRecorder(recorderAddr);
         escrowCondition = EscrowPeriodCondition(conditionAddr);
 

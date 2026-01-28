@@ -10,9 +10,12 @@ import {IFeeCalculator} from "./IFeeCalculator.sol";
  * @notice Simple immutable fee calculator that always returns a fixed basis points value.
  */
 contract StaticFeeCalculator is IFeeCalculator {
+    error FeeTooHigh();
+
     uint256 public immutable FEE_BPS;
 
     constructor(uint256 _feeBps) {
+        if (_feeBps > 10000) revert FeeTooHigh();
         FEE_BPS = _feeBps;
     }
 

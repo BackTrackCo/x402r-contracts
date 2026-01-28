@@ -12,6 +12,8 @@ import {StaticFeeCalculator} from "./StaticFeeCalculator.sol";
  * @dev Key is keccak256(feeBps). Each unique fee rate gets one canonical deployment.
  */
 contract StaticFeeCalculatorFactory {
+    error FeeTooHigh();
+
     /// @notice Deployed calculator addresses
     /// @dev Key: keccak256(abi.encodePacked(feeBps))
     mapping(bytes32 => address) public calculators;
@@ -25,6 +27,8 @@ contract StaticFeeCalculatorFactory {
      * @return calculator Address of the deployed calculator
      */
     function deploy(uint256 feeBps) external returns (address calculator) {
+        if (feeBps > 10000) revert FeeTooHigh();
+
         bytes32 key = getKey(feeBps);
 
         // Return existing deployment if already deployed

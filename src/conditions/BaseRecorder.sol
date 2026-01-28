@@ -15,7 +15,8 @@ import {OnlyOperator, ZeroAddress, PaymentDoesNotExist} from "../types/Errors.so
  *      that doesn't exist in the real escrow.
  *
  * SECURITY:
- *      - OnlyOperator: msg.sender must equal paymentInfo.operator
+ *      - OnlyOperator: msg.sender must equal paymentInfo.operator, or msg.sender's
+ *        runtime codehash must match AUTHORIZED_CODEHASH (e.g. RecorderCombinator)
  *      - Escrow existence: payment must exist in the trusted immutable ESCROW
  *      - Both checks together ensure only real operators recording real payments can write state
  */
@@ -23,9 +24,15 @@ abstract contract BaseRecorder is IRecorder {
     /// @notice Escrow contract for payment hash calculation and existence verification
     AuthCaptureEscrow public immutable ESCROW;
 
-    constructor(address escrow) {
+    /// @notice Runtime codehash of authorized caller contract (e.g. RecorderCombinator)
+    /// @dev bytes32(0) means no authorized codehash — only the operator itself can call record().
+    ///      Uses EXTCODEHASH to verify caller bytecode, which is unforgeable (unlike ERC-165).
+    bytes32 public immutable AUTHORIZED_CODEHASH;
+
+    constructor(address escrow, bytes32 authorizedCodehash) {
         if (escrow == address(0)) revert ZeroAddress();
         ESCROW = AuthCaptureEscrow(escrow);
+        AUTHORIZED_CODEHASH = authorizedCodehash;
     }
 
     /**
@@ -41,7 +48,12 @@ abstract contract BaseRecorder is IRecorder {
         view
         returns (bytes32 paymentHash)
     {
-        if (msg.sender != paymentInfo.operator) revert OnlyOperator();
+        if (
+            msg.sender != paymentInfo.operator
+                && (AUTHORIZED_CODEHASH == bytes32(0) || msg.sender.codehash != AUTHORIZED_CODEHASH)
+        ) {
+            revert OnlyOperator();
+        }
 
         paymentHash = ESCROW.getHash(paymentInfo);
 

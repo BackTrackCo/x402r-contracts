@@ -139,6 +139,7 @@ contract ConditionsCoverageTest is Test {
         RecorderCombinator combinator = new RecorderCombinator(recorders);
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+        vm.prank(operator);
         combinator.record(paymentInfo, 500, payer);
 
         assertEq(recorder1.recordCount(), 1);

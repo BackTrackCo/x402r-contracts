@@ -5,6 +5,7 @@ pragma solidity ^0.8.28;
 import {IFreezePolicy} from "./IFreezePolicy.sol";
 import {ICondition} from "../../ICondition.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
+import {ZeroAddress} from "../../../types/Errors.sol";
 
 /**
  * @title FreezePolicy
@@ -28,6 +29,8 @@ contract FreezePolicy is IFreezePolicy {
     uint256 public immutable FREEZE_DURATION;
 
     constructor(address _freezeCondition, address _unfreezeCondition, uint256 _freezeDuration) {
+        if (_freezeCondition == address(0)) revert ZeroAddress();
+        if (_unfreezeCondition == address(0)) revert ZeroAddress();
         FREEZE_CONDITION = ICondition(_freezeCondition);
         UNFREEZE_CONDITION = ICondition(_unfreezeCondition);
         FREEZE_DURATION = _freezeDuration;

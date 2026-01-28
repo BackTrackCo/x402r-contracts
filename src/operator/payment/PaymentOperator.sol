@@ -347,7 +347,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
 
         // ============ EFFECTS ============
         // Emit event before external calls (CEI pattern)
-        emit RefundExecuted(paymentInfo, paymentInfo.payer, uint120(amount));
+        emit RefundExecuted(paymentInfo, paymentInfo.payer, amount);
 
         // ============ INTERACTIONS ============
         // Forward to escrow's refund - token collector enforces permission

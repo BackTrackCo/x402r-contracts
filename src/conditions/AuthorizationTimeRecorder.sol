@@ -36,7 +36,7 @@ contract AuthorizationTimeRecorder is BaseRecorder {
     /// @dev Key: paymentInfoHash, Value: block.timestamp when authorized
     mapping(bytes32 => uint256) public authorizationTimes;
 
-    constructor(address escrow) BaseRecorder(escrow) {}
+    constructor(address escrow, bytes32 authorizedCodehash) BaseRecorder(escrow, authorizedCodehash) {}
 
     // ============ IRecorder Implementation ============
 

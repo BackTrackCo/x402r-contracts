@@ -65,7 +65,9 @@ contract EscrowPeriodRecorder is AuthorizationTimeRecorder {
     /// @dev Key: paymentInfoHash, Value: timestamp when freeze expires
     mapping(bytes32 => uint256) public frozenUntil;
 
-    constructor(uint256 _escrowPeriod, address _freezePolicy, address _escrow) AuthorizationTimeRecorder(_escrow) {
+    constructor(uint256 _escrowPeriod, address _freezePolicy, address _escrow, bytes32 _authorizedCodehash)
+        AuthorizationTimeRecorder(_escrow, _authorizedCodehash)
+    {
         if (_escrowPeriod == 0) revert InvalidEscrowPeriod();
         ESCROW_PERIOD = _escrowPeriod;
         FREEZE_POLICY = IFreezePolicy(_freezePolicy);
