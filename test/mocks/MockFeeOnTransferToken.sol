@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {ERC20} from "solady/tokens/ERC20.sol";
 
 /**
  * @title MockFeeOnTransferToken
@@ -12,7 +12,13 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 contract MockFeeOnTransferToken is ERC20 {
     uint256 public constant TRANSFER_FEE_BPS = 100; // 1% fee
 
-    constructor() ERC20("Mock Fee Token", "FEE") {}
+    function name() public pure override returns (string memory) {
+        return "Mock Fee Token";
+    }
+
+    function symbol() public pure override returns (string memory) {
+        return "FEE";
+    }
 
     function mint(address to, uint256 amount) external {
         _mint(to, amount);

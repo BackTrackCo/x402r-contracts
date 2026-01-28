@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {ERC20} from "solady/tokens/ERC20.sol";
 
 /**
  * @title MockRebasingToken
@@ -14,7 +14,13 @@ contract MockRebasingToken is ERC20 {
     mapping(address => uint256) private _shares;
     uint256 public rebaseMultiplier = 1e18; // 1.0 multiplier initially
 
-    constructor() ERC20("Mock Rebase Token", "REBASE") {}
+    function name() public pure override returns (string memory) {
+        return "Mock Rebase Token";
+    }
+
+    function symbol() public pure override returns (string memory) {
+        return "REBASE";
+    }
 
     /**
      * @notice Simulate a rebase event
