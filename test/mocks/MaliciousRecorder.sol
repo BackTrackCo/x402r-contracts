@@ -25,6 +25,7 @@ contract MaliciousRecorder is IRecorder {
     uint256 public storedAmount;
     uint256 public reentrancyCount;
     uint256 public maxReentrancy = 1;
+    bool public reentrancyBlocked;
 
     constructor(AttackType _attackType) {
         attackType = _attackType;
@@ -78,7 +79,8 @@ contract MaliciousRecorder is IRecorder {
             // If this succeeds and causes accounting issues, it's a vulnerability
             }
                 catch {
-                // May succeed or fail depending on state
+                // Revert expected — nonReentrant blocked the call
+                reentrancyBlocked = true;
             }
         } else if (attackType == AttackType.INFINITE_LOOP) {
             // Gas griefing attack - consume all available gas

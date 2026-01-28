@@ -9,6 +9,7 @@ import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreAppro
 import {ProtocolFeeConfig} from "../../src/fees/ProtocolFeeConfig.sol";
 import {StaticFeeCalculator} from "../../src/fees/StaticFeeCalculator.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
+import {MaliciousRecorder} from "../mocks/MaliciousRecorder.sol";
 
 /**
  * @title PaymentOperatorInvariants
@@ -24,6 +25,8 @@ contract PaymentOperatorInvariants is Test {
     PreApprovalPaymentCollector public collector;
     ProtocolFeeConfig public protocolFeeConfig;
     MockERC20 public token;
+    MaliciousRecorder public maliciousRecorder;
+    PaymentOperator public reentrancyTestOperator;
 
     address public owner;
     address public protocolFeeRecipient;
@@ -89,6 +92,42 @@ contract PaymentOperatorInvariants is Test {
         });
 
         operator = PaymentOperator(factory.deployOperator(config));
+
+        // Deploy operator with malicious recorder to verify reentrancy protection
+        maliciousRecorder = new MaliciousRecorder(MaliciousRecorder.AttackType.REENTER_WITHDRAW_FEES);
+        PaymentOperatorFactory.OperatorConfig memory reentrancyConfig = PaymentOperatorFactory.OperatorConfig({
+            feeRecipient: operatorFeeRecipient,
+            feeCalculator: address(operatorCalc),
+            authorizeCondition: address(0),
+            authorizeRecorder: address(maliciousRecorder),
+            chargeCondition: address(0),
+            chargeRecorder: address(0),
+            releaseCondition: address(0),
+            releaseRecorder: address(0),
+            refundInEscrowCondition: address(0),
+            refundInEscrowRecorder: address(0),
+            refundPostEscrowCondition: address(0),
+            refundPostEscrowRecorder: address(0)
+        });
+        reentrancyTestOperator = PaymentOperator(factory.deployOperator(reentrancyConfig));
+
+        // Authorize a payment through the malicious operator to trigger the reentrant callback
+        AuthCaptureEscrow.PaymentInfo memory reentrancyPayment = AuthCaptureEscrow.PaymentInfo({
+            operator: address(reentrancyTestOperator),
+            payer: address(this),
+            receiver: address(0xBEEF),
+            token: address(token),
+            maxAmount: 1000,
+            preApprovalExpiry: uint48(block.timestamp + 1 days),
+            authorizationExpiry: uint48(block.timestamp + 7 days),
+            refundExpiry: uint48(block.timestamp + 30 days),
+            minFeeBps: uint16(TOTAL_FEE_BPS),
+            maxFeeBps: uint16(TOTAL_FEE_BPS),
+            feeReceiver: address(reentrancyTestOperator),
+            salt: 999
+        });
+        collector.preApprove(reentrancyPayment);
+        reentrancyTestOperator.authorize(reentrancyPayment, 1000, address(collector), "");
 
         // Mint tokens for testing
         token.mint(address(this), type(uint128).max);
@@ -293,6 +332,13 @@ contract PaymentOperatorInvariants is Test {
         // Escrow balance should be ≥ user funds
         // (could be higher due to fees, but never lower)
         return escrowBalance >= userFunds;
+    }
+
+    /// @notice Reentrancy protection prevents callback attacks
+    function echidna_reentrancy_protected() public view returns (bool) {
+        // MaliciousRecorder attempted distributeFees() during authorize() callback.
+        // nonReentrant must have blocked it.
+        return maliciousRecorder.reentrancyBlocked();
     }
 
     /// @notice Payment hash uniqueness
