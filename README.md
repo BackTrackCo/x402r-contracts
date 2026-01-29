@@ -111,14 +111,6 @@ op.release(paymentInfo, amount);
 | ReceiverCondition | [`0x12EDefd4549c53497689067f165c0f101796Eb6D`](https://sepolia.basescan.org/address/0x12EDefd4549c53497689067f165c0f101796Eb6D) | ✅ Active |
 | AlwaysTrueCondition | [`0x785cC83DEa3d46D5509f3bf7496EAb26D42EE610`](https://sepolia.basescan.org/address/0x785cC83DEa3d46D5509f3bf7496EAb26D42EE610) | ✅ Active |
 
-#### Designated Address Conditions
-
-For arbiter, service provider, DAO, platform, or any designated address access control:
-
-| Contract | Notes |
-|----------|-------|
-| **StaticAddressCondition** | Deploy via `StaticAddressConditionFactory.deploy(designatedAddress)` - Generic designated address condition for arbiter, service provider, DAO multisig, platform treasury, etc. Each unique address gets a deterministic CREATE2 deployment. |
-
 **USDC (Base Sepolia):** [`0x036CbD53842c5426634e7929541eC2318f3dCF7e`](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e)
 
 ### Project Contracts
