@@ -2,7 +2,9 @@
 pragma solidity ^0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
-import {StaticAddressConditionFactory} from "../src/plugins/conditions/access/static-address/StaticAddressConditionFactory.sol";
+import {
+    StaticAddressConditionFactory
+} from "../src/plugins/conditions/access/static-address/StaticAddressConditionFactory.sol";
 
 /**
  * @title DeployStaticAddressConditionFactory
