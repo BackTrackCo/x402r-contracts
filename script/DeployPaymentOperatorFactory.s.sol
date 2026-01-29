@@ -5,7 +5,7 @@ import {Script, console} from "forge-std/Script.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
 import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
 import {StaticFeeCalculator} from "../src/plugins/fees/StaticFeeCalculator.sol";
-import {StaticAddressCondition} from "../src/plugins/conditions/access/StaticAddressCondition.sol";
+import {StaticAddressCondition} from "../src/plugins/conditions/access/static-address/StaticAddressCondition.sol";
 
 /**
  * @title DeployPaymentOperatorFactory

@@ -14,8 +14,8 @@ import {NotCondition} from "../src/plugins/conditions/combinators/NotCondition.s
 import {RecorderCombinator} from "../src/plugins/recorders/combinators/RecorderCombinator.sol";
 import {FreezePolicyFactory} from "../src/plugins/freeze/freeze-policy/FreezePolicyFactory.sol";
 import {FreezePolicy} from "../src/plugins/freeze/freeze-policy/FreezePolicy.sol";
-import {StaticAddressCondition} from "../src/plugins/conditions/access/StaticAddressCondition.sol";
-import {StaticAddressConditionFactory} from "../src/plugins/conditions/access/StaticAddressConditionFactory.sol";
+import {StaticAddressCondition} from "../src/plugins/conditions/access/static-address/StaticAddressCondition.sol";
+import {StaticAddressConditionFactory} from "../src/plugins/conditions/access/static-address/StaticAddressConditionFactory.sol";
 
 /// @notice Mock recorder for testing RecorderCombinator
 contract MockRecorder is IRecorder {

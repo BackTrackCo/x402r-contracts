@@ -6,7 +6,7 @@ import {RefundRequest} from "../src/requests/refund/RefundRequest.sol";
 import {PaymentOperator} from "../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
 import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
-import {StaticAddressCondition} from "../src/plugins/conditions/access/StaticAddressCondition.sol";
+import {StaticAddressCondition} from "../src/plugins/conditions/access/static-address/StaticAddressCondition.sol";
 import {RequestStatus} from "../src/requests/types/Types.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
