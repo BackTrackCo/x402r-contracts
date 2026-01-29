@@ -33,10 +33,11 @@ pragma solidity ^0.8.28;
  *     - Released → Settled: full refundPostEscrow() or refundExpiry passed
  *     - Expired → Settled: reclaim() called by payer
  *
- *     FREEZE STATES (EscrowPeriodCondition only):
- *     - InEscrow can be frozen/unfrozen via condition.freeze()/unfreeze()
- *     - Frozen payments block release through condition (payer bypass still works)
- *     - Freeze state is tracked in EscrowPeriodCondition, not in escrow
+ *     FREEZE STATES (Freeze plugin):
+ *     - InEscrow can be frozen/unfrozen via freeze.freeze()/unfreeze()
+ *     - Frozen payments block release through the Freeze condition (payer bypass still works)
+ *     - Freeze state is tracked in the standalone Freeze contract, not in escrow
+ *     - Compose with EscrowPeriod via AndCondition([escrowPeriod, freeze])
  *
  * ESCROW FIELDS (from AuthCaptureEscrow.paymentState):
  *     - hasCollectedPayment: true if authorize() or charge() was called

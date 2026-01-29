@@ -6,7 +6,10 @@ import {PaymentOperator} from "../../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../../src/operator/PaymentOperatorFactory.sol";
 import {EscrowPeriodFactory} from "../../src/plugins/escrow-period/EscrowPeriodFactory.sol";
 import {EscrowPeriod} from "../../src/plugins/escrow-period/EscrowPeriod.sol";
-import {FreezePolicy} from "../../src/plugins/escrow-period/freeze-policy/FreezePolicy.sol";
+import {Freeze} from "../../src/plugins/freeze/Freeze.sol";
+import {FreezePolicy} from "../../src/plugins/freeze/freeze-policy/FreezePolicy.sol";
+import {ICondition} from "../../src/plugins/conditions/ICondition.sol";
+import {AndCondition} from "../../src/plugins/conditions/combinators/AndCondition.sol";
 import {PayerCondition} from "../../src/plugins/conditions/access/PayerCondition.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
@@ -15,7 +18,7 @@ import {ProtocolFeeConfig} from "../../src/plugins/fees/ProtocolFeeConfig.sol";
 
 /**
  * @title EscrowPeriodConditionInvariants
- * @notice Echidna property-based testing for EscrowPeriodCondition + freeze system.
+ * @notice Echidna property-based testing for EscrowPeriod + Freeze system.
  * @dev Verifies escrow period, freeze/unfreeze, and release invariants via fuzzing.
  *
  * Usage:
@@ -26,6 +29,7 @@ contract EscrowPeriodConditionInvariants is Test {
     AuthCaptureEscrow public escrow;
     PreApprovalPaymentCollector public collector;
     EscrowPeriod public escrowPeriod;
+    Freeze public freeze;
     MockERC20 public token;
 
     address public payer = address(0x1000);
@@ -49,8 +53,17 @@ contract EscrowPeriodConditionInvariants is Test {
         EscrowPeriodFactory escrowPeriodFactory = new EscrowPeriodFactory(address(escrow));
         PayerCondition payerCondition = new PayerCondition();
         FreezePolicy freezePolicy = new FreezePolicy(address(payerCondition), address(payerCondition), FREEZE_DURATION);
-        address escrowPeriodAddr = escrowPeriodFactory.deploy(ESCROW_PERIOD, address(freezePolicy), bytes32(0));
+        address escrowPeriodAddr = escrowPeriodFactory.deploy(ESCROW_PERIOD, bytes32(0));
         escrowPeriod = EscrowPeriod(escrowPeriodAddr);
+
+        // Deploy freeze with escrow period constraint
+        freeze = new Freeze(address(freezePolicy), address(escrowPeriod), address(escrow));
+
+        // Compose escrow period + freeze into release condition
+        ICondition[] memory conditions = new ICondition[](2);
+        conditions[0] = ICondition(address(escrowPeriod));
+        conditions[1] = ICondition(address(freeze));
+        AndCondition releaseCondition = new AndCondition(conditions);
 
         ProtocolFeeConfig protocolFeeConfig = new ProtocolFeeConfig(address(0), address(this), address(this));
 
@@ -63,7 +76,7 @@ contract EscrowPeriodConditionInvariants is Test {
             authorizeRecorder: address(escrowPeriod),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(escrowPeriod),
+            releaseCondition: address(releaseCondition),
             releaseRecorder: address(0),
             refundInEscrowCondition: address(0),
             refundInEscrowRecorder: address(0),
@@ -102,7 +115,7 @@ contract EscrowPeriodConditionInvariants is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(uint120(PAYMENT_AMOUNT), uint256(hash));
 
         vm.prank(payer);
-        try escrowPeriod.freeze(paymentInfo) {
+        try freeze.freeze(paymentInfo) {
             frozenByUs[hash] = true;
         } catch {}
     }
@@ -115,7 +128,7 @@ contract EscrowPeriodConditionInvariants is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(uint120(PAYMENT_AMOUNT), uint256(hash));
 
         vm.prank(payer);
-        try escrowPeriod.unfreeze(paymentInfo) {
+        try freeze.unfreeze(paymentInfo) {
             frozenByUs[hash] = false;
         } catch {}
     }
@@ -141,19 +154,16 @@ contract EscrowPeriodConditionInvariants is Test {
 
     // ============ Echidna Invariants ============
 
-    /// @notice Frozen payments cannot be released (canRelease returns false when frozen)
+    /// @notice Frozen payments cannot be released (check returns false when frozen)
     function echidna_frozen_payments_cannot_be_released() public view returns (bool) {
         for (uint256 i = 0; i < trackedHashes.length; i++) {
             bytes32 hash = trackedHashes[i];
-            uint256 frozenUntil = escrowPeriod.frozenUntil(hash);
+            uint256 frozenUntil = freeze.frozenUntil(hash);
 
             // If currently frozen
             if (frozenUntil > block.timestamp) {
-                // Construct payment info to check canRelease
-                // Note: We can't easily reconstruct paymentInfo in view context,
-                // so we verify the frozenUntil state directly
-                // A frozen payment (frozenUntil > block.timestamp) means canRelease MUST return false
-                // This is guaranteed by EscrowPeriodRecorder.canRelease() line: if (frozenUntil[hash] > timestamp) return false;
+                // A frozen payment (frozenUntil > block.timestamp) means freeze.check() returns false
+                // This is guaranteed by Freeze.check() which returns !_isFrozen()
             }
         }
         return true;
@@ -161,8 +171,8 @@ contract EscrowPeriodConditionInvariants is Test {
 
     /// @notice Freeze is only possible during escrow period (authTime + ESCROW_PERIOD > block.timestamp)
     function echidna_freeze_only_during_escrow_period() public view returns (bool) {
-        // This invariant is enforced by the revert in escrowPeriod.freeze():
-        // if (authTime == 0 || block.timestamp >= authTime + ESCROW_PERIOD) revert EscrowPeriodExpired()
+        // This invariant is enforced by Freeze.freeze() calling isDuringEscrowPeriod():
+        // if (!ESCROW_PERIOD_CONTRACT.isDuringEscrowPeriod(paymentInfo)) revert FreezeWindowExpired()
         // If we got here without reverting on a freeze call, the period was valid
         return true;
     }
@@ -173,7 +183,7 @@ contract EscrowPeriodConditionInvariants is Test {
             bytes32 hash = trackedHashes[i];
             // If we successfully unfroze, frozenUntil should be 0
             if (!frozenByUs[hash]) {
-                uint256 frozenUntil = escrowPeriod.frozenUntil(hash);
+                uint256 frozenUntil = freeze.frozenUntil(hash);
                 // Either never frozen (0) or expired (frozenUntil <= block.timestamp) or explicitly unfrozen (0)
                 if (frozenUntil != 0 && frozenUntil > block.timestamp) {
                     // Still frozen but we think we unfroze — this would be a bug
@@ -207,7 +217,7 @@ contract EscrowPeriodConditionInvariants is Test {
             uint256 authTime = authTimes[hash];
             // If a payment was released, the escrow period must have passed at that point
             if (releasedByUs[hash] && authTime > 0) {
-                // The release succeeded, which means EscrowPeriodCondition.check() returned true
+                // The release succeeded, which means the AndCondition check returned true
                 // This is enforced by the condition slot on the operator
             }
         }

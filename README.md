@@ -97,7 +97,8 @@ op.release(paymentInfo, amount);
 | Contract | Address |
 |----------|---------|
 | **PaymentOperatorFactory** | [`0x67B63Af4bcdCD3E4263d9995aB04563fbC229944`](https://sepolia.basescan.org/address/0x67B63Af4bcdCD3E4263d9995aB04563fbC229944) |
-| EscrowPeriodFactory | [`0x3D0837fF8Ea36F417261577b9BA568400A840260`](https://sepolia.basescan.org/address/0x3D0837fF8Ea36F417261577b9BA568400A840260) |
+| EscrowPeriodFactory | [`0x206D4DbB6E7b876e4B5EFAAD2a04e7d7813FB6ba`](https://sepolia.basescan.org/address/0x206D4DbB6E7b876e4B5EFAAD2a04e7d7813FB6ba) |
+| FreezeFactory | [`0x5b3e33791C1764cF7e2573Bf8116F1D361FD97Cd`](https://sepolia.basescan.org/address/0x5b3e33791C1764cF7e2573Bf8116F1D361FD97Cd) |
 | StaticFeeCalculatorFactory | [`0x35fb2EFEfAc3Ee9f6E52A9AAE5C9655bC08dEc00`](https://sepolia.basescan.org/address/0x35fb2EFEfAc3Ee9f6E52A9AAE5C9655bC08dEc00) |
 | FreezePolicyFactory | [`0x9D4146EF898c8E60B3e865AE254ef438E7cEd2A0`](https://sepolia.basescan.org/address/0x9D4146EF898c8E60B3e865AE254ef438E7cEd2A0) |
 
@@ -205,15 +206,22 @@ Conditions are composable plugins that control access to operator actions:
 
 ### Escrow Period & Freeze Flow
 
+Freeze and EscrowPeriod are now **separate, composable modules**:
+
+- **EscrowPeriod**: ICondition that blocks release during the escrow period
+- **Freeze**: Standalone ICondition with `freeze()`/`unfreeze()` methods
+
+Compose them via `AndCondition([escrowPeriod, freeze])` when you want both behaviors.
+
 ```
 Timeline:
 ├─────────────── ESCROW_PERIOD (e.g., 7 days) ───────────────┼──── Post-Escrow ────►
 │                                                             │
-│  [Payer can freeze]                                        │  [Release allowed]
-│  [Release blocked]                                         │  [Freeze blocked]
+│  [Payer can freeze via Freeze contract]                    │  [Release allowed]
+│  [Release blocked by EscrowPeriod]                         │  [Freeze blocked]
 │                                                             │
-│  freeze() ──► PaymentFrozen                                │
-│  unfreeze() ──► PaymentUnfrozen                            │
+│  Freeze.freeze() ──► PaymentFrozen                         │
+│  Freeze.unfreeze() ──► PaymentUnfrozen                     │
 │                                                             │
 └─────────────────────────────────────────────────────────────┴─────────────────────►
 
@@ -238,10 +246,10 @@ MEV Protection: Payers should freeze EARLY, not at deadline.
 ┌─────────────────────────────────────────────────────────────┐
 │                    PLUGGABLE CONDITIONS                      │
 ├─────────────────────────────────────────────────────────────┤
-│  Access Conditions:          │  Time Conditions:            │
+│  Access Conditions:          │  Time/State Conditions:      │
 │  - PayerCondition            │  - EscrowPeriod              │
-│  - ReceiverCondition         │    └─► FreezePolicy          │
-│  - StaticAddressCondition    │                              │
+│  - ReceiverCondition         │  - Freeze                    │
+│  - StaticAddressCondition    │    └─► FreezePolicy          │
 │  - AlwaysTrueCondition       │                              │
 ├─────────────────────────────────────────────────────────────┤
 │  Combinators:                │  Recorders (Optional):       │
@@ -363,11 +371,11 @@ Estimated transaction costs on different networks (at typical gas prices):
 | **Get 50 payments** | ~82,000 | Scales linearly with count |
 | **Get single payment** | ~2,000 | Direct index access |
 
-**API**: `PaymentIndexRecorder.getPayerPayments(address, offset, count)` returns array of `PaymentRecord` structs with:
-- `paymentHash`: Payment hash for escrow lookup
-- `amount`: Amount authorized/charged
+**API**: `PaymentIndexRecorder.getPayerPayments(address, offset, count)` returns `(bytes32[] hashes, uint256 total)`:
+- `hashes`: Array of payment hashes for escrow lookup
+- `total`: Total number of payments for this address
 
-**Note**: For timestamps, use `EscrowPeriod` which tracks escrow period start times (avoids duplication).
+**Note**: For timestamps, use `EscrowPeriod` which tracks authorization times. For amounts, query the escrow's `paymentState(hash).capturableAmount`.
 - **With indexing**: On-chain queries available, no external indexer needed
 - **Without indexing**: Use external indexer (The Graph) for lower gas costs
 - Fully on-chain, decentralized when enabled
@@ -394,11 +402,21 @@ The commerce-payments contracts provide refund functionality for Base Commerce P
 - **RefundRequest**: `src/commerce-payments/requests/refund/RefundRequest.sol`
   - Contract for managing refund requests for Base Commerce Payments authorizations. Users can create refund requests, cancel their own pending requests, and merchants or arbiters can approve or deny them based on capture status.
 
-#### Freeze Policy Options
+#### Freeze Module
 
-The `EscrowPeriod` contract supports an optional freeze policy via the `FREEZE_POLICY` parameter. This determines who can freeze/unfreeze payments during the escrow period.
+**Freeze** is a standalone `ICondition` contract with `freeze()`/`unfreeze()` methods. It's now separate from `EscrowPeriod` for better composability.
 
-**FreezePolicy** uses `ICondition` contracts for authorization:
+**Deploy via FreezeFactory:**
+
+```solidity
+// Deploy Freeze with FreezePolicy and optional EscrowPeriod constraint
+address freeze = freezeFactory.deploy(freezePolicy, escrowPeriodContract);
+
+// escrowPeriodContract = address(0) means freeze is unconstrained by time
+// escrowPeriodContract = EscrowPeriod address means freeze only works during escrow period
+```
+
+**FreezePolicy** determines who can freeze/unfreeze using `ICondition` contracts:
 
 | Condition | Description |
 |-----------|-------------|
@@ -410,18 +428,23 @@ The `EscrowPeriod` contract supports an optional freeze policy via the `FREEZE_P
 **Example:**
 
 ```solidity
-// Payer freeze/unfreeze, 3-day duration
-freezePolicyFactory.deploy(payerCondition, payerCondition, 3 days);
+// 1. Deploy FreezePolicy (payer freeze/unfreeze, 3-day duration)
+address freezePolicy = freezePolicyFactory.deploy(payerCondition, payerCondition, 3 days);
 
-// Payer freeze, Designated Address unfreeze, permanent
-address designatedAddrCondition = address(new StaticAddressCondition(designatedAddress));
-freezePolicyFactory.deploy(payerCondition, designatedAddrCondition, 0);
+// 2. Deploy EscrowPeriod (7 days, operator-only recording)
+address escrowPeriod = escrowPeriodFactory.deploy(7 days, bytes32(0));
 
-// Anyone freeze, Receiver unfreeze, 7 days
-freezePolicyFactory.deploy(alwaysTrueCondition, receiverCondition, 7 days);
+// 3. Deploy Freeze (constrained to escrow period)
+address freeze = freezeFactory.deploy(freezePolicy, escrowPeriod);
+
+// 4. Compose for release condition: must pass both escrow period AND not be frozen
+address releaseCondition = address(new AndCondition([ICondition(escrowPeriod), ICondition(freeze)]));
 ```
 
-**Note:** If `FREEZE_POLICY` is `address(0)` when deploying EscrowPeriod, freeze/unfreeze calls will revert with `NoFreezePolicy()` error.
+**Composition Patterns:**
+- Escrow period only: `releaseCondition = escrowPeriod`
+- Freeze only: `releaseCondition = freeze`
+- Both: `releaseCondition = AndCondition([escrowPeriod, freeze])`
 
 #### PaymentOperatorFactory API
 
@@ -491,20 +514,19 @@ PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.Ope
     // ...
 });
 
-// Query payments with amount context (requires indexing enabled)
-(PaymentIndexRecorder.PaymentRecord[] memory records, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 10);
-// records[0].paymentHash - Payment hash for escrow lookup
-// records[0].amount - Amount authorized/charged
-// For timestamps: use EscrowPeriod
+// Query payments (requires indexing enabled)
+(bytes32[] memory hashes, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 10);
+// hashes[0] - Payment hash for escrow lookup
+// For amounts: escrow.paymentState(hashes[0]).capturableAmount
+// For timestamps: use EscrowPeriod.authorizationTimes(hash)
 ```
 
 **Benefits:**
-- **Rich Data**: Stores hash and amount in a single query
-- **No Extra Lookups**: Get payment amount without querying escrow
+- **Efficient Storage**: Stores only payment hashes (minimal gas cost)
 - **Gas Savings**: ~55k per authorization when indexing disabled
 - **Flexibility**: Deploy with or without on-chain queries
 - **Composability**: Combine with other recorders via `RecorderCombinator`
-- **No Duplication**: Use `EscrowPeriod` for timestamps (avoids redundant data)
+- **No Duplication**: Use `EscrowPeriod` for timestamps, escrow for amounts
 
 **When to use indexing:**
 - ✅ Need on-chain payment history queries

@@ -13,10 +13,10 @@ import {ZeroAddress} from "../../types/Errors.sol";
  *         Uses CREATE2 for address predictability.
  *
  * @dev Deployment flow:
- *      1. Deploy EscrowPeriod with (escrowPeriod, freezePolicy, escrow, authorizedCodehash)
- *      2. Return address (single contract replaces old recorder+condition pair)
+ *      1. Deploy EscrowPeriod with (escrowPeriod, escrow, authorizedCodehash)
+ *      2. Return address
  *
- *      The key for looking up deployments is keccak256(escrowPeriod, freezePolicy, authorizedCodehash).
+ *      The key for looking up deployments is keccak256(escrowPeriod, authorizedCodehash).
  *      ESCROW is factory-level (immutable), not per-config.
  */
 contract EscrowPeriodFactory {
@@ -29,21 +29,17 @@ contract EscrowPeriodFactory {
     }
 
     /// @notice Deployed EscrowPeriod addresses
-    /// @dev Key: keccak256(abi.encodePacked(escrowPeriod, freezePolicy, authorizedCodehash))
+    /// @dev Key: keccak256(abi.encodePacked(escrowPeriod, authorizedCodehash))
     mapping(bytes32 => address) public deployments;
 
     /**
      * @notice Deploy a new EscrowPeriod contract
      * @param escrowPeriod Duration of the escrow period in seconds
-     * @param freezePolicy Address of the freeze policy contract (address(0) = no freeze)
      * @param authorizedCodehash Runtime codehash of authorized caller (bytes32(0) = operator-only)
      * @return escrowPeriodAddr Address of the deployed EscrowPeriod contract
      */
-    function deploy(uint256 escrowPeriod, address freezePolicy, bytes32 authorizedCodehash)
-        external
-        returns (address escrowPeriodAddr)
-    {
-        bytes32 key = getKey(escrowPeriod, freezePolicy, authorizedCodehash);
+    function deploy(uint256 escrowPeriod, bytes32 authorizedCodehash) external returns (address escrowPeriodAddr) {
+        bytes32 key = getKey(escrowPeriod, authorizedCodehash);
 
         // Return existing deployment if already deployed
         if (deployments[key] != address(0)) {
@@ -54,7 +50,7 @@ contract EscrowPeriodFactory {
         // Pre-compute deterministic CREATE2 address (CEI pattern)
         bytes32 salt = keccak256(abi.encodePacked("escrowPeriod", key));
         bytes memory bytecode = abi.encodePacked(
-            type(EscrowPeriod).creationCode, abi.encode(escrowPeriod, freezePolicy, address(ESCROW), authorizedCodehash)
+            type(EscrowPeriod).creationCode, abi.encode(escrowPeriod, address(ESCROW), authorizedCodehash)
         );
         escrowPeriodAddr = address(
             uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)))))
@@ -66,8 +62,7 @@ contract EscrowPeriodFactory {
         emit EscrowPeriodDeployed(escrowPeriodAddr, escrowPeriod);
 
         // ============ INTERACTIONS ============
-        address deployed =
-            address(new EscrowPeriod{salt: salt}(escrowPeriod, freezePolicy, address(ESCROW), authorizedCodehash));
+        address deployed = address(new EscrowPeriod{salt: salt}(escrowPeriod, address(ESCROW), authorizedCodehash));
 
         assert(deployed == escrowPeriodAddr);
     }
@@ -75,34 +70,24 @@ contract EscrowPeriodFactory {
     /**
      * @notice Get deployed address for a configuration
      * @param escrowPeriod Duration of the escrow period in seconds
-     * @param freezePolicy Address of the freeze policy contract
      * @param authorizedCodehash Runtime codehash of authorized caller (bytes32(0) = operator-only)
      * @return Address of the deployed EscrowPeriod (address(0) if not deployed)
      */
-    function getDeployed(uint256 escrowPeriod, address freezePolicy, bytes32 authorizedCodehash)
-        external
-        view
-        returns (address)
-    {
-        return deployments[getKey(escrowPeriod, freezePolicy, authorizedCodehash)];
+    function getDeployed(uint256 escrowPeriod, bytes32 authorizedCodehash) external view returns (address) {
+        return deployments[getKey(escrowPeriod, authorizedCodehash)];
     }
 
     /**
      * @notice Compute the deterministic address for a configuration (before deployment)
      * @param escrowPeriod Duration of the escrow period in seconds
-     * @param freezePolicy Address of the freeze policy contract
      * @param authorizedCodehash Runtime codehash of authorized caller (bytes32(0) = operator-only)
      * @return Predicted address of the EscrowPeriod contract
      */
-    function computeAddress(uint256 escrowPeriod, address freezePolicy, bytes32 authorizedCodehash)
-        external
-        view
-        returns (address)
-    {
-        bytes32 key = getKey(escrowPeriod, freezePolicy, authorizedCodehash);
+    function computeAddress(uint256 escrowPeriod, bytes32 authorizedCodehash) external view returns (address) {
+        bytes32 key = getKey(escrowPeriod, authorizedCodehash);
         bytes32 salt = keccak256(abi.encodePacked("escrowPeriod", key));
         bytes memory bytecode = abi.encodePacked(
-            type(EscrowPeriod).creationCode, abi.encode(escrowPeriod, freezePolicy, address(ESCROW), authorizedCodehash)
+            type(EscrowPeriod).creationCode, abi.encode(escrowPeriod, address(ESCROW), authorizedCodehash)
         );
         bytes32 hash = keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)));
         return address(uint160(uint256(hash)));
@@ -111,15 +96,10 @@ contract EscrowPeriodFactory {
     /**
      * @notice Get the key for a configuration
      * @param escrowPeriod Duration of the escrow period in seconds
-     * @param freezePolicy Address of the freeze policy contract
      * @param authorizedCodehash Runtime codehash of authorized caller (bytes32(0) = operator-only)
      * @return The mapping key
      */
-    function getKey(uint256 escrowPeriod, address freezePolicy, bytes32 authorizedCodehash)
-        public
-        pure
-        returns (bytes32)
-    {
-        return keccak256(abi.encodePacked(escrowPeriod, freezePolicy, authorizedCodehash));
+    function getKey(uint256 escrowPeriod, bytes32 authorizedCodehash) public pure returns (bytes32) {
+        return keccak256(abi.encodePacked(escrowPeriod, authorizedCodehash));
     }
 }

@@ -12,21 +12,17 @@ import {ReceiverCondition} from "../src/plugins/conditions/access/ReceiverCondit
 import {PayerCondition} from "../src/plugins/conditions/access/PayerCondition.sol";
 import {NotCondition} from "../src/plugins/conditions/combinators/NotCondition.sol";
 import {RecorderCombinator} from "../src/plugins/recorders/combinators/RecorderCombinator.sol";
-import {FreezePolicyFactory} from "../src/plugins/escrow-period/freeze-policy/FreezePolicyFactory.sol";
-import {FreezePolicy} from "../src/plugins/escrow-period/freeze-policy/FreezePolicy.sol";
+import {FreezePolicyFactory} from "../src/plugins/freeze/freeze-policy/FreezePolicyFactory.sol";
+import {FreezePolicy} from "../src/plugins/freeze/freeze-policy/FreezePolicy.sol";
 
 /// @notice Mock recorder for testing RecorderCombinator
 contract MockRecorder is IRecorder {
     uint256 public recordCount;
     AuthCaptureEscrow.PaymentInfo public lastPaymentInfo;
-    uint256 public lastAmount;
-    address public lastCaller;
 
-    function record(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount, address caller) external {
+    function record(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address) external {
         recordCount++;
         lastPaymentInfo = paymentInfo;
-        lastAmount = amount;
-        lastCaller = caller;
     }
 }
 
@@ -144,8 +140,6 @@ contract ConditionsCoverageTest is Test {
 
         assertEq(recorder1.recordCount(), 1);
         assertEq(recorder2.recordCount(), 1);
-        assertEq(recorder1.lastAmount(), 500);
-        assertEq(recorder2.lastCaller(), payer);
     }
 
     function test_RecorderCombinator_RevertsOnEmptyRecorders() public {

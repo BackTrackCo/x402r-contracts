@@ -98,8 +98,7 @@ contract RecorderCoverageTest is Test {
         }
 
         // Get page 1 (offset 0, count 2)
-        (PaymentIndexRecorder.PaymentRecord[] memory records, uint256 total) =
-            indexRecorder.getPayerPayments(payer, 0, 2);
+        (bytes32[] memory records, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 2);
         assertEq(total, 3, "Total should be 3");
         assertEq(records.length, 2, "Page should have 2 records");
 
@@ -110,8 +109,7 @@ contract RecorderCoverageTest is Test {
 
     function test_PaymentIndexRecorder_GetPayerPayments_OffsetBeyondTotal() public {
         PaymentIndexRecorder indexRecorder = new PaymentIndexRecorder(address(escrow), bytes32(0));
-        (PaymentIndexRecorder.PaymentRecord[] memory records, uint256 total) =
-            indexRecorder.getPayerPayments(payer, 100, 10);
+        (bytes32[] memory records, uint256 total) = indexRecorder.getPayerPayments(payer, 100, 10);
         assertEq(total, 0, "Total should be 0 for no payments");
         assertEq(records.length, 0, "Should return empty array");
     }
@@ -125,8 +123,7 @@ contract RecorderCoverageTest is Test {
         collector.preApprove(paymentInfo);
         op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
-        (PaymentIndexRecorder.PaymentRecord[] memory records, uint256 total) =
-            indexRecorder.getPayerPayments(payer, 0, 0);
+        (bytes32[] memory records, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 0);
         assertEq(total, 1, "Total should be 1");
         assertEq(records.length, 0, "Should return empty for zero count");
     }
@@ -146,8 +143,7 @@ contract RecorderCoverageTest is Test {
         collector.preApprove(paymentInfo);
         op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
-        (PaymentIndexRecorder.PaymentRecord[] memory records, uint256 total) =
-            indexRecorder.getReceiverPayments(receiver, 0, 10);
+        (bytes32[] memory records, uint256 total) = indexRecorder.getReceiverPayments(receiver, 0, 10);
         assertEq(total, 1, "Receiver should have 1 payment");
         assertEq(records.length, 1, "Should return 1 record");
     }
@@ -156,19 +152,6 @@ contract RecorderCoverageTest is Test {
         PaymentIndexRecorder indexRecorder = new PaymentIndexRecorder(address(escrow), bytes32(0));
         vm.expectRevert(PaymentIndexRecorder.IndexOutOfBounds.selector);
         indexRecorder.getReceiverPayment(receiver, 0);
-    }
-
-    function test_PaymentIndexRecorder_RecordCount() public {
-        PaymentIndexRecorder indexRecorder = new PaymentIndexRecorder(address(escrow), bytes32(0));
-        PaymentOperator op = _deployWithRecorder(address(indexRecorder));
-
-        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), 5);
-        vm.prank(payer);
-        collector.preApprove(paymentInfo);
-        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
-
-        bytes32 hash = escrow.getHash(paymentInfo);
-        assertEq(indexRecorder.recordCount(hash), 1, "Record count should be 1");
     }
 
     // ============ RecorderCombinator ============

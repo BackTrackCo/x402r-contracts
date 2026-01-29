@@ -6,7 +6,7 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 /**
  * @title IFreezePolicy
  * @notice Interface for contracts that define freeze/unfreeze authorization policies.
- * @dev The freeze state itself is owned by EscrowPeriod.
+ * @dev The freeze state itself is owned by the Freeze condition contract.
  *      This interface determines WHO can freeze/unfreeze and for HOW LONG.
  */
 interface IFreezePolicy {

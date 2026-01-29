@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
-import {FreezePolicyFactory} from "../src/plugins/escrow-period/freeze-policy/FreezePolicyFactory.sol";
+import {FreezePolicyFactory} from "../src/plugins/freeze/freeze-policy/FreezePolicyFactory.sol";
 import {PayerCondition} from "../src/plugins/conditions/access/PayerCondition.sol";
 import {ReceiverCondition} from "../src/plugins/conditions/access/ReceiverCondition.sol";
 import {AlwaysTrueCondition} from "../src/plugins/conditions/access/AlwaysTrueCondition.sol";

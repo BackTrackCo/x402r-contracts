@@ -11,7 +11,10 @@ import {ProtocolFeeConfig} from "../../src/plugins/fees/ProtocolFeeConfig.sol";
 import {StaticFeeCalculator} from "../../src/plugins/fees/StaticFeeCalculator.sol";
 import {EscrowPeriod} from "../../src/plugins/escrow-period/EscrowPeriod.sol";
 import {EscrowPeriodFactory} from "../../src/plugins/escrow-period/EscrowPeriodFactory.sol";
-import {FreezePolicy} from "../../src/plugins/escrow-period/freeze-policy/FreezePolicy.sol";
+import {Freeze} from "../../src/plugins/freeze/Freeze.sol";
+import {FreezePolicy} from "../../src/plugins/freeze/freeze-policy/FreezePolicy.sol";
+import {ICondition} from "../../src/plugins/conditions/ICondition.sol";
+import {AndCondition} from "../../src/plugins/conditions/combinators/AndCondition.sol";
 import {PayerCondition} from "../../src/plugins/conditions/access/PayerCondition.sol";
 import {RefundRequest} from "../../src/requests/refund/RefundRequest.sol";
 import {RequestStatus} from "../../src/requests/types/Types.sol";
@@ -35,6 +38,8 @@ contract FullLifecycleTest is Test {
 
     // Escrow period system
     EscrowPeriod public escrowPeriod;
+    Freeze public freeze;
+    AndCondition public releaseCondition;
     PayerCondition public payerCondition;
     FreezePolicy public freezePolicy;
 
@@ -81,8 +86,17 @@ contract FullLifecycleTest is Test {
         EscrowPeriodFactory escrowPeriodFactory = new EscrowPeriodFactory(address(escrow));
         payerCondition = new PayerCondition();
         freezePolicy = new FreezePolicy(address(payerCondition), address(payerCondition), FREEZE_DURATION);
-        address escrowPeriodAddr = escrowPeriodFactory.deploy(ESCROW_PERIOD, address(freezePolicy), bytes32(0));
+        address escrowPeriodAddr = escrowPeriodFactory.deploy(ESCROW_PERIOD, bytes32(0));
         escrowPeriod = EscrowPeriod(escrowPeriodAddr);
+
+        // Deploy freeze with escrow period constraint
+        freeze = new Freeze(address(freezePolicy), address(escrowPeriod), address(escrow));
+
+        // Compose escrow period + freeze into release condition
+        ICondition[] memory conditions = new ICondition[](2);
+        conditions[0] = ICondition(address(escrowPeriod));
+        conditions[1] = ICondition(address(freeze));
+        releaseCondition = new AndCondition(conditions);
 
         // Deploy operator with full configuration
         operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
@@ -94,7 +108,7 @@ contract FullLifecycleTest is Test {
             authorizeRecorder: address(escrowPeriod),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(escrowPeriod),
+            releaseCondition: address(releaseCondition),
             releaseRecorder: address(0),
             refundInEscrowCondition: address(0),
             refundInEscrowRecorder: address(0),
@@ -136,14 +150,14 @@ contract FullLifecycleTest is Test {
 
         // --- Step 3: FREEZE ---
         vm.prank(payer);
-        escrowPeriod.freeze(paymentInfo);
-        assertTrue(escrowPeriod.isFrozen(paymentInfo), "Step 3: Must be frozen");
+        freeze.freeze(paymentInfo);
+        assertTrue(freeze.isFrozen(paymentInfo), "Step 3: Must be frozen");
 
         // --- Step 4: Warp past both freeze duration and escrow period ---
         vm.warp(block.timestamp + ESCROW_PERIOD + 1);
 
         // --- Step 5: Freeze expired, escrow period passed ---
-        assertFalse(escrowPeriod.isFrozen(paymentInfo), "Step 5: Freeze should have expired");
+        assertFalse(freeze.isFrozen(paymentInfo), "Step 5: Freeze should have expired");
 
         // --- Step 6: RELEASE ---
         uint256 receiverBefore = token.balanceOf(receiver);

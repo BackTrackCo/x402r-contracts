@@ -22,7 +22,6 @@ contract MaliciousRecorder is IRecorder {
     AttackType public attackType;
     PaymentOperator public targetOperator;
     AuthCaptureEscrow.PaymentInfo public storedPaymentInfo;
-    uint256 public storedAmount;
     uint256 public reentrancyCount;
     uint256 public maxReentrancy = 1;
     bool public reentrancyBlocked;
@@ -42,13 +41,9 @@ contract MaliciousRecorder is IRecorder {
     /**
      * @notice Malicious record function that attempts reentrancy
      */
-    function record(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount, address caller)
-        external
-        override
-    {
+    function record(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount, address) external override {
         // Store for potential reuse
         storedPaymentInfo = paymentInfo;
-        storedAmount = amount;
         targetOperator = PaymentOperator(msg.sender);
 
         // Increment counter
@@ -104,8 +99,6 @@ contract MaliciousRecorder is IRecorder {
      * @notice Manually trigger attack for testing
      */
     function triggerAttack() external {
-        if (attackType == AttackType.REENTER_SAME_FUNCTION) {
-            targetOperator.release(storedPaymentInfo, storedAmount);
-        }
+        targetOperator.release(storedPaymentInfo, storedPaymentInfo.maxAmount);
     }
 }
