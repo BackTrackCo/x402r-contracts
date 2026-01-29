@@ -101,7 +101,7 @@ op.release(paymentInfo, amount);
 | FreezeFactory | [`0x5b3e33791C1764cF7e2573Bf8116F1D361FD97Cd`](https://sepolia.basescan.org/address/0x5b3e33791C1764cF7e2573Bf8116F1D361FD97Cd) |
 | StaticFeeCalculatorFactory | [`0x35fb2EFEfAc3Ee9f6E52A9AAE5C9655bC08dEc00`](https://sepolia.basescan.org/address/0x35fb2EFEfAc3Ee9f6E52A9AAE5C9655bC08dEc00) |
 | FreezePolicyFactory | [`0x9D4146EF898c8E60B3e865AE254ef438E7cEd2A0`](https://sepolia.basescan.org/address/0x9D4146EF898c8E60B3e865AE254ef438E7cEd2A0) |
-| StaticAddressConditionFactory | *Not yet deployed* |
+| StaticAddressConditionFactory | [`0x68684ff8CD38483B8023a1443Af97C58eD29Cb06`](https://sepolia.basescan.org/address/0x68684ff8CD38483B8023a1443Af97C58eD29Cb06) |
 
 #### Condition Singletons
 
