@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 
 import {Ownable} from "solady/auth/Ownable.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {IFeeCalculator} from "./IFeeCalculator.sol";
+import {IFeeCalculator} from "./static-fee-calculator/IFeeCalculator.sol";
 
 /**
  * @title ProtocolFeeConfig

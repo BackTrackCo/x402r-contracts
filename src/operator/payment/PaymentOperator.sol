@@ -19,7 +19,7 @@ import {
     RefundPostEscrowExecuted,
     FeesDistributed
 } from "../types/Events.sol";
-import {IFeeCalculator} from "../../plugins/fees/IFeeCalculator.sol";
+import {IFeeCalculator} from "../../plugins/fees/static-fee-calculator/IFeeCalculator.sol";
 import {ProtocolFeeConfig} from "../../plugins/fees/ProtocolFeeConfig.sol";
 
 /**
