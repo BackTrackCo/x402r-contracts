@@ -14,6 +14,8 @@ import {NotCondition} from "../src/plugins/conditions/combinators/NotCondition.s
 import {RecorderCombinator} from "../src/plugins/recorders/combinators/RecorderCombinator.sol";
 import {FreezePolicyFactory} from "../src/plugins/freeze/freeze-policy/FreezePolicyFactory.sol";
 import {FreezePolicy} from "../src/plugins/freeze/freeze-policy/FreezePolicy.sol";
+import {StaticAddressCondition} from "../src/plugins/conditions/access/StaticAddressCondition.sol";
+import {StaticAddressConditionFactory} from "../src/plugins/conditions/access/StaticAddressConditionFactory.sol";
 
 /// @notice Mock recorder for testing RecorderCombinator
 contract MockRecorder is IRecorder {
@@ -264,5 +266,80 @@ contract ConditionsCoverageTest is Test {
         assertEq(address(policy.FREEZE_CONDITION()), address(payerCondition));
         assertEq(address(policy.UNFREEZE_CONDITION()), address(payerCondition));
         assertEq(policy.FREEZE_DURATION(), 3 days);
+    }
+
+    // ============ StaticAddressConditionFactory Tests ============
+
+    function test_StaticAddressConditionFactory_Deploy() public {
+        StaticAddressConditionFactory factory = new StaticAddressConditionFactory();
+        address arbiter = makeAddr("arbiter");
+
+        address condition = factory.deploy(arbiter);
+
+        assertTrue(condition != address(0));
+        assertEq(factory.getDeployed(arbiter), condition);
+    }
+
+    function test_StaticAddressConditionFactory_DeployReturnsSameAddress() public {
+        StaticAddressConditionFactory factory = new StaticAddressConditionFactory();
+        address arbiter = makeAddr("arbiter");
+
+        address condition1 = factory.deploy(arbiter);
+        address condition2 = factory.deploy(arbiter);
+
+        assertEq(condition1, condition2);
+    }
+
+    function test_StaticAddressConditionFactory_ComputeAddress() public {
+        StaticAddressConditionFactory factory = new StaticAddressConditionFactory();
+        address arbiter = makeAddr("arbiter");
+
+        address computed = factory.computeAddress(arbiter);
+        address deployed = factory.deploy(arbiter);
+
+        assertEq(computed, deployed);
+    }
+
+    function test_StaticAddressConditionFactory_GetKey() public {
+        StaticAddressConditionFactory factory = new StaticAddressConditionFactory();
+        address arbiter1 = makeAddr("arbiter1");
+        address arbiter2 = makeAddr("arbiter2");
+
+        bytes32 key1 = factory.getKey(arbiter1);
+        bytes32 key2 = factory.getKey(arbiter2);
+
+        assertTrue(key1 != key2);
+    }
+
+    function test_StaticAddressConditionFactory_DifferentAddresses() public {
+        StaticAddressConditionFactory factory = new StaticAddressConditionFactory();
+        address arbiter1 = makeAddr("arbiter1");
+        address arbiter2 = makeAddr("arbiter2");
+
+        address condition1 = factory.deploy(arbiter1);
+        address condition2 = factory.deploy(arbiter2);
+
+        assertTrue(condition1 != condition2);
+    }
+
+    function test_StaticAddressConditionFactory_RevertsOnZeroAddress() public {
+        StaticAddressConditionFactory factory = new StaticAddressConditionFactory();
+
+        vm.expectRevert(StaticAddressConditionFactory.ZeroAddress.selector);
+        factory.deploy(address(0));
+    }
+
+    function test_StaticAddressConditionFactory_DeployedConditionWorks() public {
+        StaticAddressConditionFactory factory = new StaticAddressConditionFactory();
+        address arbiter = makeAddr("arbiter");
+
+        address conditionAddr = factory.deploy(arbiter);
+        StaticAddressCondition condition = StaticAddressCondition(conditionAddr);
+
+        assertEq(condition.DESIGNATED_ADDRESS(), arbiter);
+
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+        assertTrue(condition.check(paymentInfo, 100, arbiter));
+        assertFalse(condition.check(paymentInfo, 100, payer));
     }
 }

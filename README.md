@@ -101,6 +101,7 @@ op.release(paymentInfo, amount);
 | FreezeFactory | [`0x5b3e33791C1764cF7e2573Bf8116F1D361FD97Cd`](https://sepolia.basescan.org/address/0x5b3e33791C1764cF7e2573Bf8116F1D361FD97Cd) |
 | StaticFeeCalculatorFactory | [`0x35fb2EFEfAc3Ee9f6E52A9AAE5C9655bC08dEc00`](https://sepolia.basescan.org/address/0x35fb2EFEfAc3Ee9f6E52A9AAE5C9655bC08dEc00) |
 | FreezePolicyFactory | [`0x9D4146EF898c8E60B3e865AE254ef438E7cEd2A0`](https://sepolia.basescan.org/address/0x9D4146EF898c8E60B3e865AE254ef438E7cEd2A0) |
+| StaticAddressConditionFactory | *Not yet deployed* |
 
 #### Condition Singletons
 
@@ -116,7 +117,7 @@ For arbiter, service provider, DAO, platform, or any designated address access c
 
 | Contract | Notes |
 |----------|-------|
-| **StaticAddressCondition** | Deploy per use case - Generic designated address condition for arbiter, service provider, DAO multisig, platform treasury, etc. |
+| **StaticAddressCondition** | Deploy via `StaticAddressConditionFactory.deploy(designatedAddress)` - Generic designated address condition for arbiter, service provider, DAO multisig, platform treasury, etc. Each unique address gets a deterministic CREATE2 deployment. |
 
 **USDC (Base Sepolia):** [`0x036CbD53842c5426634e7929541eC2318f3dCF7e`](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e)
 
@@ -469,7 +470,8 @@ struct OperatorConfig {
 
 **Example: Deploy a marketplace operator with arbiter**
 ```solidity
-address arbiterCondition = address(new StaticAddressCondition(arbiterAddress));
+// Deploy arbiter condition via factory (deterministic address, idempotent)
+address arbiterCondition = staticAddressConditionFactory.deploy(arbiterAddress);
 
 PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
     feeRecipient: arbiterAddress,           // Arbiter earns fees for dispute resolution
