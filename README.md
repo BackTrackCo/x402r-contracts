@@ -89,14 +89,14 @@ op.release(paymentInfo, amount);
 | Contract | Address |
 |----------|---------|
 | **AuthCaptureEscrow** | [`0xb9488351E48b23D798f24e8174514F28B741Eb4f`](https://sepolia.basescan.org/address/0xb9488351E48b23D798f24e8174514F28B741Eb4f) |
-| **ProtocolFeeConfig** | [`0xB68C023365EB08021E12f7f7f11a03282443863A`](https://sepolia.basescan.org/address/0xB68C023365EB08021E12f7f7f11a03282443863A) |
+| **ProtocolFeeConfig** | [`0x1e52a74cE6b69F04a506eF815743E1052A1BD28F`](https://sepolia.basescan.org/address/0x1e52a74cE6b69F04a506eF815743E1052A1BD28F) |
 | RefundRequest | [`0x6926c05193c714ED4bA3867Ee93d6816Fdc14128`](https://sepolia.basescan.org/address/0x6926c05193c714ED4bA3867Ee93d6816Fdc14128) |
 
 #### Factories
 
 | Contract | Address |
 |----------|---------|
-| **PaymentOperatorFactory** | [`0x67B63Af4bcdCD3E4263d9995aB04563fbC229944`](https://sepolia.basescan.org/address/0x67B63Af4bcdCD3E4263d9995aB04563fbC229944) |
+| **PaymentOperatorFactory** | [`0xFa8C4Cb156053b867Ae7489220A29b5939E3Df70`](https://sepolia.basescan.org/address/0xFa8C4Cb156053b867Ae7489220A29b5939E3Df70) |
 | EscrowPeriodFactory | [`0x206D4DbB6E7b876e4B5EFAAD2a04e7d7813FB6ba`](https://sepolia.basescan.org/address/0x206D4DbB6E7b876e4B5EFAAD2a04e7d7813FB6ba) |
 | FreezeFactory | [`0x5b3e33791C1764cF7e2573Bf8116F1D361FD97Cd`](https://sepolia.basescan.org/address/0x5b3e33791C1764cF7e2573Bf8116F1D361FD97Cd) |
 | StaticFeeCalculatorFactory | [`0x35fb2EFEfAc3Ee9f6E52A9AAE5C9655bC08dEc00`](https://sepolia.basescan.org/address/0x35fb2EFEfAc3Ee9f6E52A9AAE5C9655bC08dEc00) |

@@ -327,6 +327,40 @@ contract ProtocolFeeConfigTest is Test {
         assertEq(config.getProtocolFeeBps(paymentInfo, 1000, address(this)), 100);
     }
 
+    // ============ Max Fee Cap Tests ============
+
+    function test_MaxProtocolFeeBps_IsConstant() public view {
+        assertEq(config.MAX_PROTOCOL_FEE_BPS(), 500, "Max should be 500 bps (5%)");
+    }
+
+    function test_GetProtocolFeeBps_CappedAtMax() public {
+        // Deploy a calculator that returns 5000 bps (50%)
+        StaticFeeCalculator highCalc = new StaticFeeCalculator(5000);
+        config.queueCalculator(address(highCalc));
+        vm.warp(block.timestamp + 7 days);
+        config.executeCalculator();
+
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+        uint256 feeBps = config.getProtocolFeeBps(paymentInfo, 1000, address(this));
+
+        // Should be capped at 500 (5%), not 5000
+        assertEq(feeBps, 500, "Fee should be capped at MAX_PROTOCOL_FEE_BPS");
+    }
+
+    function test_GetProtocolFeeBps_NotCappedWhenBelowMax() public {
+        // Deploy a calculator that returns 300 bps (3%) - below the 5% cap
+        StaticFeeCalculator lowCalc = new StaticFeeCalculator(300);
+        config.queueCalculator(address(lowCalc));
+        vm.warp(block.timestamp + 7 days);
+        config.executeCalculator();
+
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+        uint256 feeBps = config.getProtocolFeeBps(paymentInfo, 1000, address(this));
+
+        // Should return actual value since it's below cap
+        assertEq(feeBps, 300, "Fee should not be capped when below max");
+    }
+
     // ============ Helper ============
 
     function _createPaymentInfo() internal returns (AuthCaptureEscrow.PaymentInfo memory) {

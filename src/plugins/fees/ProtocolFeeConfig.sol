@@ -35,6 +35,7 @@ contract ProtocolFeeConfig is Ownable {
 
     // ============ Constants ============
     uint256 public constant TIMELOCK_DELAY = 7 days;
+    uint256 public constant MAX_PROTOCOL_FEE_BPS = 500; // 5% hard cap
 
     // ============ State ============
     IFeeCalculator public calculator;
@@ -57,14 +58,16 @@ contract ProtocolFeeConfig is Ownable {
     // ============ View Functions ============
 
     /// @notice Get protocol fee in basis points for a payment action
-    /// @dev Returns 0 if calculator is address(0)
+    /// @dev Returns 0 if calculator is address(0). Capped at MAX_PROTOCOL_FEE_BPS.
     function getProtocolFeeBps(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount, address caller)
         external
         view
         returns (uint256)
     {
         if (address(calculator) == address(0)) return 0;
-        return calculator.calculateFee(paymentInfo, amount, caller);
+        uint256 fee = calculator.calculateFee(paymentInfo, amount, caller);
+        if (fee > MAX_PROTOCOL_FEE_BPS) return MAX_PROTOCOL_FEE_BPS;
+        return fee;
     }
 
     /// @notice Get the protocol fee recipient address
