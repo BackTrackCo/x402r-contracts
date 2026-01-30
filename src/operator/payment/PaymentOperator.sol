@@ -7,10 +7,9 @@ import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.so
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PaymentOperatorAccess} from "./PaymentOperatorAccess.sol";
 import {ZeroAddress} from "../../types/Errors.sol";
-import {ZeroEscrow, ConditionNotMet, FeeTooHigh} from "../types/Errors.sol";
+import {ZeroEscrow, ConditionNotMet, FeeTooHigh, FeeBoundsIncompatible} from "../types/Errors.sol";
 import {ICondition} from "../../plugins/conditions/ICondition.sol";
 import {IRecorder} from "../../plugins/recorders/IRecorder.sol";
-import {PaymentState} from "../types/Types.sol";
 import {
     AuthorizationCreated,
     ChargeExecuted,
@@ -75,12 +74,20 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
     // ============ Core State ============
     AuthCaptureEscrow public immutable ESCROW;
     address public immutable FEE_RECIPIENT;
-    mapping(bytes32 => AuthCaptureEscrow.PaymentInfo) public paymentInfos;
 
     // ============ Fee Configuration (Modular) ============
     IFeeCalculator public immutable FEE_CALCULATOR;
     ProtocolFeeConfig public immutable PROTOCOL_FEE_CONFIG;
     mapping(address token => uint256) public accumulatedProtocolFees;
+
+    /// @notice Fees locked at authorization time to prevent changes from breaking capture
+    /// @dev Stores fee rates calculated at authorize() to use at release()
+    struct AuthorizedFees {
+        uint16 totalFeeBps;
+        uint16 protocolFeeBps;
+    }
+
+    mapping(bytes32 paymentInfoHash => AuthorizedFees) public authorizedFees;
 
     // ============ Condition Slots (before-action checks) ============
     // address(0) = always allow (default behavior)
@@ -136,16 +143,16 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
      * @param paymentInfo The payment info struct
      * @param amount The payment amount
      * @return totalFeeBps Combined fee in basis points
-     * @return protocolFeeAmount Protocol fee in token units (for tracking)
+     * @return protocolFeeBps_ Protocol fee in basis points
      */
     function _calculateFees(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount)
         internal
         view
-        returns (uint16 totalFeeBps, uint256 protocolFeeAmount)
+        returns (uint16 totalFeeBps, uint16 protocolFeeBps_)
     {
         // Protocol fee from shared config (returns 0 if calculator is address(0))
         uint256 protocolFeeBps = PROTOCOL_FEE_CONFIG.getProtocolFeeBps(paymentInfo, amount, msg.sender);
-        protocolFeeAmount = (amount * protocolFeeBps) / 10000;
+        protocolFeeBps_ = uint16(protocolFeeBps);
 
         // Operator fee (from calculator, or 0 if no calculator)
         uint256 operatorFeeBps;
@@ -185,10 +192,17 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
             }
         }
 
+        // Validate fee bounds compatibility - ensure operator's fees fall within payer's accepted range
+        // This prevents stuck payments where payer authorizes with bounds incompatible with operator fees
+        (uint16 totalFeeBps, uint16 protocolFeeBps) = _calculateFees(paymentInfo, amount);
+        if (totalFeeBps < paymentInfo.minFeeBps || totalFeeBps > paymentInfo.maxFeeBps) {
+            revert FeeBoundsIncompatible(totalFeeBps, paymentInfo.minFeeBps, paymentInfo.maxFeeBps);
+        }
+
         // ============ EFFECTS ============
-        // Compute hash and update state before external call (CEI pattern)
+        // Store fees at authorization time to prevent protocol fee changes from breaking capture
         bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
-        paymentInfos[paymentInfoHash] = paymentInfo;
+        authorizedFees[paymentInfoHash] = AuthorizedFees({totalFeeBps: totalFeeBps, protocolFeeBps: protocolFeeBps});
 
         // Emit event before external calls (CEI pattern)
         emit AuthorizationCreated(paymentInfoHash, paymentInfo.payer, paymentInfo.receiver, amount, block.timestamp);
@@ -228,13 +242,16 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
             }
         }
 
-        (uint16 totalFeeBps, uint256 protocolFeeAmount) = _calculateFees(paymentInfo, amount);
+        // Validate fee bounds compatibility for charge (no prior authorization)
+        (uint16 totalFeeBps, uint16 protocolFeeBps) = _calculateFees(paymentInfo, amount);
+        if (totalFeeBps < paymentInfo.minFeeBps || totalFeeBps > paymentInfo.maxFeeBps) {
+            revert FeeBoundsIncompatible(totalFeeBps, paymentInfo.minFeeBps, paymentInfo.maxFeeBps);
+        }
+        uint256 protocolFeeAmount = (amount * protocolFeeBps) / 10000;
         address feeReceiver = address(this);
 
         // ============ EFFECTS ============
-        // Compute hash and update state before external call (CEI pattern)
         bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
-        paymentInfos[paymentInfoHash] = paymentInfo;
         accumulatedProtocolFees[paymentInfo.token] += protocolFeeAmount;
 
         // Emit event before external calls (CEI pattern)
@@ -251,7 +268,8 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
 
     /**
      * @notice Release funds to receiver
-     * @dev Checks RELEASE_CONDITION, performs capture, then calls RELEASE_RECORDER
+     * @dev Checks RELEASE_CONDITION, performs capture, then calls RELEASE_RECORDER.
+     *      Uses fees stored at authorization time to prevent protocol fee changes from breaking capture.
      * @param paymentInfo PaymentInfo struct
      * @param amount Amount to release
      */
@@ -268,7 +286,10 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
             }
         }
 
-        (uint16 totalFeeBps, uint256 protocolFeeAmount) = _calculateFees(paymentInfo, amount);
+        // Use fees stored at authorization time (prevents protocol fee changes from breaking capture)
+        bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
+        AuthorizedFees memory fees = authorizedFees[paymentInfoHash];
+        uint256 protocolFeeAmount = (amount * fees.protocolFeeBps) / 10000;
         address feeReceiver = address(this);
 
         // ============ EFFECTS ============
@@ -279,7 +300,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
 
         // ============ INTERACTIONS ============
         // Forward to escrow - escrow validates payment exists
-        ESCROW.capture(paymentInfo, amount, totalFeeBps, feeReceiver);
+        ESCROW.capture(paymentInfo, amount, fees.totalFeeBps, feeReceiver);
 
         // Call RELEASE_RECORDER (address(0) = no-op)
         if (address(RELEASE_RECORDER) != address(0)) {
@@ -391,87 +412,6 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
 
         if (operatorShare > 0) {
             SafeTransferLib.safeTransfer(token, FEE_RECIPIENT, operatorShare);
-        }
-    }
-
-    // ============ View Functions ============
-
-    /**
-     * @notice Check if a payment exists (has been authorized)
-     * @param paymentInfoHash The hash of the PaymentInfo
-     * @return True if payment exists
-     */
-    function paymentExists(bytes32 paymentInfoHash) public view returns (bool) {
-        return paymentInfos[paymentInfoHash].payer != address(0);
-    }
-
-    /**
-     * @notice Get stored PaymentInfo for a given hash
-     * @param paymentInfoHash The hash of the PaymentInfo
-     * @return The stored PaymentInfo struct
-     */
-    function getPaymentInfo(bytes32 paymentInfoHash) public view returns (AuthCaptureEscrow.PaymentInfo memory) {
-        return paymentInfos[paymentInfoHash];
-    }
-
-    /**
-     * @notice Check if payment is in escrow (has capturable amount)
-     * @param paymentInfoHash The hash of the PaymentInfo
-     * @return True if payment is in escrow
-     */
-    function isInEscrow(bytes32 paymentInfoHash) public view returns (bool) {
-        (, uint120 capturableAmount,) = ESCROW.paymentState(paymentInfoHash);
-        return capturableAmount > 0;
-    }
-
-    /**
-     * @notice Get the explicit state of a payment in its lifecycle
-     * @param paymentInfo The PaymentInfo struct
-     * @return state The current PaymentState enum value
-     * @dev See PaymentState enum for state machine documentation
-     *
-     *      Escrow struct fields:
-     *      - hasCollectedPayment: true if authorize() or charge() was called
-     *      - capturableAmount: funds in escrow that can be captured (released)
-     *      - refundableAmount: captured funds eligible for refund
-     */
-    function getPaymentState(AuthCaptureEscrow.PaymentInfo calldata paymentInfo)
-        external
-        view
-        returns (PaymentState state)
-    {
-        bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
-
-        // Check if payment exists in this operator
-        if (paymentInfos[paymentInfoHash].payer == address(0)) {
-            return PaymentState.NonExistent;
-        }
-
-        // Get escrow state
-        (bool hasCollectedPayment, uint120 capturableAmount, uint120 refundableAmount) =
-            ESCROW.paymentState(paymentInfoHash);
-
-        // If never collected, shouldn't happen if exists in operator, but handle gracefully
-        if (!hasCollectedPayment) {
-            return PaymentState.NonExistent;
-        }
-
-        // Check if expired (can be reclaimed)
-        if (capturableAmount > 0 && block.timestamp >= paymentInfo.authorizationExpiry) {
-            return PaymentState.Expired;
-        }
-
-        // Determine state based on amounts
-        if (capturableAmount > 0) {
-            // Funds still in escrow, can be captured or voided
-            return PaymentState.InEscrow;
-        } else if (refundableAmount > 0) {
-            // Funds have been captured/released, still within refund window
-            return PaymentState.Released;
-        } else {
-            // No capturable and no refundable = payment is settled
-            // Could be: voided, fully refunded, or refund period expired
-            return PaymentState.Settled;
         }
     }
 }

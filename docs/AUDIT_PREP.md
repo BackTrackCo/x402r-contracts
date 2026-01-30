@@ -135,7 +135,6 @@
 #### 2. Unused Return Values (unused-return)
 
 **Findings**:
-- `PaymentOperator.isInEscrow()`: Ignores `(None,capturableAmount,None)`
 - `RefundRequest._updateStatus()`: Ignores `(None,capturableAmount,refundableAmount)`
 - `RefundRequestAccess.onlyAuthorizedForRefundStatus()`: Ignores `(None,capturableAmount,None)`
 

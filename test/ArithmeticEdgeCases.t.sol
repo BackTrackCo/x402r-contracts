@@ -104,11 +104,8 @@ contract ArithmeticEdgeCasesTest is Test {
         operator.authorize(paymentInfo, maxAmount, address(collector), "");
         vm.stopPrank();
 
-        // Verify payment exists
+        // Verify payment exists in escrow
         bytes32 hash = escrow.getHash(paymentInfo);
-        assertTrue(operator.paymentExists(hash), "Payment should exist");
-
-        // Verify escrow balance
         (bool hasCollected, uint120 capturable,) = escrow.paymentState(hash);
         assertTrue(hasCollected, "Payment should be collected");
         assertEq(capturable, maxAmount, "Capturable amount should equal max uint120");

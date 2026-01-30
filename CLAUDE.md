@@ -81,6 +81,19 @@ Additive modular fees: `totalFee = protocolFee + operatorFee`
 - Fee recipients: `protocolFeeRecipient` on ProtocolFeeConfig, `FEE_RECIPIENT` on operator
 - Protocol fees tracked per-token via `accumulatedProtocolFees` mapping for accurate distribution
 
+### Fee Validation & Locking
+
+- **Fee bounds validation**: At `authorize()` and `charge()`, calculated fees are validated against `paymentInfo.minFeeBps` and `paymentInfo.maxFeeBps`. Reverts with `FeeBoundsIncompatible` if fees fall outside payer's accepted range.
+- **Fee locking**: Fees are stored at authorization time in `authorizedFees[hash]` and used at `release()`. This prevents protocol fee changes (via timelocked swap) from breaking capture of already-authorized payments.
+
+## Minimal Operator State
+
+The operator stores only fee-related state:
+- `authorizedFees[hash]` — fee rates locked at authorization (for release)
+- `accumulatedProtocolFees[token]` — protocol fees pending distribution
+
+Payment state (existence, capturable/refundable amounts) is queried directly from the escrow via `ESCROW.paymentState(hash)`. The operator does not duplicate this state.
+
 ## Condition Combinator Pattern
 
 Operators have 10 slots: 5 conditions (before checks) + 5 recorders (after state updates). `address(0)` = default behavior (allow for conditions, no-op for recorders). Conditions can be composed using And/Or/Not combinators.

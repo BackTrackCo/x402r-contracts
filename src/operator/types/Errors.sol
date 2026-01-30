@@ -12,6 +12,7 @@ error UnauthorizedCaller();
 
 // ============ Fee Errors ============
 error FeeTooHigh();
+error FeeBoundsIncompatible(uint16 calculatedFeeBps, uint16 minFeeBps, uint16 maxFeeBps);
 
 // ============ Condition Errors ============
 error ConditionNotMet();

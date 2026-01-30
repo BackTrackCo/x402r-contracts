@@ -9,6 +9,7 @@ import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreAppro
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
 import {StaticFeeCalculator} from "../src/plugins/fees/static-fee-calculator/StaticFeeCalculator.sol";
+import {FeeBoundsIncompatible} from "../src/operator/types/Errors.sol";
 
 /**
  * @title ModularFeesTest
@@ -246,6 +247,171 @@ contract ModularFeesTest is Test {
         op.distributeFees(address(0));
     }
 
+    // ============ Fee Bounds Validation at Authorization ============
+
+    function test_Authorize_RevertsOnFeeBoundsIncompatible_MaxTooLow() public {
+        uint256 protocolBps = 25;
+        uint256 operatorBps = 50;
+        uint256 totalBps = protocolBps + operatorBps; // 75 bps
+
+        (PaymentOperator op,) = _deployOperatorWithFees(protocolBps, operatorBps);
+
+        // Payer sets maxFeeBps = 50, but operator needs 75
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfoWithFeeBounds(address(op), 0, 50);
+
+        vm.prank(payer);
+        collector.preApprove(paymentInfo);
+
+        vm.expectRevert(abi.encodeWithSelector(FeeBoundsIncompatible.selector, totalBps, 0, 50));
+        vm.prank(payer);
+        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+    }
+
+    function test_Authorize_RevertsOnFeeBoundsIncompatible_MinTooHigh() public {
+        uint256 protocolBps = 25;
+        uint256 operatorBps = 50;
+        uint256 totalBps = protocolBps + operatorBps; // 75 bps
+
+        (PaymentOperator op,) = _deployOperatorWithFees(protocolBps, operatorBps);
+
+        // Payer sets minFeeBps = 100, but operator only charges 75
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfoWithFeeBounds(address(op), 100, 200);
+
+        vm.prank(payer);
+        collector.preApprove(paymentInfo);
+
+        vm.expectRevert(abi.encodeWithSelector(FeeBoundsIncompatible.selector, totalBps, 100, 200));
+        vm.prank(payer);
+        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+    }
+
+    function test_Authorize_RevertsOnZeroMaxFee_WhenOperatorChargesFees() public {
+        uint256 protocolBps = 25;
+        uint256 operatorBps = 50;
+        uint256 totalBps = protocolBps + operatorBps; // 75 bps
+
+        (PaymentOperator op,) = _deployOperatorWithFees(protocolBps, operatorBps);
+
+        // Payer sets both min and max to 0 - no fees allowed
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfoWithFeeBounds(address(op), 0, 0);
+
+        vm.prank(payer);
+        collector.preApprove(paymentInfo);
+
+        vm.expectRevert(abi.encodeWithSelector(FeeBoundsIncompatible.selector, totalBps, 0, 0));
+        vm.prank(payer);
+        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+    }
+
+    function test_Authorize_SucceedsWhenFeeBoundsCompatible() public {
+        uint256 protocolBps = 25;
+        uint256 operatorBps = 50;
+        uint256 totalBps = protocolBps + operatorBps; // 75 bps
+
+        (PaymentOperator op,) = _deployOperatorWithFees(protocolBps, operatorBps);
+
+        // Payer sets bounds that include the operator's fee
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfoWithFeeBounds(address(op), 50, 100);
+
+        vm.prank(payer);
+        collector.preApprove(paymentInfo);
+
+        vm.prank(payer);
+        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+
+        // Verify authorization succeeded by checking escrow state
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+        (bool hasCollected,,) = escrow.paymentState(paymentInfoHash);
+        assertTrue(hasCollected, "Payment should exist in escrow");
+    }
+
+    function test_Authorize_ZeroFeesWithZeroBounds_Succeeds() public {
+        // Zero fee operator
+        (PaymentOperator op,) = _deployOperatorWithFees(0, 0);
+
+        // Payer sets both min and max to 0 - matches operator
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfoWithFeeBounds(address(op), 0, 0);
+
+        vm.prank(payer);
+        collector.preApprove(paymentInfo);
+
+        vm.prank(payer);
+        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+
+        // Verify authorization succeeded by checking escrow state
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+        (bool hasCollected,,) = escrow.paymentState(paymentInfoHash);
+        assertTrue(hasCollected, "Payment should exist in escrow");
+    }
+
+    // ============ Fee Locking at Authorization ============
+
+    function test_Release_UsesStoredFees_WhenProtocolFeesChange() public {
+        uint256 initialProtocolBps = 25;
+        uint256 operatorBps = 50;
+        uint256 initialTotalBps = initialProtocolBps + operatorBps; // 75 bps
+
+        // Deploy with initial protocol fee
+        address initialProtocolCalc = address(new StaticFeeCalculator(initialProtocolBps));
+        ProtocolFeeConfig protocolFeeConfig = new ProtocolFeeConfig(initialProtocolCalc, protocolFeeRecipient, owner);
+
+        address opCalcAddr = address(new StaticFeeCalculator(operatorBps));
+        PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
+        PaymentOperatorFactory.OperatorConfig memory config = _createOperatorConfig(opCalcAddr);
+        PaymentOperator op = PaymentOperator(factory.deployOperator(config));
+
+        // Authorize payment with initial fees - use long expiry to survive 7-day timelock
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfoWithLongExpiry(address(op), 0, 100);
+        _authorizePayment(op, paymentInfo);
+
+        // Verify stored fees
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+        (uint16 storedTotalFeeBps, uint16 storedProtocolFeeBps) = op.authorizedFees(paymentInfoHash);
+        assertEq(storedTotalFeeBps, initialTotalBps, "Stored total fee should match auth-time calculation");
+        assertEq(storedProtocolFeeBps, initialProtocolBps, "Stored protocol fee should match auth-time calculation");
+
+        // Change protocol fee calculator (would normally break release if fees recalculated)
+        uint256 newProtocolBps = 200; // 2% - would make total 250 bps, exceeding maxFeeBps of 100
+        address newProtocolCalc = address(new StaticFeeCalculator(newProtocolBps));
+        protocolFeeConfig.queueCalculator(newProtocolCalc);
+        vm.warp(block.timestamp + 7 days + 1);
+        protocolFeeConfig.executeCalculator();
+
+        // Verify new calculator is active
+        assertEq(
+            protocolFeeConfig.getProtocolFeeBps(paymentInfo, PAYMENT_AMOUNT, address(this)),
+            newProtocolBps,
+            "New protocol fee should be active"
+        );
+
+        // Release should succeed using stored fees (not recalculated fees which would fail)
+        op.release(paymentInfo, PAYMENT_AMOUNT);
+
+        // Verify protocol fee tracking used stored rate
+        uint256 expectedProtocolFee = (PAYMENT_AMOUNT * initialProtocolBps) / 10000;
+        op.distributeFees(address(token));
+        assertEq(
+            token.balanceOf(protocolFeeRecipient), expectedProtocolFee, "Protocol should receive auth-time fee rate"
+        );
+    }
+
+    function test_AuthorizedFees_StoredCorrectly() public {
+        uint256 protocolBps = 30;
+        uint256 operatorBps = 45;
+        uint256 totalBps = protocolBps + operatorBps;
+
+        (PaymentOperator op,) = _deployOperatorWithFees(protocolBps, operatorBps);
+
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), totalBps);
+        _authorizePayment(op, paymentInfo);
+
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+        (uint16 storedTotalFeeBps, uint16 storedProtocolFeeBps) = op.authorizedFees(paymentInfoHash);
+
+        assertEq(storedTotalFeeBps, totalBps, "Total fee bps should be stored");
+        assertEq(storedProtocolFeeBps, protocolBps, "Protocol fee bps should be stored");
+    }
+
     // ============ Helper Functions ============
 
     function _deployOperatorWithFees(uint256 protocolBps, uint256 operatorBps)
@@ -292,6 +458,14 @@ contract ModularFeesTest is Test {
         view
         returns (AuthCaptureEscrow.PaymentInfo memory)
     {
+        return _createPaymentInfoWithFeeBounds(op, totalBps, totalBps);
+    }
+
+    function _createPaymentInfoWithFeeBounds(address op, uint256 minBps, uint256 maxBps)
+        internal
+        view
+        returns (AuthCaptureEscrow.PaymentInfo memory)
+    {
         return AuthCaptureEscrow.PaymentInfo({
             operator: op,
             payer: payer,
@@ -301,8 +475,29 @@ contract ModularFeesTest is Test {
             preApprovalExpiry: uint48(block.timestamp + 1 days),
             authorizationExpiry: uint48(block.timestamp + 7 days),
             refundExpiry: uint48(block.timestamp + 30 days),
-            minFeeBps: uint16(totalBps),
-            maxFeeBps: uint16(totalBps),
+            minFeeBps: uint16(minBps),
+            maxFeeBps: uint16(maxBps),
+            feeReceiver: op,
+            salt: 12345
+        });
+    }
+
+    function _createPaymentInfoWithLongExpiry(address op, uint256 minBps, uint256 maxBps)
+        internal
+        view
+        returns (AuthCaptureEscrow.PaymentInfo memory)
+    {
+        return AuthCaptureEscrow.PaymentInfo({
+            operator: op,
+            payer: payer,
+            receiver: receiver,
+            token: address(token),
+            maxAmount: uint120(PAYMENT_AMOUNT),
+            preApprovalExpiry: uint48(block.timestamp + 30 days),
+            authorizationExpiry: uint48(block.timestamp + 60 days),
+            refundExpiry: uint48(block.timestamp + 90 days),
+            minFeeBps: uint16(minBps),
+            maxFeeBps: uint16(maxBps),
             feeReceiver: op,
             salt: 12345
         });

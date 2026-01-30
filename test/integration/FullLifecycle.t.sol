@@ -18,7 +18,6 @@ import {AndCondition} from "../../src/plugins/conditions/combinators/AndConditio
 import {PayerCondition} from "../../src/plugins/conditions/access/PayerCondition.sol";
 import {RefundRequest} from "../../src/requests/refund/RefundRequest.sol";
 import {RequestStatus} from "../../src/requests/types/Types.sol";
-import {PaymentState} from "../../src/operator/types/Types.sol";
 
 /**
  * @title FullLifecycleTest
@@ -140,8 +139,10 @@ contract FullLifecycleTest is Test {
         vm.stopPrank();
         operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
-        PaymentState state = operator.getPaymentState(paymentInfo);
-        assertEq(uint256(state), uint256(PaymentState.InEscrow), "Step 1: Must be InEscrow");
+        // Verify in escrow via escrow contract
+        bytes32 hash = escrow.getHash(paymentInfo);
+        (, uint120 capturable,) = escrow.paymentState(hash);
+        assertGt(capturable, 0, "Step 1: Must be InEscrow");
 
         // --- Step 2: RELEASE BLOCKED (within escrow period) ---
         vm.prank(receiver);
@@ -168,8 +169,9 @@ contract FullLifecycleTest is Test {
         uint256 expectedNetAmount = PAYMENT_AMOUNT - expectedTotalFee;
         assertEq(token.balanceOf(receiver) - receiverBefore, expectedNetAmount, "Step 6: Receiver gets net amount");
 
-        state = operator.getPaymentState(paymentInfo);
-        assertEq(uint256(state), uint256(PaymentState.Released), "Step 6: Must be Released");
+        // Verify released via escrow contract (capturable=0, refundable>0)
+        (, capturable,) = escrow.paymentState(hash);
+        assertEq(capturable, 0, "Step 6: Must be Released (no capturable)");
 
         // --- Step 7: FEE DISTRIBUTION ---
         uint256 expectedProtocolFee = (PAYMENT_AMOUNT * PROTOCOL_BPS) / 10000;
@@ -245,9 +247,8 @@ contract FullLifecycleTest is Test {
         (, uint120 capturable,) = escrow.paymentState(hash);
         assertEq(capturable, PAYMENT_AMOUNT - refundAmount, "Capturable reduced by refund");
 
-        // Still InEscrow
-        PaymentState state = operator.getPaymentState(paymentInfo);
-        assertEq(uint256(state), uint256(PaymentState.InEscrow), "Still InEscrow after partial refund");
+        // Still InEscrow (capturable > 0)
+        assertGt(capturable, 0, "Still InEscrow after partial refund");
 
         // Warp past escrow period
         vm.warp(block.timestamp + ESCROW_PERIOD + 1);
