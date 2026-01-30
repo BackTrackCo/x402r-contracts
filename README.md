@@ -288,15 +288,13 @@ Typical gas costs for common operations (measured with via-IR optimization and r
 
 | Operation | Gas Cost | With Indexing | Notes |
 |-----------|----------|---------------|-------|
-| **Payment Authorization (First)** | ~404,000 | ~459,000 | First payment to/from address (new storage slots) |
-| **Payment Authorization (Subsequent)** | ~287,000 | ~340,000 | Additional payments (existing storage) |
-| **Payment Release** | ~552,000 | ~552,000 | 0 | Release after escrow period with fee distribution |
-| **Refund Request** | ~591,000 | ~591,000 | 0 | Create refund request with tracking |
-| **Refund Approval** | ~677,000 | ~677,000 | 0 | Complete refund workflow (includes escrow call) |
-| **Cancel Refund** | ~617,000 | ~617,000 | 0 | Cancel pending refund request |
-| **Freeze Payment** | ~486,000 | ~486,000 | 0 | Payer freezes payment during escrow |
+| **Payment Authorization** | ~231,000 | ~273,000 | Minimal storage (fees only) |
+| **Payment Release** | ~65,000 | ~65,000 | Release after escrow period |
+| **Direct Charge** | ~285,000 | ~327,000 | Immediate capture (no escrow) |
+| **Refund In Escrow** | ~45,000 | ~45,000 | Refund before release |
+| **Freeze Payment** | ~50,000 | ~50,000 | Payer freezes during escrow |
 
-**Implementation**: Payment indexing is now **optional** via `PaymentIndexRecorder`. Deploy with indexing for on-chain queries (stores hash + amount: 44k gas first write, 10k subsequent) or skip for gas savings when using external indexers (The Graph).
+**Implementation**: Payment indexing is **optional** via `PaymentIndexRecorder`. Deploy with indexing for on-chain queries (+42k gas first, +22k subsequent) or skip for gas savings when using external indexers (The Graph).
 
 ### Condition Evaluation
 
@@ -335,11 +333,11 @@ Typical gas costs for common operations (measured with via-IR optimization and r
 
 Estimated transaction costs on different networks (at typical gas prices):
 
-| Network | Gas Price | Authorization (First) | Authorization (Subsequent) | Release | Refund |
-|---------|-----------|----------------------|---------------------------|---------|--------|
-| **Base Mainnet** | 0.001 gwei | ~$0.0004 | ~$0.0003 | ~$0.0006 | ~$0.0007 |
-| **Base Sepolia** | Free | Free | Free | Free | Free |
-| **Ethereum L1** | 30 gwei | ~$12.12 | ~$8.61 | ~$16.56 | ~$20.31 |
+| Network | Gas Price | Authorization | Release | Charge |
+|---------|-----------|---------------|---------|--------|
+| **Base Mainnet** | 0.001 gwei | ~$0.0002 | ~$0.0001 | ~$0.0003 |
+| **Base Sepolia** | Free | Free | Free | Free |
+| **Ethereum L1** | 30 gwei | ~$6.93 | ~$1.95 | ~$8.55 |
 
 **Recommendation**: Deploy on Base for low-cost transactions (100-1000x cheaper than Ethereum L1).
 
@@ -347,7 +345,7 @@ Estimated transaction costs on different networks (at typical gas prices):
 
 | Protocol | Authorization | Release | Notes |
 |----------|--------------|---------|-------|
-| **x402r** | 287-404k | 552k | Optimized indexing + reentrancy protection + flexible conditions |
+| **x402r** | ~231k | ~65k | Minimal storage + reentrancy protection + flexible conditions |
 | Gnosis Safe | ~300k | ~250k | Multi-sig overhead, less flexible |
 | Uniswap Permit2 | ~150k | ~100k | Signature-based, no escrow |
 | Superfluid | ~400k | Streaming | Continuous flow, different model |
