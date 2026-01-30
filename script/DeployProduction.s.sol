@@ -2,15 +2,15 @@
 pragma solidity ^0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
-import {PaymentOperator} from "../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
 import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
 import {StaticFeeCalculator} from "../src/plugins/fees/static-fee-calculator/StaticFeeCalculator.sol";
 
 /**
  * @title DeployProduction
- * @notice Production deployment script with multisig validation
+ * @notice Production deployment script - deploys factory only
  * @dev Validates owner is a contract (multisig/timelock) before deployment
+ *      Operators are deployed on-demand via factory.deployOperator()
  *
  * Usage:
  *   source .env.production
@@ -21,18 +21,6 @@ import {StaticFeeCalculator} from "../src/plugins/fees/static-fee-calculator/Sta
  *   ESCROW_ADDRESS - AuthCaptureEscrow address
  *   PROTOCOL_FEE_RECIPIENT - Protocol fee recipient address
  *   PROTOCOL_FEE_BPS - Protocol fee in basis points (0 = no protocol fee)
- *   FEE_RECIPIENT - Operator fee recipient address
- *   FEE_CALCULATOR - Operator fee calculator address (or 0x0 for no operator fee)
- *   AUTHORIZE_CONDITION - Authorize condition address (or 0x0)
- *   AUTHORIZE_RECORDER - Authorize recorder address (or 0x0)
- *   CHARGE_CONDITION - Charge condition address (or 0x0)
- *   CHARGE_RECORDER - Charge recorder address (or 0x0)
- *   RELEASE_CONDITION - Release condition address (or 0x0)
- *   RELEASE_RECORDER - Release recorder address (or 0x0)
- *   REFUND_IN_ESCROW_CONDITION - Refund in escrow condition address (or 0x0)
- *   REFUND_IN_ESCROW_RECORDER - Refund in escrow recorder address (or 0x0)
- *   REFUND_POST_ESCROW_CONDITION - Refund post escrow condition address (or 0x0)
- *   REFUND_POST_ESCROW_RECORDER - Refund post escrow recorder address (or 0x0)
  */
 contract DeployProduction is Script {
     function run() external {
@@ -41,8 +29,6 @@ contract DeployProduction is Script {
         address escrow = vm.envAddress("ESCROW_ADDRESS");
         address protocolFeeRecipient = vm.envAddress("PROTOCOL_FEE_RECIPIENT");
         uint256 protocolFeeBps = vm.envUint("PROTOCOL_FEE_BPS");
-        address feeRecipient = vm.envAddress("FEE_RECIPIENT");
-        address feeCalculator = vm.envOr("FEE_CALCULATOR", address(0));
 
         console.log("\n=== PRODUCTION DEPLOYMENT ===");
         console.log("Network:", block.chainid);
@@ -53,13 +39,10 @@ contract DeployProduction is Script {
         _validateOwnerIsMultisig(owner);
 
         // Validate configuration
-        _validateConfiguration(escrow, protocolFeeRecipient, feeRecipient);
-
-        // Build condition configuration
-        PaymentOperator.ConditionConfig memory conditionConfig = _buildConditionConfig();
+        _validateConfiguration(escrow, protocolFeeRecipient);
 
         // Deploy
-        console.log("\n--- Deploying Modular Fee System ---");
+        console.log("\n--- Deploying Protocol Infrastructure ---");
         vm.startBroadcast();
 
         // Deploy protocol fee calculator (if > 0 bps)
@@ -76,28 +59,7 @@ contract DeployProduction is Script {
 
         // Deploy factory
         PaymentOperatorFactory factory = new PaymentOperatorFactory(escrow, address(protocolFeeConfig));
-
         console.log("Factory deployed:", address(factory));
-
-        PaymentOperatorFactory.OperatorConfig memory operatorConfig = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: feeRecipient,
-            feeCalculator: feeCalculator,
-            authorizeCondition: conditionConfig.authorizeCondition,
-            authorizeRecorder: conditionConfig.authorizeRecorder,
-            chargeCondition: conditionConfig.chargeCondition,
-            chargeRecorder: conditionConfig.chargeRecorder,
-            releaseCondition: conditionConfig.releaseCondition,
-            releaseRecorder: conditionConfig.releaseRecorder,
-            refundInEscrowCondition: conditionConfig.refundInEscrowCondition,
-            refundInEscrowRecorder: conditionConfig.refundInEscrowRecorder,
-            refundPostEscrowCondition: conditionConfig.refundPostEscrowCondition,
-            refundPostEscrowRecorder: conditionConfig.refundPostEscrowRecorder
-        });
-
-        address operatorAddress = factory.deployOperator(operatorConfig);
-        PaymentOperator operator = PaymentOperator(payable(operatorAddress));
-
-        console.log("PaymentOperator deployed:", address(operator));
 
         // Transfer ProtocolFeeConfig ownership to multisig
         protocolFeeConfig.transferOwnership(owner);
@@ -106,9 +68,14 @@ contract DeployProduction is Script {
 
         // Post-deployment verification
         console.log("\n--- Post-Deployment Verification ---");
-        _verifyDeployment(factory, operator, escrow, feeRecipient, address(protocolFeeConfig));
+        _verifyDeployment(factory, escrow, address(protocolFeeConfig));
 
         console.log("\n=== DEPLOYMENT SUCCESSFUL ===");
+        console.log("Escrow:", escrow);
+        console.log("ProtocolFeeConfig:", address(protocolFeeConfig));
+        console.log("Factory:", address(factory));
+        console.log("Owner:", owner);
+        console.log("\nOperators deployed on-demand via factory.deployOperator()");
         console.log("\nNext Steps:");
         console.log("1. Complete ProtocolFeeConfig ownership transfer (2-step):");
         console.log("   Call requestOwnershipHandover() from multisig, then completeOwnershipHandover()");
@@ -152,43 +119,20 @@ contract DeployProduction is Script {
         return false;
     }
 
-    function _validateConfiguration(address escrow, address protocolFeeRecipient, address feeRecipient) internal pure {
+    function _validateConfiguration(address escrow, address protocolFeeRecipient) internal pure {
         require(escrow != address(0), "Invalid escrow address");
         require(protocolFeeRecipient != address(0), "Invalid protocol fee recipient");
-        require(feeRecipient != address(0), "Invalid fee recipient");
-    }
-
-    function _buildConditionConfig() internal view returns (PaymentOperator.ConditionConfig memory) {
-        return PaymentOperator.ConditionConfig({
-            authorizeCondition: vm.envAddress("AUTHORIZE_CONDITION"),
-            authorizeRecorder: vm.envAddress("AUTHORIZE_RECORDER"),
-            chargeCondition: vm.envAddress("CHARGE_CONDITION"),
-            chargeRecorder: vm.envAddress("CHARGE_RECORDER"),
-            releaseCondition: vm.envAddress("RELEASE_CONDITION"),
-            releaseRecorder: vm.envAddress("RELEASE_RECORDER"),
-            refundInEscrowCondition: vm.envAddress("REFUND_IN_ESCROW_CONDITION"),
-            refundInEscrowRecorder: vm.envAddress("REFUND_IN_ESCROW_RECORDER"),
-            refundPostEscrowCondition: vm.envAddress("REFUND_POST_ESCROW_CONDITION"),
-            refundPostEscrowRecorder: vm.envAddress("REFUND_POST_ESCROW_RECORDER")
-        });
     }
 
     function _verifyDeployment(
         PaymentOperatorFactory factory,
-        PaymentOperator operator,
         address expectedEscrow,
-        address expectedFeeRecipient,
         address expectedProtocolFeeConfig
     ) internal view {
-        require(address(operator.ESCROW()) == expectedEscrow, "Escrow mismatch");
-        require(operator.FEE_RECIPIENT() == expectedFeeRecipient, "Fee recipient mismatch");
-        require(address(operator.PROTOCOL_FEE_CONFIG()) == expectedProtocolFeeConfig, "ProtocolFeeConfig mismatch");
-        require(address(operator.ESCROW()) != address(0), "Escrow not set");
-        require(operator.FEE_RECIPIENT() != address(0), "Fee recipient not set");
+        require(factory.ESCROW() == expectedEscrow, "Escrow mismatch");
+        require(factory.PROTOCOL_FEE_CONFIG() == expectedProtocolFeeConfig, "ProtocolFeeConfig mismatch");
 
-        console.log("[OK] Escrow:", address(operator.ESCROW()));
-        console.log("[OK] Fee Recipient:", operator.FEE_RECIPIENT());
-        console.log("[OK] ProtocolFeeConfig:", address(operator.PROTOCOL_FEE_CONFIG()));
+        console.log("[OK] Factory ESCROW:", factory.ESCROW());
         console.log("[OK] Factory PROTOCOL_FEE_CONFIG:", factory.PROTOCOL_FEE_CONFIG());
         console.log("\n[OK] All deployment checks passed");
     }

@@ -2,7 +2,6 @@
 pragma solidity ^0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
-import {PaymentOperator} from "../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
 import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
 import {StaticFeeCalculator} from "../src/plugins/fees/static-fee-calculator/StaticFeeCalculator.sol";
@@ -10,15 +9,18 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
 /**
  * @title DeployTestnet
- * @notice Testnet deployment script - allows EOA owner for testing
+ * @notice Testnet deployment script - deploys factory only
  * @dev Does NOT validate owner is multisig - for testnet/development only
+ *      Operators are deployed on-demand via factory.deployOperator()
  *
  * Usage:
- *   forge script script/DeployTestnet.s.sol --rpc-url base-sepolia --broadcast
+ *   forge script script/DeployTestnet.s.sol --rpc-url base-sepolia --broadcast --verify
  *
  * Environment Variables (optional - uses defaults if not set):
  *   OWNER_ADDRESS - Owner address (defaults to deployer)
- *   ... (same as DeployProduction.s.sol)
+ *   ESCROW_ADDRESS - Escrow address (deploys new one if not set)
+ *   PROTOCOL_FEE_RECIPIENT - Protocol fee recipient (defaults to deployer)
+ *   PROTOCOL_FEE_BPS - Protocol fee in basis points (defaults to 0)
  */
 contract DeployTestnet is Script {
     function run() external {
@@ -27,8 +29,6 @@ contract DeployTestnet is Script {
         address escrow = vm.envOr("ESCROW_ADDRESS", address(0));
         address protocolFeeRecipient = vm.envOr("PROTOCOL_FEE_RECIPIENT", msg.sender);
         uint256 protocolFeeBps = vm.envOr("PROTOCOL_FEE_BPS", uint256(0));
-        address feeRecipient = vm.envOr("FEE_RECIPIENT", msg.sender);
-        address feeCalculator = vm.envOr("FEE_CALCULATOR", address(0));
 
         console.log("\n=== TESTNET DEPLOYMENT ===");
         console.log("[TEST] EOA owner allowed for testing");
@@ -47,7 +47,7 @@ contract DeployTestnet is Script {
         }
 
         // Deploy
-        console.log("\n--- Deploying Modular Fee System ---");
+        console.log("\n--- Deploying Protocol Infrastructure ---");
         vm.startBroadcast();
 
         // Deploy protocol fee calculator (if > 0 bps)
@@ -64,38 +64,17 @@ contract DeployTestnet is Script {
 
         // Deploy factory
         PaymentOperatorFactory factory = new PaymentOperatorFactory(escrow, address(protocolFeeConfig));
-
         console.log("Factory deployed:", address(factory));
-
-        PaymentOperatorFactory.OperatorConfig memory operatorConfig = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: feeRecipient,
-            feeCalculator: feeCalculator,
-            authorizeCondition: vm.envOr("AUTHORIZE_CONDITION", address(0)),
-            authorizeRecorder: vm.envOr("AUTHORIZE_RECORDER", address(0)),
-            chargeCondition: vm.envOr("CHARGE_CONDITION", address(0)),
-            chargeRecorder: vm.envOr("CHARGE_RECORDER", address(0)),
-            releaseCondition: vm.envOr("RELEASE_CONDITION", address(0)),
-            releaseRecorder: vm.envOr("RELEASE_RECORDER", address(0)),
-            refundInEscrowCondition: vm.envOr("REFUND_IN_ESCROW_CONDITION", address(0)),
-            refundInEscrowRecorder: vm.envOr("REFUND_IN_ESCROW_RECORDER", address(0)),
-            refundPostEscrowCondition: vm.envOr("REFUND_POST_ESCROW_CONDITION", address(0)),
-            refundPostEscrowRecorder: vm.envOr("REFUND_POST_ESCROW_RECORDER", address(0))
-        });
-
-        address operatorAddress = factory.deployOperator(operatorConfig);
-        PaymentOperator operator = PaymentOperator(payable(operatorAddress));
-
-        console.log("PaymentOperator deployed:", address(operator));
 
         vm.stopBroadcast();
 
         // Summary
         console.log("\n=== TESTNET DEPLOYMENT SUCCESSFUL ===");
-        console.log("Factory:", address(factory));
-        console.log("Operator:", address(operator));
-        console.log("ProtocolFeeConfig:", address(protocolFeeConfig));
         console.log("Escrow:", escrow);
+        console.log("ProtocolFeeConfig:", address(protocolFeeConfig));
+        console.log("Factory:", address(factory));
         console.log("Owner:", owner);
+        console.log("\nOperators deployed on-demand via factory.deployOperator()");
         console.log("\n[TEST] Ready for testing!\n");
     }
 }
