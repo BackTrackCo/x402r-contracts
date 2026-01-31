@@ -80,42 +80,9 @@ op.release(paymentInfo, amount);
 
 ---
 
-### Base Sepolia
+### Deployed Addresses
 
-**Source of truth:** This README. Addresses will eventually be moved to `@x402r/sdk` package.
-
-#### Core Contracts
-
-| Contract | Address |
-|----------|---------|
-| **AuthCaptureEscrow** | [`0xb9488351E48b23D798f24e8174514F28B741Eb4f`](https://sepolia.basescan.org/address/0xb9488351E48b23D798f24e8174514F28B741Eb4f) |
-| **ProtocolFeeConfig** | [`0x1e52a74cE6b69F04a506eF815743E1052A1BD28F`](https://sepolia.basescan.org/address/0x1e52a74cE6b69F04a506eF815743E1052A1BD28F) |
-| RefundRequest | [`0x6926c05193c714ED4bA3867Ee93d6816Fdc14128`](https://sepolia.basescan.org/address/0x6926c05193c714ED4bA3867Ee93d6816Fdc14128) |
-
-#### Factories
-
-| Contract | Address |
-|----------|---------|
-| **PaymentOperatorFactory** | [`0xFa8C4Cb156053b867Ae7489220A29b5939E3Df70`](https://sepolia.basescan.org/address/0xFa8C4Cb156053b867Ae7489220A29b5939E3Df70) |
-| EscrowPeriodFactory | [`0x206D4DbB6E7b876e4B5EFAAD2a04e7d7813FB6ba`](https://sepolia.basescan.org/address/0x206D4DbB6E7b876e4B5EFAAD2a04e7d7813FB6ba) |
-| FreezeFactory | [`0x5b3e33791C1764cF7e2573Bf8116F1D361FD97Cd`](https://sepolia.basescan.org/address/0x5b3e33791C1764cF7e2573Bf8116F1D361FD97Cd) |
-| StaticFeeCalculatorFactory | [`0x35fb2EFEfAc3Ee9f6E52A9AAE5C9655bC08dEc00`](https://sepolia.basescan.org/address/0x35fb2EFEfAc3Ee9f6E52A9AAE5C9655bC08dEc00) |
-| FreezePolicyFactory | [`0x9D4146EF898c8E60B3e865AE254ef438E7cEd2A0`](https://sepolia.basescan.org/address/0x9D4146EF898c8E60B3e865AE254ef438E7cEd2A0) |
-| StaticAddressConditionFactory | [`0x68684ff8CD38483B8023a1443Af97C58eD29Cb06`](https://sepolia.basescan.org/address/0x68684ff8CD38483B8023a1443Af97C58eD29Cb06) |
-
-#### Condition Singletons
-
-| Contract | Address | Status |
-|----------|---------|--------|
-| PayerCondition | [`0xBAF68176FF94CAdD403EF7FbB776bbca548AC09D`](https://sepolia.basescan.org/address/0xBAF68176FF94CAdD403EF7FbB776bbca548AC09D) | ✅ Active |
-| ReceiverCondition | [`0x12EDefd4549c53497689067f165c0f101796Eb6D`](https://sepolia.basescan.org/address/0x12EDefd4549c53497689067f165c0f101796Eb6D) | ✅ Active |
-| AlwaysTrueCondition | [`0x785cC83DEa3d46D5509f3bf7496EAb26D42EE610`](https://sepolia.basescan.org/address/0x785cC83DEa3d46D5509f3bf7496EAb26D42EE610) | ✅ Active |
-
-**USDC (Base Sepolia):** [`0x036CbD53842c5426634e7929541eC2318f3dCF7e`](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e)
-
-### Project Contracts
-
-This repository contains contracts for the x402r refund extension system.
+**Source of truth:** [`@x402r/sdk`](https://github.com/x402r/x402r-sdk/blob/main/packages/core/src/config/index.ts)
 
 ## Architecture
 
