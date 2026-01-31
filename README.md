@@ -82,7 +82,7 @@ op.release(paymentInfo, amount);
 
 ### Deployed Addresses
 
-**Source of truth:** [`@x402r/sdk`](https://github.com/x402r/x402r-sdk/blob/main/packages/core/src/config/index.ts)
+**Source of truth:** [`@x402r/sdk`](https://github.com/BackTrackCo/x402r-sdk/blob/main/packages/core/src/config/index.ts)
 
 ## Architecture
 
