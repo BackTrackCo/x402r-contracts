@@ -15,6 +15,11 @@ remappings = [
     "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/"
 ]
 
+# RPC endpoints - use with: forge script ... --rpc-url base
+[rpc_endpoints]
+base = "https://mainnet.base.org"
+base-sepolia = "https://sepolia.base.org"
+
 # Etherscan configuration
 # API key is read from ETHERSCAN_API_KEY environment variable (set in .env file)
 # Copy .env.example to .env and add your API key

@@ -9,18 +9,19 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
 /**
  * @title DeployTestnet
- * @notice Testnet deployment script - deploys factory only
+ * @notice Testnet deployment script for Base Sepolia - deploys factory only
  * @dev Does NOT validate owner is multisig - for testnet/development only
  *      Operators are deployed on-demand via factory.deployOperator()
  *
  * Usage:
- *   forge script script/DeployTestnet.s.sol --rpc-url base-sepolia --broadcast --verify
+ *   forge script script/DeployTestnet.s.sol --rpc-url base-sepolia --broadcast --verify -vvvv
  *
  * Environment Variables (optional - uses defaults if not set):
  *   OWNER_ADDRESS - Owner address (defaults to deployer)
  *   ESCROW_ADDRESS - Escrow address (deploys new one if not set)
  *   PROTOCOL_FEE_RECIPIENT - Protocol fee recipient (defaults to deployer)
  *   PROTOCOL_FEE_BPS - Protocol fee in basis points (defaults to 0)
+ *   ETHERSCAN_API_KEY - BaseScan API key for verification
  */
 contract DeployTestnet is Script {
     function run() external {

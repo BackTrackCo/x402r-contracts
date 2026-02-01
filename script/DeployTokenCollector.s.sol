@@ -9,24 +9,42 @@ import {ERC3009PaymentCollector} from "commerce-payments/collectors/ERC3009Payme
 /**
  * @notice Deploy ERC3009PaymentCollector pointing to existing AuthCaptureEscrow.
  *
- * Usage:
- * forge script script/DeployTokenCollector.s.sol --rpc-url https://sepolia.base.org --broadcast --verify -vvvv
+ * Required environment variables:
+ *   ESCROW_ADDRESS - AuthCaptureEscrow contract address
+ *
+ * Optional environment variables:
+ *   MULTICALL3_ADDRESS - Multicall3 address (defaults to canonical 0xcA11bde05977b3631167028862bE2a173976CA11)
+ *
+ * Usage (Base Sepolia):
+ *   ESCROW_ADDRESS=0xb9488351E48b23D798f24e8174514F28B741Eb4f \
+ *   forge script script/DeployTokenCollector.s.sol --rpc-url base-sepolia --broadcast --verify -vvvv
+ *
+ * Usage (Base Mainnet):
+ *   source .env.production
+ *   forge script script/DeployTokenCollector.s.sol --rpc-url base --broadcast --verify -vvvv
  */
 contract DeployTokenCollector is Script {
-    // The correct AuthCaptureEscrow from SDK config
-    address constant ESCROW = 0xb9488351E48b23D798f24e8174514F28B741Eb4f;
-    // Multicall3 (same on all chains)
-    address constant MULTICALL3 = 0xcA11bde05977b3631167028862bE2a173976CA11;
+    // Multicall3 canonical address (same on all chains)
+    address constant DEFAULT_MULTICALL3 = 0xcA11bde05977b3631167028862bE2a173976CA11;
 
     function run() public {
+        address escrow = vm.envAddress("ESCROW_ADDRESS");
+        address multicall3 = vm.envOr("MULTICALL3_ADDRESS", DEFAULT_MULTICALL3);
+
+        console2.log("=== Deploying ERC3009PaymentCollector ===");
+        console2.log("Network:", block.chainid);
+        console2.log("Escrow:", escrow);
+        console2.log("Multicall3:", multicall3);
+
         vm.startBroadcast();
 
-        ERC3009PaymentCollector collector = new ERC3009PaymentCollector(ESCROW, MULTICALL3);
+        ERC3009PaymentCollector collector = new ERC3009PaymentCollector(escrow, multicall3);
 
         vm.stopBroadcast();
 
-        console2.log("Deployed ERC3009PaymentCollector:", address(collector));
-        console2.log("  authCaptureEscrow:", ESCROW);
-        console2.log("  multicall3:", MULTICALL3);
+        console2.log("\n=== Deployment Summary ===");
+        console2.log("ERC3009PaymentCollector:", address(collector));
+        console2.log("  authCaptureEscrow:", escrow);
+        console2.log("  multicall3:", multicall3);
     }
 }

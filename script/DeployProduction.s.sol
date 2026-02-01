@@ -8,19 +8,23 @@ import {StaticFeeCalculator} from "../src/plugins/fees/static-fee-calculator/Sta
 
 /**
  * @title DeployProduction
- * @notice Production deployment script - deploys factory only
+ * @notice Production deployment script for Base Mainnet - deploys factory only
  * @dev Validates owner is a contract (multisig/timelock) before deployment
  *      Operators are deployed on-demand via factory.deployOperator()
  *
  * Usage:
  *   source .env.production
- *   forge script script/DeployProduction.s.sol --rpc-url $RPC_URL --broadcast --verify
+ *   forge script script/DeployProduction.s.sol --rpc-url base --broadcast --verify -vvvv
+ *
+ * With hardware wallet:
+ *   forge script script/DeployProduction.s.sol --rpc-url base --broadcast --verify --ledger -vvvv
  *
  * Required Environment Variables:
  *   OWNER_ADDRESS - Multisig address (MUST be contract, not EOA)
- *   ESCROW_ADDRESS - AuthCaptureEscrow address
+ *   ESCROW_ADDRESS - AuthCaptureEscrow address on Base Mainnet
  *   PROTOCOL_FEE_RECIPIENT - Protocol fee recipient address
  *   PROTOCOL_FEE_BPS - Protocol fee in basis points (0 = no protocol fee)
+ *   ETHERSCAN_API_KEY - BaseScan API key for verification
  */
 contract DeployProduction is Script {
     function run() external {
