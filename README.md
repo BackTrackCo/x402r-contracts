@@ -24,7 +24,9 @@ For auditors and developers:
 | [OPERATOR_SECURITY.md](docs/OPERATOR_SECURITY.md) | 🛡️ Operator-specific security considerations |
 | [TOKENS.md](docs/TOKENS.md) | 🪙 Token compatibility and handling |
 | [FUZZING.md](docs/FUZZING.md) | 🔬 Fuzzing methodology and invariants |
+| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | 🚀 Contract deployment guide |
 | [DEPLOYMENT_CHECKLIST.md](docs/DEPLOYMENT_CHECKLIST.md) | ✅ Production deployment checklist |
+| [MONITORING.md](docs/MONITORING.md) | 📈 Event monitoring and indexing |
 | [GAS_BREAKDOWN.md](docs/GAS_BREAKDOWN.md) | 📊 Detailed gas cost analysis |
 
 ## Quick Start
