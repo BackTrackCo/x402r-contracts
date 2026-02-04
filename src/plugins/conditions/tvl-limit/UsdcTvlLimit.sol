@@ -19,7 +19,11 @@ contract UsdcTvlLimit is ICondition {
     /// @notice Maximum USDC allowed in escrow
     uint256 public immutable LIMIT;
 
+    error ZeroAddress();
+
     constructor(address escrow, address usdc, uint256 limit) {
+        if (escrow == address(0)) revert ZeroAddress();
+        if (usdc == address(0)) revert ZeroAddress();
         ESCROW = escrow;
         USDC = usdc;
         LIMIT = limit;

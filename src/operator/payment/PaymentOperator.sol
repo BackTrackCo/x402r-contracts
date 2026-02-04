@@ -155,7 +155,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         protocolFeeBps_ = uint16(protocolFeeBps);
 
         // Operator fee (from calculator, or 0 if no calculator)
-        uint256 operatorFeeBps;
+        uint256 operatorFeeBps = 0;
         if (address(FEE_CALCULATOR) != address(0)) {
             operatorFeeBps = FEE_CALCULATOR.calculateFee(paymentInfo, amount, msg.sender);
         }
