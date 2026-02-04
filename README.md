@@ -362,6 +362,40 @@ The commerce-payments contracts provide refund functionality for Base Commerce P
 - **RefundRequest**: `src/commerce-payments/requests/refund/RefundRequest.sol`
   - Contract for managing refund requests for Base Commerce Payments authorizations. Users can create refund requests, cancel their own pending requests, and merchants or arbiters can approve or deny them based on capture status.
 
+#### Arbiter Registry
+
+The `ArbiterRegistry` provides on-chain discovery of arbiters for dispute resolution:
+
+```solidity
+// Self-register as an arbiter
+arbiterRegistry.register("https://arbiter.example.com/api/disputes");
+
+// Update your URI
+arbiterRegistry.updateUri("https://new-api.example.com/disputes");
+
+// Deregister
+arbiterRegistry.deregister();
+
+// Query arbiters
+string memory uri = arbiterRegistry.getUri(arbiterAddress);
+bool registered = arbiterRegistry.isRegistered(arbiterAddress);
+uint256 count = arbiterRegistry.arbiterCount();
+
+// Paginated listing
+(address[] memory arbiters, string[] memory uris, uint256 total) =
+    arbiterRegistry.getArbiters(0, 10);
+```
+
+**URI Format**: The URI can point to:
+- REST API endpoint: `https://arbiter.example.com/api/disputes`
+- IPFS metadata: `ipfs://QmXxx...`
+- Any URL with arbiter information (contact, terms, pricing)
+
+**Events:**
+- `ArbiterRegistered(address indexed arbiter, string uri)`
+- `ArbiterUriUpdated(address indexed arbiter, string oldUri, string newUri)`
+- `ArbiterDeregistered(address indexed arbiter)`
+
 #### Freeze Module
 
 **Freeze** is a standalone `ICondition` contract with `freeze()`/`unfreeze()` methods. It's now separate from `EscrowPeriod` for better composability.
