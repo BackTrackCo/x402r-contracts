@@ -183,7 +183,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         uint256 amount,
         address tokenCollector,
         bytes calldata collectorData
-    ) external nonReentrant validOperator(paymentInfo) validFees(paymentInfo) {
+    ) external nonReentrant validFees(paymentInfo) {
         // ============ CHECKS ============
         // Check AUTHORIZE_CONDITION (address(0) = always allow)
         if (address(AUTHORIZE_CONDITION) != address(0)) {
@@ -233,7 +233,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         uint256 amount,
         address tokenCollector,
         bytes calldata collectorData
-    ) external nonReentrant validOperator(paymentInfo) validFees(paymentInfo) {
+    ) external nonReentrant validFees(paymentInfo) {
         // ============ CHECKS ============
         // Check CHARGE_CONDITION (address(0) = always allow)
         if (address(CHARGE_CONDITION) != address(0)) {
@@ -273,11 +273,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
      * @param paymentInfo PaymentInfo struct
      * @param amount Amount to release
      */
-    function release(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount)
-        external
-        nonReentrant
-        validOperator(paymentInfo)
-    {
+    function release(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount) external nonReentrant {
         // ============ CHECKS ============
         // Check RELEASE_CONDITION (address(0) = always allow)
         if (address(RELEASE_CONDITION) != address(0)) {
@@ -315,11 +311,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
      * @param paymentInfo PaymentInfo struct
      * @param amount Amount to return to payer
      */
-    function refundInEscrow(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint120 amount)
-        external
-        nonReentrant
-        validOperator(paymentInfo)
-    {
+    function refundInEscrow(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint120 amount) external nonReentrant {
         // ============ CHECKS ============
         // Check REFUND_IN_ESCROW_CONDITION (address(0) = always allow)
         if (address(REFUND_IN_ESCROW_CONDITION) != address(0)) {
@@ -358,7 +350,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         uint256 amount,
         address tokenCollector,
         bytes calldata collectorData
-    ) external nonReentrant validOperator(paymentInfo) {
+    ) external nonReentrant {
         // ============ CHECKS ============
         // Check REFUND_POST_ESCROW_CONDITION (address(0) = always allow)
         if (address(REFUND_POST_ESCROW_CONDITION) != address(0)) {
