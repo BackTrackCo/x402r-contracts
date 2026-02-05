@@ -39,7 +39,9 @@ contract DeployFreezeFactory is Script {
         console.log("\n=== Next Steps ===");
         console.log("Use the factory to deploy Freeze instances on-demand:");
         console.log("FREEZE_FACTORY_ADDRESS=", address(factory));
-        console.log("\nExample: factory.deploy(freezeCondition, unfreezeCondition, freezeDuration, escrowPeriodContract)");
+        console.log(
+            "\nExample: factory.deploy(freezeCondition, unfreezeCondition, freezeDuration, escrowPeriodContract)"
+        );
 
         vm.stopBroadcast();
     }

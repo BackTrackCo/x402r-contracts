@@ -57,10 +57,13 @@ contract RefundRequest is RefundRequestAccess {
     mapping(address => uint256) public payerRefundRequestCount;
     mapping(address => mapping(uint256 => bytes32)) private receiverRefundRequests;
     mapping(address => uint256) public receiverRefundRequestCount;
+    mapping(address => mapping(uint256 => bytes32)) private operatorRefundRequests;
+    mapping(address => uint256) public operatorRefundRequestCount;
 
     // O(1) existence checks for deduplication
     mapping(address => mapping(bytes32 => bool)) private payerRefundRequestExists;
     mapping(address => mapping(bytes32 => bool)) private receiverRefundRequestExists;
+    mapping(address => mapping(bytes32 => bool)) private operatorRefundRequestExists;
 
     /// @notice Request a refund for a specific record of a payment
     /// @param paymentInfo PaymentInfo struct
@@ -92,6 +95,7 @@ contract RefundRequest is RefundRequestAccess {
         // Update indexing mappings (only add if not already indexed)
         _addPayerRequest(paymentInfo.payer, compositeKey);
         _addReceiverRequest(paymentInfo.receiver, compositeKey);
+        _addOperatorRequest(paymentInfo.operator, compositeKey);
 
         emit RefundRequested(paymentInfo, paymentInfo.payer, paymentInfo.receiver, amount, nonce);
     }
@@ -178,6 +182,14 @@ contract RefundRequest is RefundRequestAccess {
         receiverRefundRequestExists[receiver][key] = true;
         receiverRefundRequests[receiver][receiverRefundRequestCount[receiver]] = key;
         receiverRefundRequestCount[receiver]++;
+    }
+
+    /// @notice Add key to operator's index if not already present (O(1) check)
+    function _addOperatorRequest(address operator, bytes32 key) internal {
+        if (operatorRefundRequestExists[operator][key]) return;
+        operatorRefundRequestExists[operator][key] = true;
+        operatorRefundRequests[operator][operatorRefundRequestCount[operator]] = key;
+        operatorRefundRequestCount[operator]++;
     }
 
     // ============ View Functions ============
@@ -312,5 +324,43 @@ contract RefundRequest is RefundRequestAccess {
     function getReceiverRefundRequest(address receiver, uint256 index) external view returns (bytes32) {
         if (index >= receiverRefundRequestCount[receiver]) revert IndexOutOfBounds();
         return receiverRefundRequests[receiver][index];
+    }
+
+    /// @notice Get paginated refund request keys for an operator
+    /// @param operator The operator address
+    /// @param offset Starting index (0-based)
+    /// @param count Number of keys to return
+    /// @return keys Array of composite keys
+    /// @return total Total number of refund requests for this operator
+    /// @dev Useful for arbiters who need to query requests by operators they have arbiter rights on
+    function getOperatorRefundRequests(address operator, uint256 offset, uint256 count)
+        external
+        view
+        returns (bytes32[] memory keys, uint256 total)
+    {
+        total = operatorRefundRequestCount[operator];
+
+        if (offset >= total || count == 0) {
+            return (new bytes32[](0), total);
+        }
+
+        uint256 remaining = total - offset;
+        uint256 actualCount = remaining < count ? remaining : count;
+
+        keys = new bytes32[](actualCount);
+        for (uint256 i = 0; i < actualCount; i++) {
+            keys[i] = operatorRefundRequests[operator][offset + i];
+        }
+
+        return (keys, total);
+    }
+
+    /// @notice Get a single refund request key by index for an operator
+    /// @param operator The operator address
+    /// @param index Index of the request (0-based)
+    /// @return The composite key at the specified index
+    function getOperatorRefundRequest(address operator, uint256 index) external view returns (bytes32) {
+        if (index >= operatorRefundRequestCount[operator]) revert IndexOutOfBounds();
+        return operatorRefundRequests[operator][index];
     }
 }

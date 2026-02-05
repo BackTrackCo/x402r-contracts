@@ -5,6 +5,9 @@
       "rev": "b74526a7bc67a3a117a1963fc871b3eb8cea8435"
     }
   },
+  "lib/commerce-payments": {
+    "rev": "703a0c411203a72507cb90f32cbb6cb4cfe7a102"
+  },
   "lib/createx": {
     "tag": {
       "name": "v1.0.0",
