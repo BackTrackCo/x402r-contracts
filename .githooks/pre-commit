@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "x402r-contracts pre-commit: fmt --check + build"
+
+forge fmt --check
+forge build
