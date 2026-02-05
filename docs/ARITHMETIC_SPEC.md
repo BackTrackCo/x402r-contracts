@@ -220,7 +220,7 @@ address = uint160(uint256(keccak256(
 - `PaymentOperatorFactory.sol:deployOperator()`
 - `StaticFeeCalculatorFactory.sol:deploy()`, `computeAddress()`
 - `EscrowPeriodFactory.sol:deploy()`, `computeAddress()`
-- `FreezePolicyFactory.sol:deploy()`, `computeAddress()`
+- `FreezeFactory.sol:deploy()`, `computeAddress()`
 
 **Invariant:** `computeAddress(params) == deploy(params)` for all factories. Verified by `assert(deployed == predicted)` in every factory.
 

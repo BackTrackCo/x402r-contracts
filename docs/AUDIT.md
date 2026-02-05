@@ -24,9 +24,9 @@
 | **PaymentOperatorFactory.sol** | ~200 | Factory for deploying operators |
 | **RefundRequest.sol** | ~300 | Refund request management with status tracking |
 | **RefundRequestAccess.sol** | ~80 | Refund access control |
-| **EscrowPeriod.sol** | ~210 | Combined escrow period recorder + condition + freeze/unfreeze |
-| **FreezePolicyFactory.sol** | ~120 | Factory for freeze policy instances |
-| **FreezePolicy.sol** | ~60 | Generic freeze policy using ICondition contracts |
+| **EscrowPeriod.sol** | ~210 | Combined escrow period recorder + condition |
+| **FreezeFactory.sol** | ~120 | Factory for freeze condition instances |
+| **Freeze.sol** | ~150 | Standalone freeze condition with configurable freeze/unfreeze conditions |
 
 **Subtotal**: ~1,700 LoC
 
@@ -93,8 +93,8 @@ PaymentOperatorFactory
 EscrowPeriodFactory
     └── deploys → EscrowPeriod (combined condition + recorder)
 
-FreezePolicyFactory
-    └── deploys → FreezePolicy instances (configured with ICondition contracts)
+FreezeFactory
+    └── deploys → Freeze instances (with freeze/unfreeze conditions passed directly)
 ```
 
 ### Key Features

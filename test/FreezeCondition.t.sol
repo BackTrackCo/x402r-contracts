@@ -8,7 +8,6 @@ import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
 import {EscrowPeriod} from "../src/plugins/escrow-period/EscrowPeriod.sol";
 import {EscrowPeriodFactory} from "../src/plugins/escrow-period/EscrowPeriodFactory.sol";
 import {Freeze} from "../src/plugins/freeze/Freeze.sol";
-import {FreezePolicy} from "../src/plugins/freeze/freeze-policy/FreezePolicy.sol";
 import {ICondition} from "../src/plugins/conditions/ICondition.sol";
 import {AndCondition} from "../src/plugins/conditions/combinators/AndCondition.sol";
 import {PayerCondition} from "../src/plugins/conditions/access/PayerCondition.sol";
@@ -54,8 +53,9 @@ contract FreezeConditionTest is Test {
 
         // Deploy freeze with escrow period constraint
         PayerCondition payerCondition = new PayerCondition();
-        FreezePolicy freezePolicy = new FreezePolicy(address(payerCondition), address(payerCondition), FREEZE_DURATION);
-        freeze = new Freeze(address(freezePolicy), address(escrowPeriod), address(escrow));
+        freeze = new Freeze(
+            address(payerCondition), address(payerCondition), FREEZE_DURATION, address(escrowPeriod), address(escrow)
+        );
 
         // Compose both conditions with AndCondition
         ICondition[] memory conditions = new ICondition[](2);
@@ -129,16 +129,15 @@ contract FreezeConditionTest is Test {
     function test_FreezeBlocksRelease() public {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizePayment();
 
-        // Deploy with permanent freeze policy (duration=0)
+        // Deploy with permanent freeze (duration=0)
         PayerCondition payerCond = new PayerCondition();
-        FreezePolicy permFreezePolicy = new FreezePolicy(address(payerCond), address(payerCond), 0);
 
         // Deploy a separate escrow period + freeze + operator for this test
         EscrowPeriodFactory condFactory = new EscrowPeriodFactory(address(escrow));
         address ep2Addr = condFactory.deploy(ESCROW_PERIOD_DURATION, bytes32(uint256(200)));
         EscrowPeriod ep2 = EscrowPeriod(ep2Addr);
 
-        Freeze freeze2 = new Freeze(address(permFreezePolicy), address(ep2), address(escrow));
+        Freeze freeze2 = new Freeze(address(payerCond), address(payerCond), 0, address(ep2), address(escrow));
 
         ICondition[] memory conds = new ICondition[](2);
         conds[0] = ICondition(address(ep2));
@@ -368,15 +367,14 @@ contract FreezeConditionTest is Test {
     }
 
     function test_ReleaseWhileFrozen_Reverts() public {
-        // Deploy a permanent freeze policy (duration=0 means permanent)
+        // Deploy a permanent freeze (duration=0 means permanent)
         PayerCondition payerCond = new PayerCondition();
-        FreezePolicy permFreezePolicy = new FreezePolicy(address(payerCond), address(payerCond), 0);
 
         EscrowPeriodFactory condFactory = new EscrowPeriodFactory(address(escrow));
         address ep2Addr = condFactory.deploy(ESCROW_PERIOD_DURATION, bytes32(uint256(99)));
         EscrowPeriod ep2 = EscrowPeriod(ep2Addr);
 
-        Freeze freeze2 = new Freeze(address(permFreezePolicy), address(ep2), address(escrow));
+        Freeze freeze2 = new Freeze(address(payerCond), address(payerCond), 0, address(ep2), address(escrow));
 
         ICondition[] memory conds = new ICondition[](2);
         conds[0] = ICondition(address(ep2));
@@ -462,8 +460,8 @@ contract FreezeConditionTest is Test {
     function test_FreezeWithoutEscrowPeriod_UnconstrainedByTime() public {
         // Deploy freeze without escrow period constraint
         PayerCondition payerCond = new PayerCondition();
-        FreezePolicy fp = new FreezePolicy(address(payerCond), address(payerCond), FREEZE_DURATION);
-        Freeze unconstrainedFreeze = new Freeze(address(fp), address(0), address(escrow));
+        Freeze unconstrainedFreeze =
+            new Freeze(address(payerCond), address(payerCond), FREEZE_DURATION, address(0), address(escrow));
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizePayment();
 

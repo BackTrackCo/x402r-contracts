@@ -4,7 +4,6 @@ pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {ICondition} from "../conditions/ICondition.sol";
-import {IFreezePolicy} from "./freeze-policy/IFreezePolicy.sol";
 import {EscrowPeriod} from "../escrow-period/EscrowPeriod.sol";
 import {ZeroAddress} from "../../types/Errors.sol";
 import {FreezeWindowExpired, UnauthorizedFreeze, AlreadyFrozen, NotFrozen} from "./types/Errors.sol";
@@ -18,8 +17,9 @@ import {PaymentFrozen, PaymentUnfrozen} from "./types/Events.sol";
  * @dev Implements ICondition: check() returns false when frozen (blocks release).
  *      Does NOT inherit BaseRecorder — uses ESCROW.getHash() directly for payment hash computation.
  *
- *      FREEZE_POLICY is required (constructor reverts on address(0)) — defines WHO can
- *      freeze/unfreeze and for HOW LONG.
+ *      FREEZE_CONDITION and UNFREEZE_CONDITION are required (constructor reverts on address(0))
+ *      — these ICondition contracts define WHO can freeze/unfreeze.
+ *      FREEZE_DURATION defines HOW LONG freezes last (0 = permanent until unfrozen).
  *
  *      ESCROW_PERIOD_CONTRACT is optional (address(0) = freeze is unconstrained by time).
  *      When set, freeze() calls isDuringEscrowPeriod() and reverts with FreezeWindowExpired
@@ -31,10 +31,10 @@ import {PaymentFrozen, PaymentUnfrozen} from "./types/Events.sol";
  *      - Freeze only:         releaseCondition = freeze
  *      - Both:                releaseCondition = AndCondition([escrowPeriod, freeze])
  *
- * TRUST ASSUMPTIONS:
- *      - FREEZE_POLICY: Trusted to correctly determine who can freeze/unfreeze payments.
- *        A malicious policy could deny legitimate freezes or allow unauthorized freezes.
- *        Operators should audit the policy implementation before deployment.
+ * EXAMPLE CONFIGURATIONS:
+ *      - Payer freeze/unfreeze (3 days): (PayerCondition, PayerCondition, 3 days)
+ *      - Payer freeze, Arbiter unfreeze: (PayerCondition, StaticAddressCondition, 0)
+ *      - Anyone freeze, Receiver unfreeze: (AlwaysTrueCondition, ReceiverCondition, 7 days)
  *
  * SECURITY NOTE - Freeze/Release Race Condition:
  *      When composed with EscrowPeriod via AndCondition, at the exact moment the escrow
@@ -54,8 +54,14 @@ contract Freeze is ICondition {
     /// @notice Escrow contract for payment hash computation
     AuthCaptureEscrow public immutable ESCROW;
 
-    /// @notice Freeze policy contract (required — defines who can freeze/unfreeze)
-    IFreezePolicy public immutable FREEZE_POLICY;
+    /// @notice Condition that authorizes freeze calls
+    ICondition public immutable FREEZE_CONDITION;
+
+    /// @notice Condition that authorizes unfreeze calls
+    ICondition public immutable UNFREEZE_CONDITION;
+
+    /// @notice Duration that freezes last (0 = permanent until unfrozen)
+    uint256 public immutable FREEZE_DURATION;
 
     /// @notice Optional escrow period contract (address(0) = freeze unconstrained by time)
     EscrowPeriod public immutable ESCROW_PERIOD_CONTRACT;
@@ -64,10 +70,19 @@ contract Freeze is ICondition {
     /// @dev Key: paymentInfoHash, Value: timestamp when freeze expires
     mapping(bytes32 => uint256) public frozenUntil;
 
-    constructor(address _freezePolicy, address _escrowPeriodContract, address _escrow) {
-        if (_freezePolicy == address(0)) revert ZeroAddress();
+    constructor(
+        address _freezeCondition,
+        address _unfreezeCondition,
+        uint256 _freezeDuration,
+        address _escrowPeriodContract,
+        address _escrow
+    ) {
+        if (_freezeCondition == address(0)) revert ZeroAddress();
+        if (_unfreezeCondition == address(0)) revert ZeroAddress();
         if (_escrow == address(0)) revert ZeroAddress();
-        FREEZE_POLICY = IFreezePolicy(_freezePolicy);
+        FREEZE_CONDITION = ICondition(_freezeCondition);
+        UNFREEZE_CONDITION = ICondition(_unfreezeCondition);
+        FREEZE_DURATION = _freezeDuration;
         ESCROW_PERIOD_CONTRACT = EscrowPeriod(_escrowPeriodContract);
         ESCROW = AuthCaptureEscrow(_escrow);
     }
@@ -93,13 +108,12 @@ contract Freeze is ICondition {
     /**
      * @notice Freeze a payment to block release
      * @dev When ESCROW_PERIOD_CONTRACT is set, only callable during the escrow period.
-     *      Authorization and duration from FREEZE_POLICY.
+     *      Authorization checked via FREEZE_CONDITION.
      * @param paymentInfo PaymentInfo struct for the payment to freeze
      */
     function freeze(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external {
-        // Check authorization via policy and get freeze duration
-        (bool allowed, uint256 freezeDuration) = FREEZE_POLICY.canFreeze(paymentInfo, msg.sender);
-        if (!allowed) revert UnauthorizedFreeze();
+        // Check authorization via condition
+        if (!FREEZE_CONDITION.check(paymentInfo, 0, msg.sender)) revert UnauthorizedFreeze();
 
         bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
 
@@ -112,13 +126,13 @@ contract Freeze is ICondition {
 
         if (frozenUntil[paymentInfoHash] > block.timestamp) revert AlreadyFrozen();
 
-        // Calculate freeze expiration based on policy-provided duration
+        // Calculate freeze expiration based on configured duration
         uint256 freezeExpiry;
-        if (freezeDuration == 0) {
+        if (FREEZE_DURATION == 0) {
             // Permanent freeze (until manually unfrozen)
             freezeExpiry = type(uint256).max;
         } else {
-            freezeExpiry = block.timestamp + freezeDuration;
+            freezeExpiry = block.timestamp + FREEZE_DURATION;
         }
         frozenUntil[paymentInfoHash] = freezeExpiry;
 
@@ -128,12 +142,12 @@ contract Freeze is ICondition {
     /**
      * @notice Unfreeze a payment to allow release
      * @dev No escrow period check — unfreezing should always be allowed.
-     *      Authorization checked via FREEZE_POLICY.
+     *      Authorization checked via UNFREEZE_CONDITION.
      * @param paymentInfo PaymentInfo struct for the payment to unfreeze
      */
     function unfreeze(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external {
-        // Check authorization via policy
-        if (!FREEZE_POLICY.canUnfreeze(paymentInfo, msg.sender)) revert UnauthorizedFreeze();
+        // Check authorization via condition
+        if (!UNFREEZE_CONDITION.check(paymentInfo, 0, msg.sender)) revert UnauthorizedFreeze();
 
         bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
 

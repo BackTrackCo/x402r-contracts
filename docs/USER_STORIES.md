@@ -234,7 +234,7 @@ Formal user stories for all payment flows in x402r-contracts.
 **Acceptance criteria:**
 - Call `factory.computeAddress(params)` or `factory.computeAddresses(params)`
 - Returned address matches the actual deployed address
-- Works for all factories: PaymentOperatorFactory, StaticFeeCalculatorFactory, EscrowPeriodFactory, FreezePolicyFactory
+- Works for all factories: PaymentOperatorFactory, StaticFeeCalculatorFactory, EscrowPeriodFactory, FreezeFactory
 
 ---
 

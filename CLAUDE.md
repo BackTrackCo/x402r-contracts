@@ -67,7 +67,8 @@ forge script script/<Script>.s.sol --rpc-url <RPC_URL> --broadcast --verify -vvv
 - `src/plugins/` — All pluggable modules:
   - `plugins/conditions/` — ICondition, access conditions (PayerCondition, ReceiverCondition, StaticAddressCondition, AlwaysTrueCondition), combinators (And/Or/Not)
   - `plugins/recorders/` — IRecorder, BaseRecorder, AuthorizationTimeRecorder, PaymentIndexRecorder, RecorderCombinator
-  - `plugins/escrow-period/` — EscrowPeriod (merged recorder+condition), EscrowPeriodFactory, freeze-policy (FreezePolicy, FreezePolicyFactory, IFreezePolicy)
+  - `plugins/escrow-period/` — EscrowPeriod (merged recorder+condition), EscrowPeriodFactory
+  - `plugins/freeze/` — Freeze (ICondition for payment freezing), FreezeFactory
   - `plugins/fees/` — ProtocolFeeConfig, IFeeCalculator, StaticFeeCalculator, StaticFeeCalculatorFactory
 - `src/requests/` — Refund request flow
 - `script/` — Deployment scripts (testnet and production)

@@ -211,7 +211,7 @@ MEV Protection: Payers should freeze EARLY, not at deadline.
 │  Access Conditions:          │  Time/State Conditions:      │
 │  - PayerCondition            │  - EscrowPeriod              │
 │  - ReceiverCondition         │  - Freeze                    │
-│  - StaticAddressCondition    │    └─► FreezePolicy          │
+│  - StaticAddressCondition    │                              │
 │  - AlwaysTrueCondition       │                              │
 ├─────────────────────────────────────────────────────────────┤
 │  Combinators:                │  Recorders (Optional):       │
@@ -221,7 +221,7 @@ MEV Protection: Payers should freeze EARLY, not at deadline.
 ├─────────────────────────────────────────────────────────────┤
 │  Auxiliary:                  │                              │
 │  - RefundRequest             │                              │
-│  - FreezePolicyFactory       │                              │
+│  - FreezeFactory             │                              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -398,19 +398,21 @@ uint256 count = arbiterRegistry.arbiterCount();
 
 #### Freeze Module
 
-**Freeze** is a standalone `ICondition` contract with `freeze()`/`unfreeze()` methods. It's now separate from `EscrowPeriod` for better composability.
+**Freeze** is a standalone `ICondition` contract with `freeze()`/`unfreeze()` methods. It's separate from `EscrowPeriod` for better composability.
 
 **Deploy via FreezeFactory:**
 
 ```solidity
-// Deploy Freeze with FreezePolicy and optional EscrowPeriod constraint
-address freeze = freezeFactory.deploy(freezePolicy, escrowPeriodContract);
-
-// escrowPeriodContract = address(0) means freeze is unconstrained by time
-// escrowPeriodContract = EscrowPeriod address means freeze only works during escrow period
+// Deploy Freeze with freeze/unfreeze conditions and optional EscrowPeriod constraint
+address freeze = freezeFactory.deploy(
+    freezeCondition,      // ICondition - who can freeze (e.g., PayerCondition)
+    unfreezeCondition,    // ICondition - who can unfreeze (e.g., PayerCondition)
+    freezeDuration,       // uint256 - how long freeze lasts (0 = permanent until unfrozen)
+    escrowPeriodContract  // address(0) = unconstrained, or EscrowPeriod address
+);
 ```
 
-**FreezePolicy** determines who can freeze/unfreeze using `ICondition` contracts:
+**Freeze/Unfreeze conditions** determine who can freeze/unfreeze using `ICondition` contracts:
 
 | Condition | Description |
 |-----------|-------------|
@@ -422,16 +424,13 @@ address freeze = freezeFactory.deploy(freezePolicy, escrowPeriodContract);
 **Example:**
 
 ```solidity
-// 1. Deploy FreezePolicy (payer freeze/unfreeze, 3-day duration)
-address freezePolicy = freezePolicyFactory.deploy(payerCondition, payerCondition, 3 days);
-
-// 2. Deploy EscrowPeriod (7 days, operator-only recording)
+// 1. Deploy EscrowPeriod (7 days, operator-only recording)
 address escrowPeriod = escrowPeriodFactory.deploy(7 days, bytes32(0));
 
-// 3. Deploy Freeze (constrained to escrow period)
-address freeze = freezeFactory.deploy(freezePolicy, escrowPeriod);
+// 2. Deploy Freeze (payer can freeze/unfreeze, 3-day duration, constrained to escrow period)
+address freeze = freezeFactory.deploy(payerCondition, payerCondition, 3 days, escrowPeriod);
 
-// 4. Compose for release condition: must pass both escrow period AND not be frozen
+// 3. Compose for release condition: must pass both escrow period AND not be frozen
 address releaseCondition = address(new AndCondition([ICondition(escrowPeriod), ICondition(freeze)]));
 ```
 

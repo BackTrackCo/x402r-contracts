@@ -10,8 +10,6 @@ import {StaticFeeCalculatorFactory} from "../src/plugins/fees/static-fee-calcula
 import {EscrowPeriodFactory} from "../src/plugins/escrow-period/EscrowPeriodFactory.sol";
 import {FreezeFactory} from "../src/plugins/freeze/FreezeFactory.sol";
 import {Freeze} from "../src/plugins/freeze/Freeze.sol";
-import {FreezePolicyFactory} from "../src/plugins/freeze/freeze-policy/FreezePolicyFactory.sol";
-import {FreezePolicy} from "../src/plugins/freeze/freeze-policy/FreezePolicy.sol";
 import {PayerCondition} from "../src/plugins/conditions/access/PayerCondition.sol";
 import {ReceiverCondition} from "../src/plugins/conditions/access/ReceiverCondition.sol";
 
@@ -152,40 +150,44 @@ contract FactoryCoverageTest is Test {
     function test_FreezeFactory_Deploy() public {
         FreezeFactory factory = new FreezeFactory(address(escrow));
         PayerCondition payerCond = new PayerCondition();
-        FreezePolicy freezePolicy = new FreezePolicy(address(payerCond), address(payerCond), 3 days);
 
-        address freezeAddr = factory.deploy(address(freezePolicy), address(0));
+        address freezeAddr = factory.deploy(address(payerCond), address(payerCond), 3 days, address(0));
         assertTrue(freezeAddr != address(0), "Freeze should be deployed");
     }
 
     function test_FreezeFactory_IdempotentDeploy() public {
         FreezeFactory factory = new FreezeFactory(address(escrow));
         PayerCondition payerCond = new PayerCondition();
-        FreezePolicy freezePolicy = new FreezePolicy(address(payerCond), address(payerCond), 3 days);
 
-        address first = factory.deploy(address(freezePolicy), address(0));
-        address second = factory.deploy(address(freezePolicy), address(0));
+        address first = factory.deploy(address(payerCond), address(payerCond), 3 days, address(0));
+        address second = factory.deploy(address(payerCond), address(payerCond), 3 days, address(0));
         assertEq(first, second, "Same config should return same address");
     }
 
     function test_FreezeFactory_GetDeployed() public {
         FreezeFactory factory = new FreezeFactory(address(escrow));
         PayerCondition payerCond = new PayerCondition();
-        FreezePolicy freezePolicy = new FreezePolicy(address(payerCond), address(payerCond), 3 days);
 
-        assertEq(factory.getDeployed(address(freezePolicy), address(0)), address(0), "Should be zero before deployment");
+        assertEq(
+            factory.getDeployed(address(payerCond), address(payerCond), 3 days, address(0)),
+            address(0),
+            "Should be zero before deployment"
+        );
 
-        address deployed = factory.deploy(address(freezePolicy), address(0));
-        assertEq(factory.getDeployed(address(freezePolicy), address(0)), deployed, "Should return deployed address");
+        address deployed = factory.deploy(address(payerCond), address(payerCond), 3 days, address(0));
+        assertEq(
+            factory.getDeployed(address(payerCond), address(payerCond), 3 days, address(0)),
+            deployed,
+            "Should return deployed address"
+        );
     }
 
     function test_FreezeFactory_ComputeAddress() public {
         FreezeFactory factory = new FreezeFactory(address(escrow));
         PayerCondition payerCond = new PayerCondition();
-        FreezePolicy freezePolicy = new FreezePolicy(address(payerCond), address(payerCond), 3 days);
 
-        address predicted = factory.computeAddress(address(freezePolicy), address(0));
-        address actual = factory.deploy(address(freezePolicy), address(0));
+        address predicted = factory.computeAddress(address(payerCond), address(payerCond), 3 days, address(0));
+        address actual = factory.deploy(address(payerCond), address(payerCond), 3 days, address(0));
         assertEq(predicted, actual, "Predicted address should match actual");
     }
 
@@ -195,9 +197,8 @@ contract FactoryCoverageTest is Test {
         address ep = epFactory.deploy(7 days, bytes32(0));
 
         PayerCondition payerCond = new PayerCondition();
-        FreezePolicy freezePolicy = new FreezePolicy(address(payerCond), address(payerCond), 3 days);
 
-        address freezeAddr = factory.deploy(address(freezePolicy), ep);
+        address freezeAddr = factory.deploy(address(payerCond), address(payerCond), 3 days, ep);
         assertTrue(freezeAddr != address(0), "Freeze with escrow period should be deployed");
 
         Freeze freezeContract = Freeze(freezeAddr);
@@ -207,18 +208,26 @@ contract FactoryCoverageTest is Test {
     function test_FreezeFactory_DifferentConfigs() public {
         FreezeFactory factory = new FreezeFactory(address(escrow));
         PayerCondition payerCond = new PayerCondition();
-        FreezePolicy fp1 = new FreezePolicy(address(payerCond), address(payerCond), 3 days);
-        FreezePolicy fp2 = new FreezePolicy(address(payerCond), address(payerCond), 7 days);
 
-        address f1 = factory.deploy(address(fp1), address(0));
-        address f2 = factory.deploy(address(fp2), address(0));
-        assertTrue(f1 != f2, "Different policies should produce different addresses");
+        address f1 = factory.deploy(address(payerCond), address(payerCond), 3 days, address(0));
+        address f2 = factory.deploy(address(payerCond), address(payerCond), 7 days, address(0));
+        assertTrue(f1 != f2, "Different durations should produce different addresses");
+    }
+
+    function test_FreezeFactory_DifferentConditions() public {
+        FreezeFactory factory = new FreezeFactory(address(escrow));
+        PayerCondition payerCond = new PayerCondition();
+        ReceiverCondition receiverCond = new ReceiverCondition();
+
+        address f1 = factory.deploy(address(payerCond), address(payerCond), 3 days, address(0));
+        address f2 = factory.deploy(address(payerCond), address(receiverCond), 3 days, address(0));
+        assertTrue(f1 != f2, "Different conditions should produce different addresses");
     }
 
     function test_FreezeFactory_GetKey() public {
         FreezeFactory factory = new FreezeFactory(address(escrow));
-        bytes32 key1 = factory.getKey(address(1), address(0));
-        bytes32 key2 = factory.getKey(address(2), address(0));
+        bytes32 key1 = factory.getKey(address(1), address(1), 3 days, address(0));
+        bytes32 key2 = factory.getKey(address(2), address(2), 3 days, address(0));
         assertTrue(key1 != key2, "Different configs should produce different keys");
     }
 
@@ -227,84 +236,23 @@ contract FactoryCoverageTest is Test {
         new FreezeFactory(address(0));
     }
 
-    // ============ FreezePolicyFactory ============
-
-    function test_FreezePolicyFactory_Deploy() public {
-        FreezePolicyFactory factory = new FreezePolicyFactory();
+    function test_FreezeFactory_ZeroDuration() public {
+        FreezeFactory factory = new FreezeFactory(address(escrow));
         PayerCondition payerCond = new PayerCondition();
-
-        address policy = factory.deploy(address(payerCond), address(payerCond), 3 days);
-        assertTrue(policy != address(0), "Policy should be deployed");
-        assertEq(FreezePolicy(policy).FREEZE_DURATION(), 3 days, "Duration should match");
+        address freezeAddr = factory.deploy(address(payerCond), address(payerCond), 0, address(0));
+        assertEq(Freeze(freezeAddr).FREEZE_DURATION(), 0, "Zero duration means permanent freeze");
     }
 
-    function test_FreezePolicyFactory_IdempotentDeploy() public {
-        FreezePolicyFactory factory = new FreezePolicyFactory();
+    function test_FreezeFactory_DeployedFreezeWorks() public {
+        FreezeFactory factory = new FreezeFactory(address(escrow));
         PayerCondition payerCond = new PayerCondition();
 
-        address first = factory.deploy(address(payerCond), address(payerCond), 3 days);
-        address second = factory.deploy(address(payerCond), address(payerCond), 3 days);
-        assertEq(first, second, "Same config should return same address");
-    }
+        address freezeAddr = factory.deploy(address(payerCond), address(payerCond), 3 days, address(0));
+        Freeze freezeContract = Freeze(freezeAddr);
 
-    function test_FreezePolicyFactory_GetDeployed() public {
-        FreezePolicyFactory factory = new FreezePolicyFactory();
-        PayerCondition payerCond = new PayerCondition();
-
-        assertEq(
-            factory.getDeployed(address(payerCond), address(payerCond), 3 days),
-            address(0),
-            "Should be zero before deployment"
-        );
-        address policy = factory.deploy(address(payerCond), address(payerCond), 3 days);
-        assertEq(
-            factory.getDeployed(address(payerCond), address(payerCond), 3 days),
-            policy,
-            "Should return deployed address"
-        );
-    }
-
-    function test_FreezePolicyFactory_ComputeAddress() public {
-        FreezePolicyFactory factory = new FreezePolicyFactory();
-        PayerCondition payerCond = new PayerCondition();
-
-        address predicted = factory.computeAddress(address(payerCond), address(payerCond), 3 days);
-        address actual = factory.deploy(address(payerCond), address(payerCond), 3 days);
-        assertEq(predicted, actual, "Predicted address should match actual");
-    }
-
-    function test_FreezePolicyFactory_DifferentDurations() public {
-        FreezePolicyFactory factory = new FreezePolicyFactory();
-        PayerCondition payerCond = new PayerCondition();
-
-        address p1 = factory.deploy(address(payerCond), address(payerCond), 3 days);
-        address p2 = factory.deploy(address(payerCond), address(payerCond), 7 days);
-        assertTrue(p1 != p2, "Different durations should produce different addresses");
-    }
-
-    function test_FreezePolicyFactory_DifferentConditions() public {
-        FreezePolicyFactory factory = new FreezePolicyFactory();
-        PayerCondition payerCond = new PayerCondition();
-        ReceiverCondition receiverCond = new ReceiverCondition();
-
-        address p1 = factory.deploy(address(payerCond), address(payerCond), 3 days);
-        address p2 = factory.deploy(address(payerCond), address(receiverCond), 3 days);
-        assertTrue(p1 != p2, "Different conditions should produce different addresses");
-    }
-
-    function test_FreezePolicyFactory_GetKey() public {
-        FreezePolicyFactory factory = new FreezePolicyFactory();
-        PayerCondition payerCond = new PayerCondition();
-        bytes32 key1 = factory.getKey(address(payerCond), address(payerCond), 3 days);
-        bytes32 key2 = factory.getKey(address(payerCond), address(payerCond), 7 days);
-        assertTrue(key1 != key2, "Different configs should produce different keys");
-    }
-
-    function test_FreezePolicyFactory_ZeroDuration() public {
-        FreezePolicyFactory factory = new FreezePolicyFactory();
-        PayerCondition payerCond = new PayerCondition();
-        address policy = factory.deploy(address(payerCond), address(payerCond), 0);
-        assertEq(FreezePolicy(policy).FREEZE_DURATION(), 0, "Zero duration means permanent freeze");
+        assertEq(address(freezeContract.FREEZE_CONDITION()), address(payerCond));
+        assertEq(address(freezeContract.UNFREEZE_CONDITION()), address(payerCond));
+        assertEq(freezeContract.FREEZE_DURATION(), 3 days);
     }
 
     // ============ PaymentOperatorFactory ============

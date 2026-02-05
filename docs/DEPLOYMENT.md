@@ -69,7 +69,7 @@ This deploys:
 3. **EscrowPeriodConditionFactory** - Factory for time-based conditions
 4. **PaymentOperatorFactory** - Factory for operator instances
 5. **Condition Singletons** - PayerCondition, ReceiverCondition, ArbiterCondition, AlwaysTrueCondition
-6. **FreezePolicyFactory** - Factory for creating freeze policy instances
+6. **FreezeFactory** - Factory for deploying Freeze condition contracts
 7. **RefundRequest** - Refund request manager
 
 ### Option 2: Deploy Individual Contracts
@@ -94,18 +94,18 @@ forge script script/DeployEscrowPeriodCondition.s.sol:DeployEscrowPeriodConditio
   --verify
 ```
 
-#### Freeze Policy Factory and Condition Singletons
+#### Freeze Factory
 
-Deploys FreezePolicyFactory and all condition singletons (PayerCondition, ReceiverCondition, ArbiterCondition, AlwaysTrueCondition):
+Deploys FreezeFactory for creating Freeze condition contracts:
 
 ```bash
-forge script script/DeployFreezePolicyFactory.s.sol:DeployFreezePolicyFactory \
+ESCROW_ADDRESS=0x... forge script script/DeployFreezeFactory.s.sol:DeployFreezeFactory \
   --rpc-url $RPC_URL \
   --broadcast \
   --verify
 ```
 
-These condition singletons can be used with the FreezePolicyFactory to create custom freeze policies.
+The FreezeFactory deploys Freeze contracts with configurable freeze/unfreeze conditions and durations.
 
 ## Verify Deployment
 

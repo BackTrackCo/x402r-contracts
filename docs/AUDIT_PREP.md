@@ -295,7 +295,6 @@
 **3. Unused Condition Contracts** (0-50% coverage)
 - `AlwaysTrueCondition`, `PayerCondition`, `ReceiverCondition` - simple utility conditions
 - `NotCondition` - not used in current deployment
-- `FreezePolicy` base contract - abstract contract
 
 **4. Error Path Branches** (low branch coverage)
 - Many revert paths not triggered in happy path tests
@@ -389,7 +388,7 @@ slither . --exclude-dependencies
 - PaymentOperatorFactory: `0x67B63Af4bcdCD3E4263d9995aB04563fbC229944`
 - EscrowPeriodFactory: `0x3D0837fF8Ea36F417261577b9BA568400A840260`
 - StaticFeeCalculatorFactory: `0x35fb2EFEfAc3Ee9f6E52A9AAE5C9655bC08dEc00`
-- FreezePolicyFactory: `0x9D4146EF898c8E60B3e865AE254ef438E7cEd2A0`
+- FreezeFactory: `0x199fed16577773Bb6b2D76CC3cD1c76c22D28835`
 - RefundRequest: `0x6926c05193c714ED4bA3867Ee93d6816Fdc14128`
 
 All contracts verified on BaseScan.
@@ -410,9 +409,10 @@ src/commerce-payments/requests/refund/
 src/commerce-payments/conditions/escrow-period/
   ├── EscrowPeriod.sol (~210 LoC) ⭐ CRITICAL
   ├── EscrowPeriodFactory.sol (~120 LoC)
-  ├── freeze-policy/
-      ├── FreezePolicy.sol (~60 LoC) - Generic freeze policy using ICondition
-      ├── FreezePolicyFactory.sol (~120 LoC)
+
+src/commerce-payments/plugins/freeze/
+  ├── Freeze.sol (~150 LoC) - Standalone freeze condition
+  ├── FreezeFactory.sol (~120 LoC)
 
 src/commerce-payments/conditions/
   ├── ICondition.sol (interface)
@@ -506,8 +506,8 @@ PaymentOperatorFactory
 EscrowPeriodFactory
     └── deploys → EscrowPeriod (combined condition + recorder)
 
-FreezePolicyFactory
-    └── deploys → FreezePolicy instances (configured with ICondition contracts)
+FreezeFactory
+    └── deploys → Freeze instances (with freeze/unfreeze conditions passed directly)
 ```
 
 **Key Patterns**:
@@ -570,7 +570,7 @@ FreezePolicyFactory
 2. **Receiver**: Releases payments, creates refund requests, executes refunds
 3. **Operator Owner**: Sets fee parameters (with 7-day timelock), withdraws protocol fees
 4. **Factory Owner**: Can deploy new operators
-5. **Freeze Policy**: Determines who can freeze/unfreeze payments (e.g., FreezePolicy with PayerCondition)
+5. **Freeze Conditions**: Determines who can freeze/unfreeze payments via ICondition contracts passed to FreezeFactory
 
 **Privilege Matrix**:
 
@@ -588,7 +588,7 @@ FreezePolicyFactory
 | setFeeParameters() | ❌ | ❌ | ✅ | ❌ |
 | withdrawFees() | ❌ | ❌ | ✅ | ❌ |
 
-*Subject to freeze policy (e.g., FreezePolicy with PayerCondition allows payer)
+*Subject to freeze conditions (e.g., PayerCondition allows payer)
 
 ### Assumptions and Trust Boundaries
 
@@ -605,7 +605,7 @@ FreezePolicyFactory
 
 **Off-Chain Assumptions**:
 - Dispute resolution happens off-chain (system provides enforcement)
-- Freeze policy determined at deployment (FreezePolicy with chosen ICondition contracts)
+- Freeze/unfreeze conditions determined at deployment (ICondition contracts passed to FreezeFactory)
 - Users use private mempool or freeze early to mitigate MEV
 
 ### Glossary

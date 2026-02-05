@@ -117,10 +117,7 @@ A time window after authorization during which funds are held in escrow before r
 Combined recorder and condition contract. Records `block.timestamp` when a payment is authorized (via `AuthorizationTimeRecorder` inheritance), checks `block.timestamp >= authorizedAt + ESCROW_PERIOD` and `!frozen` for release, and provides freeze/unfreeze capabilities.
 
 ### Freeze
-A mechanism that blocks release during the escrow period. The payer (or authorized party) calls `recorder.freeze(paymentInfo)` to set `frozenUntil = block.timestamp + FREEZE_DURATION`. A frozen payment cannot be released until `frozenUntil` passes or `unfreeze()` is called.
-
-### Freeze Policy (IFreezePolicy)
-Configurable policy that determines who can freeze and unfreeze, and for how long. Delegates authorization to `ICondition` contracts. Deployed via `FreezePolicyFactory`.
+A standalone `ICondition` contract that blocks release when a payment is frozen. The payer (or authorized party) calls `freeze.freeze(paymentInfo)` to set `frozenUntil = block.timestamp + FREEZE_DURATION`. A frozen payment cannot be released until `frozenUntil` passes or `unfreeze()` is called. Freeze contracts are deployed via `FreezeFactory` with configurable freeze/unfreeze conditions passed directly as constructor parameters.
 
 ### Freeze Duration
 How long a freeze lasts. `0` means permanent (until explicitly unfrozen). Non-zero values auto-expire.

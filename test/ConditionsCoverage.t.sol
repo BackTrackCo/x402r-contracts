@@ -12,8 +12,6 @@ import {ReceiverCondition} from "../src/plugins/conditions/access/ReceiverCondit
 import {PayerCondition} from "../src/plugins/conditions/access/PayerCondition.sol";
 import {NotCondition} from "../src/plugins/conditions/combinators/NotCondition.sol";
 import {RecorderCombinator} from "../src/plugins/recorders/combinators/RecorderCombinator.sol";
-import {FreezePolicyFactory} from "../src/plugins/freeze/freeze-policy/FreezePolicyFactory.sol";
-import {FreezePolicy} from "../src/plugins/freeze/freeze-policy/FreezePolicy.sol";
 import {StaticAddressCondition} from "../src/plugins/conditions/access/static-address/StaticAddressCondition.sol";
 import {
     StaticAddressConditionFactory
@@ -210,64 +208,6 @@ contract ConditionsCoverageTest is Test {
 
         assertEq(address(combinator.recorders(0)), address(recorder1));
         assertEq(address(combinator.recorders(1)), address(recorder2));
-    }
-
-    // ============ FreezePolicyFactory Tests ============
-
-    function test_FreezePolicyFactory_Deploy() public {
-        FreezePolicyFactory factory = new FreezePolicyFactory();
-
-        address policy = factory.deploy(address(payerCondition), address(payerCondition), 3 days);
-
-        assertTrue(policy != address(0));
-        assertEq(factory.getDeployed(address(payerCondition), address(payerCondition), 3 days), policy);
-    }
-
-    function test_FreezePolicyFactory_DeployReturnsSameAddress() public {
-        FreezePolicyFactory factory = new FreezePolicyFactory();
-
-        address policy1 = factory.deploy(address(payerCondition), address(payerCondition), 3 days);
-        address policy2 = factory.deploy(address(payerCondition), address(payerCondition), 3 days);
-
-        assertEq(policy1, policy2);
-    }
-
-    function test_FreezePolicyFactory_ComputeAddress() public {
-        FreezePolicyFactory factory = new FreezePolicyFactory();
-
-        address computed = factory.computeAddress(address(payerCondition), address(payerCondition), 3 days);
-        address deployed = factory.deploy(address(payerCondition), address(payerCondition), 3 days);
-
-        assertEq(computed, deployed);
-    }
-
-    function test_FreezePolicyFactory_GetKey() public {
-        FreezePolicyFactory factory = new FreezePolicyFactory();
-
-        bytes32 key1 = factory.getKey(address(payerCondition), address(payerCondition), 3 days);
-        bytes32 key2 = factory.getKey(address(payerCondition), address(receiverCondition), 3 days);
-
-        assertTrue(key1 != key2);
-    }
-
-    function test_FreezePolicyFactory_DifferentConfigs() public {
-        FreezePolicyFactory factory = new FreezePolicyFactory();
-
-        address policy1 = factory.deploy(address(payerCondition), address(payerCondition), 3 days);
-        address policy2 = factory.deploy(address(payerCondition), address(receiverCondition), 7 days);
-
-        assertTrue(policy1 != policy2);
-    }
-
-    function test_FreezePolicyFactory_DeployedPolicyWorks() public {
-        FreezePolicyFactory factory = new FreezePolicyFactory();
-
-        address policyAddr = factory.deploy(address(payerCondition), address(payerCondition), 3 days);
-        FreezePolicy policy = FreezePolicy(policyAddr);
-
-        assertEq(address(policy.FREEZE_CONDITION()), address(payerCondition));
-        assertEq(address(policy.UNFREEZE_CONDITION()), address(payerCondition));
-        assertEq(policy.FREEZE_DURATION(), 3 days);
     }
 
     // ============ StaticAddressConditionFactory Tests ============

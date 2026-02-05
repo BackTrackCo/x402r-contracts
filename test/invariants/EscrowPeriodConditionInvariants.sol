@@ -7,7 +7,6 @@ import {PaymentOperatorFactory} from "../../src/operator/PaymentOperatorFactory.
 import {EscrowPeriodFactory} from "../../src/plugins/escrow-period/EscrowPeriodFactory.sol";
 import {EscrowPeriod} from "../../src/plugins/escrow-period/EscrowPeriod.sol";
 import {Freeze} from "../../src/plugins/freeze/Freeze.sol";
-import {FreezePolicy} from "../../src/plugins/freeze/freeze-policy/FreezePolicy.sol";
 import {ICondition} from "../../src/plugins/conditions/ICondition.sol";
 import {AndCondition} from "../../src/plugins/conditions/combinators/AndCondition.sol";
 import {PayerCondition} from "../../src/plugins/conditions/access/PayerCondition.sol";
@@ -52,12 +51,13 @@ contract EscrowPeriodConditionInvariants is Test {
 
         EscrowPeriodFactory escrowPeriodFactory = new EscrowPeriodFactory(address(escrow));
         PayerCondition payerCondition = new PayerCondition();
-        FreezePolicy freezePolicy = new FreezePolicy(address(payerCondition), address(payerCondition), FREEZE_DURATION);
         address escrowPeriodAddr = escrowPeriodFactory.deploy(ESCROW_PERIOD, bytes32(0));
         escrowPeriod = EscrowPeriod(escrowPeriodAddr);
 
         // Deploy freeze with escrow period constraint
-        freeze = new Freeze(address(freezePolicy), address(escrowPeriod), address(escrow));
+        freeze = new Freeze(
+            address(payerCondition), address(payerCondition), FREEZE_DURATION, address(escrowPeriod), address(escrow)
+        );
 
         // Compose escrow period + freeze into release condition
         ICondition[] memory conditions = new ICondition[](2);
