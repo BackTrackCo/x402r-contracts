@@ -59,19 +59,14 @@ contract DeployUsdcTvlLimit is Script {
         if (block.chainid == 11155111) return 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238;
         // Polygon
         if (block.chainid == 137) return 0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359;
-        if (block.chainid == 80002) return 0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582;
         // Arbitrum
         if (block.chainid == 42161) return 0xaf88d065e77c8cC2239327C5EDb3A432268e5831;
-        if (block.chainid == 421614) return 0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d;
         // Celo
         if (block.chainid == 42220) return 0xcebA9300f2b948710d2653dD7B07f33A8B32118C;
-        if (block.chainid == 44787) return 0x01C5C0122039549AD1493B8220cABEdD739BC44E;
         // Monad
         if (block.chainid == 143) return 0x754704Bc059F8C67012fEd69BC8A327a5aafb603;
-        if (block.chainid == 10143) return 0x534b2f3A21130d7a60830c2Df862319e593943A3;
         // Avalanche
         if (block.chainid == 43114) return 0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E;
-        if (block.chainid == 43113) return 0x5425890298aed601595a70AB815c96711a31Bc65;
         revert("Set USDC_ADDRESS for this network");
     }
 }
