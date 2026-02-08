@@ -19,7 +19,7 @@ For auditors and developers:
 | Document | Description |
 |----------|-------------|
 | **[AUDIT_PREP.md](docs/AUDIT_PREP.md)** | 📦 Complete audit preparation package (beta release) |
-| **[AUDIT.md](docs/AUDIT.md)** | 📋 Comprehensive audit documentation |
+| **[SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md)** | 📋 Comprehensive security review documentation |
 | [SECURITY.md](docs/SECURITY.md) | 🔒 Security overview and threat model |
 | [OPERATOR_SECURITY.md](docs/OPERATOR_SECURITY.md) | 🛡️ Operator-specific security considerations |
 | [TOKENS.md](docs/TOKENS.md) | 🪙 Token compatibility and handling |
