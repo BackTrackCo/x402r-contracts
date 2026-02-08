@@ -111,6 +111,10 @@ contract PaymentOperatorInvariants is Test {
         });
         reentrancyTestOperator = PaymentOperator(factory.deployOperator(reentrancyConfig));
 
+        // Mint tokens and approve collector before any authorization calls
+        token.mint(address(this), type(uint128).max);
+        token.approve(address(collector), type(uint256).max);
+
         // Authorize a payment through the malicious operator to trigger the reentrant callback
         AuthCaptureEscrow.PaymentInfo memory reentrancyPayment = AuthCaptureEscrow.PaymentInfo({
             operator: address(reentrancyTestOperator),
@@ -128,10 +132,6 @@ contract PaymentOperatorInvariants is Test {
         });
         collector.preApprove(reentrancyPayment);
         reentrancyTestOperator.authorize(reentrancyPayment, 1000, address(collector), "");
-
-        // Mint tokens for testing
-        token.mint(address(this), type(uint128).max);
-        token.approve(address(collector), type(uint256).max);
     }
 
     // ============ Helper Functions ============
