@@ -468,7 +468,7 @@ lib/commerce-payments/src/AuthCaptureEscrow.sol
 
 ### Comprehensive Documentation Suite
 
-**Entry Point**: `AUDIT.md` 📋 START HERE
+**Entry Point**: `SECURITY_REVIEW.md` 📋 START HERE
 
 **Security Documentation**:
 - `SECURITY.md` 🔒 Security overview and threat model
@@ -672,7 +672,7 @@ FreezeFactory
 - [x] Deployment addresses listed (Base Sepolia)
 
 ### ✅ Step 4: Documentation
-- [x] Architecture diagrams (see AUDIT.md)
+- [x] Architecture diagrams (see SECURITY_REVIEW.md)
 - [x] User stories documented (3 payment flows)
 - [x] Actors and privileges matrix
 - [x] Assumptions and trust boundaries
@@ -770,7 +770,7 @@ FreezeFactory
 **Project**: x402r Payment System
 **Repository**: https://github.com/BackTrackCo/x402r-contracts
 **Branch**: `commerce-payments-pull-generic`
-**Documentation**: See README.md, AUDIT.md, SECURITY.md
+**Documentation**: See README.md, SECURITY_REVIEW.md, SECURITY.md
 **Deployed**: Base Sepolia testnet
 
 ---
