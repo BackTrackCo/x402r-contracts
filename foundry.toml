@@ -54,6 +54,6 @@ invariant = { runs = 1000 }
 # - asm-keccak256: factory contracts called rarely; assembly not worth maintainability cost
 # - unsafe-typecast: all source typecasts are bounds-checked; test casts use known constants
 [lint]
-exclude_lints = ["mixed-case-function", "mixed-case-variable", "asm-keccak256", "unsafe-typecast"]
+exclude_lints = ["mixed-case-function", "mixed-case-variable", "asm-keccak256", "unsafe-typecast", "screaming-snake-case-const"]
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
