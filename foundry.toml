@@ -19,6 +19,13 @@ remappings = [
 [rpc_endpoints]
 base = "https://mainnet.base.org"
 base-sepolia = "https://sepolia.base.org"
+ethereum = "https://eth.llamarpc.com"
+ethereum-sepolia = "https://rpc.sepolia.org"
+polygon = "https://polygon-rpc.com"
+arbitrum = "https://arb1.arbitrum.io/rpc"
+celo = "https://forno.celo.org"
+monad = "https://rpc.monad.xyz/monad"
+avalanche = "https://api.avax.network/ext/bc/C/rpc"
 
 # Etherscan configuration
 # API key is read from ETHERSCAN_API_KEY environment variable (set in .env file)
@@ -26,6 +33,12 @@ base-sepolia = "https://sepolia.base.org"
 [etherscan]
 base-sepolia = { key = "${ETHERSCAN_API_KEY}", url = "https://api-sepolia.basescan.org/api" }
 base = { key = "${ETHERSCAN_API_KEY}", url = "https://api.basescan.org/api" }
+ethereum = { key = "${ETHERSCAN_API_KEY}", url = "https://api.etherscan.io/api" }
+ethereum-sepolia = { key = "${ETHERSCAN_API_KEY}", url = "https://api-sepolia.etherscan.io/api" }
+polygon = { key = "${POLYGONSCAN_API_KEY}", url = "https://api.polygonscan.com/api" }
+arbitrum = { key = "${ARBISCAN_API_KEY}", url = "https://api.arbiscan.io/api" }
+celo = { key = "${CELOSCAN_API_KEY}", url = "https://api.celoscan.io/api" }
+avalanche = { key = "${SNOWTRACE_API_KEY}", url = "https://api.snowtrace.io/api" }
 
 # CI profile - used in GitHub Actions
 # Coverage threshold enforced in .github/workflows/ci.yml (target: 80%)
@@ -40,6 +53,6 @@ invariant = { runs = 1000 }
 # - asm-keccak256: factory contracts called rarely; assembly not worth maintainability cost
 # - unsafe-typecast: all source typecasts are bounds-checked; test casts use known constants
 [lint]
-exclude_lints = ["mixed-case-function", "mixed-case-variable", "asm-keccak256", "unsafe-typecast"]
+exclude_lints = ["mixed-case-function", "mixed-case-variable", "asm-keccak256", "unsafe-typecast", "screaming-snake-case-const"]
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
