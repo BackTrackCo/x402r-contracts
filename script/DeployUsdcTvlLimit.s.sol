@@ -27,12 +27,6 @@ import {UsdcTvlLimit} from "../src/plugins/conditions/tvl-limit/UsdcTvlLimit.sol
  *   TVL_LIMIT - Max USDC in escrow (in smallest units, e.g., 100000000000 = $100k)
  */
 contract DeployUsdcTvlLimit is Script {
-    // Base Mainnet USDC
-    address constant BASE_MAINNET_USDC = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
-
-    // Base Sepolia USDC
-    address constant BASE_SEPOLIA_USDC = 0x036CbD53842c5426634e7929541eC2318f3dCF7e;
-
     function run() public {
         address escrow = vm.envAddress("ESCROW_ADDRESS");
         address usdc = vm.envOr("USDC_ADDRESS", _defaultUsdc());
@@ -57,8 +51,22 @@ contract DeployUsdcTvlLimit is Script {
     }
 
     function _defaultUsdc() internal view returns (address) {
-        if (block.chainid == 8453) return BASE_MAINNET_USDC;
-        if (block.chainid == 84532) return BASE_SEPOLIA_USDC;
+        // Base
+        if (block.chainid == 8453) return 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
+        if (block.chainid == 84532) return 0x036CbD53842c5426634e7929541eC2318f3dCF7e;
+        // Ethereum
+        if (block.chainid == 1) return 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+        if (block.chainid == 11155111) return 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238;
+        // Polygon
+        if (block.chainid == 137) return 0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359;
+        // Arbitrum
+        if (block.chainid == 42161) return 0xaf88d065e77c8cC2239327C5EDb3A432268e5831;
+        // Celo
+        if (block.chainid == 42220) return 0xcebA9300f2b948710d2653dD7B07f33A8B32118C;
+        // Monad
+        if (block.chainid == 143) return 0x754704Bc059F8C67012fEd69BC8A327a5aafb603;
+        // Avalanche
+        if (block.chainid == 43114) return 0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E;
         revert("Set USDC_ADDRESS for this network");
     }
 }
