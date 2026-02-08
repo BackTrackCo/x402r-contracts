@@ -257,7 +257,9 @@ contract PaymentOperatorInvariants is Test {
         return accumulated <= operatorBalance;
     }
 
-    /// @notice Total token balance ≥ sum of all authorized payments
+    /// @notice Token store balance ≥ sum of all capturable amounts (tokens still in escrow)
+    /// @dev refundableAmount is excluded because those tokens have already been released
+    ///      to the receiver and are only recoverable via refundPostEscrow()
     function echidna_solvency() public view returns (bool) {
         address tokenStore = escrow.getTokenStore(address(operator));
         uint256 actualBalance = token.balanceOf(tokenStore);
@@ -265,8 +267,8 @@ contract PaymentOperatorInvariants is Test {
         uint256 expectedBalance = 0;
         for (uint256 i = 0; i < paymentHashes.length; i++) {
             bytes32 hash = paymentHashes[i];
-            (, uint256 capturableAmount, uint256 refundableAmount) = escrow.paymentState(hash);
-            expectedBalance += capturableAmount + refundableAmount;
+            (, uint256 capturableAmount,) = escrow.paymentState(hash);
+            expectedBalance += capturableAmount;
         }
 
         // Actual balance should be ≥ expected (fees could increase it)
@@ -314,19 +316,19 @@ contract PaymentOperatorInvariants is Test {
         return result;
     }
 
-    /// @notice Owner cannot steal user funds directly
+    /// @notice Owner cannot steal user funds still held in escrow
+    /// @dev Only capturableAmount represents tokens in the token store.
+    ///      refundableAmount tracks tokens already released to the receiver.
     function echidna_owner_cannot_steal_escrow() public view returns (bool) {
-        // Owner can only withdraw fees, not escrowed user funds
-        // This is enforced by escrow.paymentState tracking
         address tokenStore = escrow.getTokenStore(address(operator));
         uint256 escrowBalance = token.balanceOf(tokenStore);
 
-        // Calculate total user funds in escrow
+        // Calculate total user funds still in escrow (capturable only)
         uint256 userFunds = 0;
         for (uint256 i = 0; i < paymentHashes.length; i++) {
             bytes32 hash = paymentHashes[i];
-            (, uint256 capturableAmount, uint256 refundableAmount) = escrow.paymentState(hash);
-            userFunds += capturableAmount + refundableAmount;
+            (, uint256 capturableAmount,) = escrow.paymentState(hash);
+            userFunds += capturableAmount;
         }
 
         // Escrow balance should be ≥ user funds
