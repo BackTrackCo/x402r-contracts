@@ -12,6 +12,17 @@ import {FreezeFactory} from "../src/plugins/freeze/FreezeFactory.sol";
 import {Freeze} from "../src/plugins/freeze/Freeze.sol";
 import {PayerCondition} from "../src/plugins/conditions/access/PayerCondition.sol";
 import {ReceiverCondition} from "../src/plugins/conditions/access/ReceiverCondition.sol";
+import {ICondition} from "../src/plugins/conditions/ICondition.sol";
+import {AndCondition} from "../src/plugins/conditions/combinators/AndCondition.sol";
+import {AndConditionFactory} from "../src/plugins/conditions/combinators/AndConditionFactory.sol";
+import {NotCondition} from "../src/plugins/conditions/combinators/NotCondition.sol";
+import {NotConditionFactory} from "../src/plugins/conditions/combinators/NotConditionFactory.sol";
+import {OrCondition} from "../src/plugins/conditions/combinators/OrCondition.sol";
+import {OrConditionFactory} from "../src/plugins/conditions/combinators/OrConditionFactory.sol";
+import {IRecorder} from "../src/plugins/recorders/IRecorder.sol";
+import {AuthorizationTimeRecorder} from "../src/plugins/recorders/AuthorizationTimeRecorder.sol";
+import {RecorderCombinator} from "../src/plugins/recorders/combinators/RecorderCombinator.sol";
+import {RecorderCombinatorFactory} from "../src/plugins/recorders/combinators/RecorderCombinatorFactory.sol";
 
 /**
  * @title FactoryCoverageTest
@@ -253,6 +264,278 @@ contract FactoryCoverageTest is Test {
         assertEq(address(freezeContract.FREEZE_CONDITION()), address(payerCond));
         assertEq(address(freezeContract.UNFREEZE_CONDITION()), address(payerCond));
         assertEq(freezeContract.FREEZE_DURATION(), 3 days);
+    }
+
+    // ============ AndConditionFactory ============
+
+    function test_AndConditionFactory_Deploy() public {
+        AndConditionFactory factory = new AndConditionFactory();
+        ICondition[] memory conds = new ICondition[](2);
+        conds[0] = ICondition(address(new PayerCondition()));
+        conds[1] = ICondition(address(new ReceiverCondition()));
+
+        address deployed = factory.deploy(conds);
+        assertTrue(deployed != address(0), "AndCondition should be deployed");
+        assertEq(AndCondition(deployed).conditionCount(), 2, "Should have 2 conditions");
+    }
+
+    function test_AndConditionFactory_IdempotentDeploy() public {
+        AndConditionFactory factory = new AndConditionFactory();
+        ICondition[] memory conds = new ICondition[](1);
+        conds[0] = ICondition(address(new PayerCondition()));
+
+        address first = factory.deploy(conds);
+        address second = factory.deploy(conds);
+        assertEq(first, second, "Same conditions should return same address");
+    }
+
+    function test_AndConditionFactory_ComputeAddress() public {
+        AndConditionFactory factory = new AndConditionFactory();
+        ICondition[] memory conds = new ICondition[](1);
+        conds[0] = ICondition(address(new PayerCondition()));
+
+        address predicted = factory.computeAddress(conds);
+        address actual = factory.deploy(conds);
+        assertEq(predicted, actual, "Predicted address should match actual");
+    }
+
+    function test_AndConditionFactory_GetDeployed() public {
+        AndConditionFactory factory = new AndConditionFactory();
+        ICondition[] memory conds = new ICondition[](1);
+        conds[0] = ICondition(address(new PayerCondition()));
+
+        assertEq(factory.getDeployed(conds), address(0), "Should be zero before deployment");
+        address deployed = factory.deploy(conds);
+        assertEq(factory.getDeployed(conds), deployed, "Should return deployed address");
+    }
+
+    function test_AndConditionFactory_NoConditions_Reverts() public {
+        AndConditionFactory factory = new AndConditionFactory();
+        ICondition[] memory conds = new ICondition[](0);
+        vm.expectRevert(AndConditionFactory.NoConditions.selector);
+        factory.deploy(conds);
+    }
+
+    function test_AndConditionFactory_TooManyConditions_Reverts() public {
+        AndConditionFactory factory = new AndConditionFactory();
+        ICondition[] memory conds = new ICondition[](11);
+        for (uint256 i = 0; i < 11; i++) {
+            conds[i] = ICondition(address(new PayerCondition()));
+        }
+        vm.expectRevert(AndConditionFactory.TooManyConditions.selector);
+        factory.deploy(conds);
+    }
+
+    function test_AndConditionFactory_GetKey() public {
+        AndConditionFactory factory = new AndConditionFactory();
+        ICondition[] memory conds1 = new ICondition[](1);
+        conds1[0] = ICondition(address(new PayerCondition()));
+        ICondition[] memory conds2 = new ICondition[](1);
+        conds2[0] = ICondition(address(new ReceiverCondition()));
+
+        bytes32 key1 = factory.getKey(conds1);
+        bytes32 key2 = factory.getKey(conds2);
+        assertTrue(key1 != key2, "Different conditions should produce different keys");
+    }
+
+    // ============ NotConditionFactory ============
+
+    function test_NotConditionFactory_Deploy() public {
+        NotConditionFactory factory = new NotConditionFactory();
+        ICondition cond = ICondition(address(new PayerCondition()));
+
+        address deployed = factory.deploy(cond);
+        assertTrue(deployed != address(0), "NotCondition should be deployed");
+    }
+
+    function test_NotConditionFactory_IdempotentDeploy() public {
+        NotConditionFactory factory = new NotConditionFactory();
+        ICondition cond = ICondition(address(new PayerCondition()));
+
+        address first = factory.deploy(cond);
+        address second = factory.deploy(cond);
+        assertEq(first, second, "Same condition should return same address");
+    }
+
+    function test_NotConditionFactory_ComputeAddress() public {
+        NotConditionFactory factory = new NotConditionFactory();
+        ICondition cond = ICondition(address(new PayerCondition()));
+
+        address predicted = factory.computeAddress(cond);
+        address actual = factory.deploy(cond);
+        assertEq(predicted, actual, "Predicted address should match actual");
+    }
+
+    function test_NotConditionFactory_GetDeployed() public {
+        NotConditionFactory factory = new NotConditionFactory();
+        ICondition cond = ICondition(address(new PayerCondition()));
+
+        assertEq(factory.getDeployed(cond), address(0), "Should be zero before deployment");
+        address deployed = factory.deploy(cond);
+        assertEq(factory.getDeployed(cond), deployed, "Should return deployed address");
+    }
+
+    function test_NotConditionFactory_ZeroCondition_Reverts() public {
+        NotConditionFactory factory = new NotConditionFactory();
+        vm.expectRevert(NotConditionFactory.ZeroCondition.selector);
+        factory.deploy(ICondition(address(0)));
+    }
+
+    function test_NotConditionFactory_GetKey() public {
+        NotConditionFactory factory = new NotConditionFactory();
+        ICondition cond1 = ICondition(address(new PayerCondition()));
+        ICondition cond2 = ICondition(address(new ReceiverCondition()));
+
+        bytes32 key1 = factory.getKey(cond1);
+        bytes32 key2 = factory.getKey(cond2);
+        assertTrue(key1 != key2, "Different conditions should produce different keys");
+    }
+
+    // ============ OrConditionFactory ============
+
+    function test_OrConditionFactory_Deploy() public {
+        OrConditionFactory factory = new OrConditionFactory();
+        ICondition[] memory conds = new ICondition[](2);
+        conds[0] = ICondition(address(new PayerCondition()));
+        conds[1] = ICondition(address(new ReceiverCondition()));
+
+        address deployed = factory.deploy(conds);
+        assertTrue(deployed != address(0), "OrCondition should be deployed");
+        assertEq(OrCondition(deployed).conditionCount(), 2, "Should have 2 conditions");
+    }
+
+    function test_OrConditionFactory_IdempotentDeploy() public {
+        OrConditionFactory factory = new OrConditionFactory();
+        ICondition[] memory conds = new ICondition[](1);
+        conds[0] = ICondition(address(new PayerCondition()));
+
+        address first = factory.deploy(conds);
+        address second = factory.deploy(conds);
+        assertEq(first, second, "Same conditions should return same address");
+    }
+
+    function test_OrConditionFactory_ComputeAddress() public {
+        OrConditionFactory factory = new OrConditionFactory();
+        ICondition[] memory conds = new ICondition[](1);
+        conds[0] = ICondition(address(new PayerCondition()));
+
+        address predicted = factory.computeAddress(conds);
+        address actual = factory.deploy(conds);
+        assertEq(predicted, actual, "Predicted address should match actual");
+    }
+
+    function test_OrConditionFactory_GetDeployed() public {
+        OrConditionFactory factory = new OrConditionFactory();
+        ICondition[] memory conds = new ICondition[](1);
+        conds[0] = ICondition(address(new PayerCondition()));
+
+        assertEq(factory.getDeployed(conds), address(0), "Should be zero before deployment");
+        address deployed = factory.deploy(conds);
+        assertEq(factory.getDeployed(conds), deployed, "Should return deployed address");
+    }
+
+    function test_OrConditionFactory_NoConditions_Reverts() public {
+        OrConditionFactory factory = new OrConditionFactory();
+        ICondition[] memory conds = new ICondition[](0);
+        vm.expectRevert(OrConditionFactory.NoConditions.selector);
+        factory.deploy(conds);
+    }
+
+    function test_OrConditionFactory_TooManyConditions_Reverts() public {
+        OrConditionFactory factory = new OrConditionFactory();
+        ICondition[] memory conds = new ICondition[](11);
+        for (uint256 i = 0; i < 11; i++) {
+            conds[i] = ICondition(address(new PayerCondition()));
+        }
+        vm.expectRevert(OrConditionFactory.TooManyConditions.selector);
+        factory.deploy(conds);
+    }
+
+    function test_OrConditionFactory_GetKey() public {
+        OrConditionFactory factory = new OrConditionFactory();
+        ICondition[] memory conds1 = new ICondition[](1);
+        conds1[0] = ICondition(address(new PayerCondition()));
+        ICondition[] memory conds2 = new ICondition[](1);
+        conds2[0] = ICondition(address(new ReceiverCondition()));
+
+        bytes32 key1 = factory.getKey(conds1);
+        bytes32 key2 = factory.getKey(conds2);
+        assertTrue(key1 != key2, "Different conditions should produce different keys");
+    }
+
+    // ============ RecorderCombinatorFactory ============
+
+    function test_RecorderCombinatorFactory_Deploy() public {
+        RecorderCombinatorFactory factory = new RecorderCombinatorFactory();
+        IRecorder[] memory recs = new IRecorder[](2);
+        recs[0] = IRecorder(address(new AuthorizationTimeRecorder(address(escrow), bytes32(0))));
+        recs[1] = IRecorder(address(new AuthorizationTimeRecorder(address(escrow), bytes32(0))));
+
+        address deployed = factory.deploy(recs);
+        assertTrue(deployed != address(0), "RecorderCombinator should be deployed");
+        assertEq(RecorderCombinator(deployed).getRecorderCount(), 2, "Should have 2 recorders");
+    }
+
+    function test_RecorderCombinatorFactory_IdempotentDeploy() public {
+        RecorderCombinatorFactory factory = new RecorderCombinatorFactory();
+        IRecorder rec = IRecorder(address(new AuthorizationTimeRecorder(address(escrow), bytes32(0))));
+        IRecorder[] memory recs = new IRecorder[](1);
+        recs[0] = rec;
+
+        address first = factory.deploy(recs);
+        address second = factory.deploy(recs);
+        assertEq(first, second, "Same recorders should return same address");
+    }
+
+    function test_RecorderCombinatorFactory_ComputeAddress() public {
+        RecorderCombinatorFactory factory = new RecorderCombinatorFactory();
+        IRecorder[] memory recs = new IRecorder[](1);
+        recs[0] = IRecorder(address(new AuthorizationTimeRecorder(address(escrow), bytes32(0))));
+
+        address predicted = factory.computeAddress(recs);
+        address actual = factory.deploy(recs);
+        assertEq(predicted, actual, "Predicted address should match actual");
+    }
+
+    function test_RecorderCombinatorFactory_GetDeployed() public {
+        RecorderCombinatorFactory factory = new RecorderCombinatorFactory();
+        IRecorder[] memory recs = new IRecorder[](1);
+        recs[0] = IRecorder(address(new AuthorizationTimeRecorder(address(escrow), bytes32(0))));
+
+        assertEq(factory.getDeployed(recs), address(0), "Should be zero before deployment");
+        address deployed = factory.deploy(recs);
+        assertEq(factory.getDeployed(recs), deployed, "Should return deployed address");
+    }
+
+    function test_RecorderCombinatorFactory_EmptyRecorders_Reverts() public {
+        RecorderCombinatorFactory factory = new RecorderCombinatorFactory();
+        IRecorder[] memory recs = new IRecorder[](0);
+        vm.expectRevert(RecorderCombinatorFactory.EmptyRecorders.selector);
+        factory.deploy(recs);
+    }
+
+    function test_RecorderCombinatorFactory_TooManyRecorders_Reverts() public {
+        RecorderCombinatorFactory factory = new RecorderCombinatorFactory();
+        IRecorder[] memory recs = new IRecorder[](11);
+        for (uint256 i = 0; i < 11; i++) {
+            recs[i] = IRecorder(address(new AuthorizationTimeRecorder(address(escrow), bytes32(0))));
+        }
+        vm.expectRevert(RecorderCombinatorFactory.TooManyRecorders.selector);
+        factory.deploy(recs);
+    }
+
+    function test_RecorderCombinatorFactory_GetKey() public {
+        RecorderCombinatorFactory factory = new RecorderCombinatorFactory();
+        IRecorder rec1 = IRecorder(address(new AuthorizationTimeRecorder(address(escrow), bytes32(0))));
+        IRecorder rec2 = IRecorder(address(new AuthorizationTimeRecorder(address(escrow), bytes32(0))));
+        IRecorder[] memory recs1 = new IRecorder[](1);
+        recs1[0] = rec1;
+        IRecorder[] memory recs2 = new IRecorder[](1);
+        recs2[0] = rec2;
+
+        bytes32 key1 = factory.getKey(recs1);
+        bytes32 key2 = factory.getKey(recs2);
+        assertTrue(key1 != key2, "Different recorders should produce different keys");
     }
 
     // ============ PaymentOperatorFactory ============
