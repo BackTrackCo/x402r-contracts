@@ -26,6 +26,7 @@ arbitrum = "${ARBITRUM_RPC_URL}"
 celo = "${CELO_RPC_URL}"
 monad = "${MONAD_RPC_URL}"
 avalanche = "${AVALANCHE_RPC_URL}"
+optimism = "${OPTIMISM_RPC_URL}"
 
 # Etherscan / block explorer verification configuration
 # API keys are read from environment variables (set in .env file)
@@ -40,6 +41,7 @@ arbitrum = { key = "${ARBISCAN_API_KEY}", url = "https://api.arbiscan.io/api" }
 celo = { key = "${CELOSCAN_API_KEY}", url = "https://api.celoscan.io/api" }
 monad = { key = "${MONADSCAN_API_KEY}", url = "https://api.monadscan.com/api" }
 avalanche = { key = "${SNOWSCAN_API_KEY}", url = "https://api.snowscan.xyz/api" }
+optimism = { key = "${OPTIMISM_ETHERSCAN_API_KEY}", url = "https://api-optimistic.etherscan.io/api" }
 
 # CI profile - used in GitHub Actions
 # Coverage threshold enforced in .github/workflows/ci.yml (target: 80%)

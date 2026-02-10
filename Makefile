@@ -1,6 +1,6 @@
 # Makefile for x402r-contracts deployment and management
 
-.PHONY: help deploy-testnet deploy-mainnet verify-owner test coverage clean
+.PHONY: help deploy-testnet deploy-mainnet deploy-optimism verify-owner test coverage clean
 
 # Default target
 help:
@@ -54,6 +54,27 @@ deploy-mainnet:
 		--verify \
 		--slow \
 		-vvv
+
+# Optimism deployment (full chain)
+deploy-optimism:
+	@echo "⚠️  OPTIMISM MAINNET DEPLOYMENT"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo ""
+	@echo "🔍 Verify deployer has ETH on Optimism"
+	@echo "   https://optimistic.etherscan.io"
+	@echo ""
+	@read -p "⚠️  Confirm deployment to Optimism mainnet [y/N]: " confirm && [ "$$confirm" = "y" ] || (echo "Deployment cancelled" && exit 1)
+	@echo ""
+	@echo "🚀 Starting Optimism deployment..."
+	@echo ""
+	USDC_ADDRESS=0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85 \
+	TVL_LIMIT=100000000000 \
+	forge script script/DeployAllChain.s.sol \
+		--rpc-url optimism \
+		--broadcast \
+		--verify \
+		--slow \
+		-vvvv
 
 # Verify owner address is a contract
 verify-owner:
