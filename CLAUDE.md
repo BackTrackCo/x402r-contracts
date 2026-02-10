@@ -47,6 +47,10 @@ forge script script/<Script>.s.sol --rpc-url <RPC_URL> -vvvv
 forge script script/<Script>.s.sol --rpc-url <RPC_URL> --broadcast --verify -vvvv
 ```
 
+## Licensing
+
+All Solidity files in `src/` and `script/` MUST use `// SPDX-License-Identifier: BUSL-1.1`. Never use MIT or any other license for new contracts or scripts.
+
 ## Code Standards
 
 - **CEI Pattern (Checks-Effects-Interactions)**: All state-modifying functions MUST follow CEI ordering:
