@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
-import {DisputeEvidence} from "../src/evidence/DisputeEvidence.sol";
+import {RefundRequestEvidence} from "../src/evidence/RefundRequestEvidence.sol";
 import {RefundRequest} from "../src/requests/refund/RefundRequest.sol";
 import {PaymentOperator} from "../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
@@ -15,8 +15,8 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 
-contract DisputeEvidenceTest is Test {
-    DisputeEvidence public disputeEvidence;
+contract RefundRequestEvidenceTest is Test {
+    RefundRequestEvidence public refundRequestEvidence;
     RefundRequest public refundRequest;
     PaymentOperator public operator;
     PaymentOperatorFactory public operatorFactory;
@@ -97,7 +97,7 @@ contract DisputeEvidenceTest is Test {
 
         // Deploy refund request and evidence contracts
         refundRequest = new RefundRequest();
-        disputeEvidence = new DisputeEvidence(address(refundRequest));
+        refundRequestEvidence = new RefundRequestEvidence(address(refundRequest));
 
         // Setup balances
         token.mint(payer, INITIAL_BALANCE);
@@ -176,9 +176,9 @@ contract DisputeEvidenceTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizeAndRequestRefund();
 
         vm.prank(payer);
-        disputeEvidence.submitEvidence(paymentInfo, 0, "QmPayerEvidence123");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmPayerEvidence123");
 
-        DisputeEvidence.Evidence memory ev = disputeEvidence.getEvidence(paymentInfo, 0, 0);
+        RefundRequestEvidence.Evidence memory ev = refundRequestEvidence.getEvidence(paymentInfo, 0, 0);
         assertEq(ev.submitter, payer);
         assertEq(uint256(ev.role), uint256(SubmitterRole.Payer));
         assertEq(ev.timestamp, uint48(block.timestamp));
@@ -189,9 +189,9 @@ contract DisputeEvidenceTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizeAndRequestRefund();
 
         vm.prank(receiver);
-        disputeEvidence.submitEvidence(paymentInfo, 0, "QmReceiverEvidence456");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmReceiverEvidence456");
 
-        DisputeEvidence.Evidence memory ev = disputeEvidence.getEvidence(paymentInfo, 0, 0);
+        RefundRequestEvidence.Evidence memory ev = refundRequestEvidence.getEvidence(paymentInfo, 0, 0);
         assertEq(ev.submitter, receiver);
         assertEq(uint256(ev.role), uint256(SubmitterRole.Receiver));
         assertEq(ev.cid, "QmReceiverEvidence456");
@@ -201,9 +201,9 @@ contract DisputeEvidenceTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizeAndRequestRefund();
 
         vm.prank(designatedAddress);
-        disputeEvidence.submitEvidence(paymentInfo, 0, "QmArbiterEvidence789");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmArbiterEvidence789");
 
-        DisputeEvidence.Evidence memory ev = disputeEvidence.getEvidence(paymentInfo, 0, 0);
+        RefundRequestEvidence.Evidence memory ev = refundRequestEvidence.getEvidence(paymentInfo, 0, 0);
         assertEq(ev.submitter, designatedAddress);
         assertEq(uint256(ev.role), uint256(SubmitterRole.Arbiter));
         assertEq(ev.cid, "QmArbiterEvidence789");
@@ -215,7 +215,7 @@ contract DisputeEvidenceTest is Test {
         address randomAddress = makeAddr("random");
         vm.prank(randomAddress);
         vm.expectRevert(NotPayerReceiverOrArbiter.selector);
-        disputeEvidence.submitEvidence(paymentInfo, 0, "QmUnauthorized");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmUnauthorized");
     }
 
     function test_submitEvidence_emptyCid() public {
@@ -223,7 +223,7 @@ contract DisputeEvidenceTest is Test {
 
         vm.prank(payer);
         vm.expectRevert(EmptyCid.selector);
-        disputeEvidence.submitEvidence(paymentInfo, 0, "");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "");
     }
 
     function test_submitEvidence_noRefundRequest() public {
@@ -236,7 +236,7 @@ contract DisputeEvidenceTest is Test {
 
         vm.prank(payer);
         vm.expectRevert(RefundRequestRequired.selector);
-        disputeEvidence.submitEvidence(paymentInfo, 0, "QmNoRefund");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmNoRefund");
     }
 
     function test_submitEvidence_appendOnly() public {
@@ -244,21 +244,21 @@ contract DisputeEvidenceTest is Test {
 
         // Submit 3 evidence entries
         vm.prank(payer);
-        disputeEvidence.submitEvidence(paymentInfo, 0, "QmFirst");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmFirst");
 
         vm.prank(payer);
-        disputeEvidence.submitEvidence(paymentInfo, 0, "QmSecond");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmSecond");
 
         vm.prank(payer);
-        disputeEvidence.submitEvidence(paymentInfo, 0, "QmThird");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmThird");
 
         // Verify count incremented correctly
-        assertEq(disputeEvidence.getEvidenceCount(paymentInfo, 0), 3);
+        assertEq(refundRequestEvidence.getEvidenceCount(paymentInfo, 0), 3);
 
         // Verify each entry
-        DisputeEvidence.Evidence memory ev0 = disputeEvidence.getEvidence(paymentInfo, 0, 0);
-        DisputeEvidence.Evidence memory ev1 = disputeEvidence.getEvidence(paymentInfo, 0, 1);
-        DisputeEvidence.Evidence memory ev2 = disputeEvidence.getEvidence(paymentInfo, 0, 2);
+        RefundRequestEvidence.Evidence memory ev0 = refundRequestEvidence.getEvidence(paymentInfo, 0, 0);
+        RefundRequestEvidence.Evidence memory ev1 = refundRequestEvidence.getEvidence(paymentInfo, 0, 1);
+        RefundRequestEvidence.Evidence memory ev2 = refundRequestEvidence.getEvidence(paymentInfo, 0, 2);
 
         assertEq(ev0.cid, "QmFirst");
         assertEq(ev1.cid, "QmSecond");
@@ -273,9 +273,9 @@ contract DisputeEvidenceTest is Test {
         vm.warp(block.timestamp + 100);
 
         vm.prank(receiver);
-        disputeEvidence.submitEvidence(paymentInfo, 0, "QmViewTest");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmViewTest");
 
-        DisputeEvidence.Evidence memory ev = disputeEvidence.getEvidence(paymentInfo, 0, 0);
+        RefundRequestEvidence.Evidence memory ev = refundRequestEvidence.getEvidence(paymentInfo, 0, 0);
         assertEq(ev.submitter, receiver);
         assertEq(uint256(ev.role), uint256(SubmitterRole.Receiver));
         assertEq(ev.timestamp, uint48(block.timestamp));
@@ -285,8 +285,8 @@ contract DisputeEvidenceTest is Test {
     function test_getEvidence_revertsOutOfBounds() public {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizeAndRequestRefund();
 
-        vm.expectRevert(DisputeEvidence.IndexOutOfBounds.selector);
-        disputeEvidence.getEvidence(paymentInfo, 0, 0);
+        vm.expectRevert(RefundRequestEvidence.IndexOutOfBounds.selector);
+        refundRequestEvidence.getEvidence(paymentInfo, 0, 0);
     }
 
     function test_getEvidenceBatch() public {
@@ -295,20 +295,20 @@ contract DisputeEvidenceTest is Test {
         // Submit 5 evidence entries
         for (uint256 i = 0; i < 5; i++) {
             vm.prank(payer);
-            disputeEvidence.submitEvidence(
+            refundRequestEvidence.submitEvidence(
                 paymentInfo, 0, string(abi.encodePacked("QmEvidence", bytes1(uint8(48 + i))))
             );
         }
 
         // Get first 3
-        (DisputeEvidence.Evidence[] memory entries, uint256 total) =
-            disputeEvidence.getEvidenceBatch(paymentInfo, 0, 0, 3);
+        (RefundRequestEvidence.Evidence[] memory entries, uint256 total) =
+            refundRequestEvidence.getEvidenceBatch(paymentInfo, 0, 0, 3);
         assertEq(total, 5);
         assertEq(entries.length, 3);
 
         // Get remaining 2
-        (DisputeEvidence.Evidence[] memory entries2, uint256 total2) =
-            disputeEvidence.getEvidenceBatch(paymentInfo, 0, 3, 3);
+        (RefundRequestEvidence.Evidence[] memory entries2, uint256 total2) =
+            refundRequestEvidence.getEvidenceBatch(paymentInfo, 0, 3, 3);
         assertEq(total2, 5);
         assertEq(entries2.length, 2);
     }
@@ -317,10 +317,10 @@ contract DisputeEvidenceTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizeAndRequestRefund();
 
         vm.prank(payer);
-        disputeEvidence.submitEvidence(paymentInfo, 0, "QmSingle");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmSingle");
 
-        (DisputeEvidence.Evidence[] memory entries, uint256 total) =
-            disputeEvidence.getEvidenceBatch(paymentInfo, 0, 10, 5);
+        (RefundRequestEvidence.Evidence[] memory entries, uint256 total) =
+            refundRequestEvidence.getEvidenceBatch(paymentInfo, 0, 10, 5);
         assertEq(total, 1);
         assertEq(entries.length, 0);
     }
@@ -329,10 +329,10 @@ contract DisputeEvidenceTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizeAndRequestRefund();
 
         vm.prank(payer);
-        disputeEvidence.submitEvidence(paymentInfo, 0, "QmSingle");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmSingle");
 
-        (DisputeEvidence.Evidence[] memory entries, uint256 total) =
-            disputeEvidence.getEvidenceBatch(paymentInfo, 0, 0, 0);
+        (RefundRequestEvidence.Evidence[] memory entries, uint256 total) =
+            refundRequestEvidence.getEvidenceBatch(paymentInfo, 0, 0, 0);
         assertEq(total, 1);
         assertEq(entries.length, 0);
     }
@@ -340,15 +340,15 @@ contract DisputeEvidenceTest is Test {
     function test_getEvidenceCount() public {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizeAndRequestRefund();
 
-        assertEq(disputeEvidence.getEvidenceCount(paymentInfo, 0), 0);
+        assertEq(refundRequestEvidence.getEvidenceCount(paymentInfo, 0), 0);
 
         vm.prank(payer);
-        disputeEvidence.submitEvidence(paymentInfo, 0, "QmOne");
-        assertEq(disputeEvidence.getEvidenceCount(paymentInfo, 0), 1);
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmOne");
+        assertEq(refundRequestEvidence.getEvidenceCount(paymentInfo, 0), 1);
 
         vm.prank(receiver);
-        disputeEvidence.submitEvidence(paymentInfo, 0, "QmTwo");
-        assertEq(disputeEvidence.getEvidenceCount(paymentInfo, 0), 2);
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmTwo");
+        assertEq(refundRequestEvidence.getEvidenceCount(paymentInfo, 0), 2);
     }
 
     // ============ Arbiter Edge Cases ============
@@ -358,17 +358,17 @@ contract DisputeEvidenceTest is Test {
 
         // Payer and receiver should still work
         vm.prank(payer);
-        disputeEvidence.submitEvidence(paymentInfo, 0, "QmPayerOk");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmPayerOk");
 
         vm.prank(receiver);
-        disputeEvidence.submitEvidence(paymentInfo, 0, "QmReceiverOk");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmReceiverOk");
 
         // Designated address is NOT arbiter here (no condition configured)
         vm.prank(designatedAddress);
         vm.expectRevert(NotPayerReceiverOrArbiter.selector);
-        disputeEvidence.submitEvidence(paymentInfo, 0, "QmShouldFail");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmShouldFail");
 
-        assertEq(disputeEvidence.getEvidenceCount(paymentInfo, 0), 2);
+        assertEq(refundRequestEvidence.getEvidenceCount(paymentInfo, 0), 2);
     }
 
     // ============ Multi-Party Test ============
@@ -378,21 +378,21 @@ contract DisputeEvidenceTest is Test {
 
         // All three parties submit evidence
         vm.prank(payer);
-        disputeEvidence.submitEvidence(paymentInfo, 0, "QmPayerClaim");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmPayerClaim");
 
         vm.prank(receiver);
-        disputeEvidence.submitEvidence(paymentInfo, 0, "QmReceiverResponse");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmReceiverResponse");
 
         vm.prank(designatedAddress);
-        disputeEvidence.submitEvidence(paymentInfo, 0, "QmArbiterAnalysis");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmArbiterAnalysis");
 
         // Verify count
-        assertEq(disputeEvidence.getEvidenceCount(paymentInfo, 0), 3);
+        assertEq(refundRequestEvidence.getEvidenceCount(paymentInfo, 0), 3);
 
         // Verify roles are correct
-        DisputeEvidence.Evidence memory ev0 = disputeEvidence.getEvidence(paymentInfo, 0, 0);
-        DisputeEvidence.Evidence memory ev1 = disputeEvidence.getEvidence(paymentInfo, 0, 1);
-        DisputeEvidence.Evidence memory ev2 = disputeEvidence.getEvidence(paymentInfo, 0, 2);
+        RefundRequestEvidence.Evidence memory ev0 = refundRequestEvidence.getEvidence(paymentInfo, 0, 0);
+        RefundRequestEvidence.Evidence memory ev1 = refundRequestEvidence.getEvidence(paymentInfo, 0, 1);
+        RefundRequestEvidence.Evidence memory ev2 = refundRequestEvidence.getEvidence(paymentInfo, 0, 2);
 
         assertEq(uint256(ev0.role), uint256(SubmitterRole.Payer));
         assertEq(uint256(ev1.role), uint256(SubmitterRole.Receiver));
@@ -411,6 +411,6 @@ contract DisputeEvidenceTest is Test {
 
         vm.prank(payer);
         vm.expectRevert(InvalidOperator.selector);
-        disputeEvidence.submitEvidence(paymentInfo, 0, "QmBadOperator");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmBadOperator");
     }
 }

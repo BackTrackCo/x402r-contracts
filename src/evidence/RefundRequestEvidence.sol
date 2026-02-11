@@ -5,14 +5,14 @@ pragma solidity ^0.8.28;
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PaymentOperator} from "../operator/payment/PaymentOperator.sol";
 import {RefundRequest} from "../requests/refund/RefundRequest.sol";
-import {DisputeEvidenceAccess} from "./DisputeEvidenceAccess.sol";
+import {RefundRequestEvidenceAccess} from "./RefundRequestEvidenceAccess.sol";
 import {SubmitterRole} from "./types/Types.sol";
 import {EmptyCid, RefundRequestRequired} from "./types/Errors.sol";
 import {EvidenceSubmitted} from "./types/Events.sol";
 
 /**
- * @title DisputeEvidence
- * @notice On-chain evidence registry for dispute resolution tied to refund requests.
+ * @title RefundRequestEvidence
+ * @notice On-chain evidence registry tied to refund requests.
  * @dev Append-only: evidence entries cannot be updated or deleted.
  *      Payer, receiver, and arbiter can each submit IPFS CIDs as evidence entries,
  *      creating a permanent, verifiable audit trail.
@@ -20,7 +20,7 @@ import {EvidenceSubmitted} from "./types/Events.sol";
  *      Requires a RefundRequest to exist before evidence can be submitted.
  *      Evidence is keyed by (paymentInfoHash, nonce) matching RefundRequest composite keys.
  */
-contract DisputeEvidence is DisputeEvidenceAccess {
+contract RefundRequestEvidence is RefundRequestEvidenceAccess {
     struct Evidence {
         address submitter; // Who submitted (20 bytes)
         SubmitterRole role; // Payer/Receiver/Arbiter (1 byte)
@@ -54,7 +54,7 @@ contract DisputeEvidence is DisputeEvidenceAccess {
 
     // ============ Write Functions ============
 
-    /// @notice Submit evidence for a dispute
+    /// @notice Submit evidence for a refund request
     /// @param paymentInfo PaymentInfo struct identifying the payment
     /// @param nonce Record index identifying which refund request
     /// @param cid IPFS CID pointing to the evidence document

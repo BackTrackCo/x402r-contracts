@@ -10,14 +10,14 @@ import {NotPayerReceiverOrArbiter} from "./types/Errors.sol";
 import {SubmitterRole} from "./types/Types.sol";
 
 /**
- * @title DisputeEvidenceAccess
- * @notice Access control modifiers for DisputeEvidence contract
+ * @title RefundRequestEvidenceAccess
+ * @notice Access control modifiers for RefundRequestEvidence contract
  * @dev Payer, receiver, and arbiter (via REFUND_IN_ESCROW_CONDITION) can submit evidence.
  *      Unlike RefundRequestAccess, evidence submission does not distinguish in-escrow vs post-escrow.
  *      If the caller passes the operator's REFUND_IN_ESCROW_CONDITION, they are treated as arbiter
  *      regardless of escrow state (evidence is informational, not financial).
  */
-abstract contract DisputeEvidenceAccess {
+abstract contract RefundRequestEvidenceAccess {
     // ============ Access Control ============
 
     /**
