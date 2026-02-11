@@ -289,21 +289,6 @@ contract DisputeEvidenceTest is Test {
         disputeEvidence.getEvidence(paymentInfo, 0, 0);
     }
 
-    function test_getEvidenceByKey() public {
-        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizeAndRequestRefund();
-
-        vm.prank(payer);
-        disputeEvidence.submitEvidence(paymentInfo, 0, "QmByKey");
-
-        // Compute composite key manually
-        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
-        bytes32 compositeKey = keccak256(abi.encodePacked(paymentInfoHash, uint256(0)));
-
-        DisputeEvidence.Evidence memory ev = disputeEvidence.getEvidenceByKey(compositeKey, 0);
-        assertEq(ev.submitter, payer);
-        assertEq(ev.cid, "QmByKey");
-    }
-
     function test_getEvidenceBatch() public {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizeAndRequestRefund();
 

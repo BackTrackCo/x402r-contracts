@@ -115,15 +115,6 @@ contract DisputeEvidence is DisputeEvidenceAccess {
         return evidence[compositeKey][index];
     }
 
-    /// @notice Get a single evidence entry by composite key and index
-    /// @param compositeKey The keccak256(paymentInfoHash, nonce) key
-    /// @param index Evidence index (0-based)
-    /// @return The evidence entry
-    function getEvidenceByKey(bytes32 compositeKey, uint256 index) external view returns (Evidence memory) {
-        if (index >= evidenceCount[compositeKey]) revert IndexOutOfBounds();
-        return evidence[compositeKey][index];
-    }
-
     /// @notice Get the count of evidence entries for a payment+nonce
     /// @param paymentInfo PaymentInfo struct
     /// @param nonce Record index
