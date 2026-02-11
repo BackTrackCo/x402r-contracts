@@ -200,6 +200,71 @@ contract CombinatorLimitsTest is Test {
         assertLt(gasUsed, 15000, "Short-circuit should use less gas than evaluating all conditions");
     }
 
+    // ============ Gas Analysis Tests ============
+
+    function test_GasAnalysis_AndCondition_MaxDepth() public {
+        // 10 AlwaysTrue conditions — all must be evaluated (no short-circuit)
+        ICondition[] memory conditions = new ICondition[](10);
+        for (uint256 i = 0; i < 10; i++) {
+            conditions[i] = alwaysTrue;
+        }
+
+        AndCondition andCond = new AndCondition(conditions);
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _dummyPaymentInfo();
+
+        uint256 gasBefore = gasleft();
+        bool result = andCond.check(paymentInfo, 0, address(this));
+        uint256 gasUsed = gasBefore - gasleft();
+
+        assertTrue(result, "And(10 AlwaysTrue) should be true");
+        assertLt(gasUsed, 100000, "And(10 conditions) must use < 100k gas");
+    }
+
+    function test_GasAnalysis_OrCondition_MaxDepth_AllFalse() public {
+        // 10 PayerConditions (all false for address(this)) — worst case, no short-circuit
+        ICondition[] memory conditions = new ICondition[](10);
+        for (uint256 i = 0; i < 10; i++) {
+            conditions[i] = payerCond;
+        }
+
+        OrCondition orCond = new OrCondition(conditions);
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _dummyPaymentInfo();
+
+        uint256 gasBefore = gasleft();
+        bool result = orCond.check(paymentInfo, 0, address(this));
+        uint256 gasUsed = gasBefore - gasleft();
+
+        assertFalse(result, "Or(10 PayerCond) should be false for non-payer");
+        assertLt(gasUsed, 100000, "Or(10 conditions, all false) must use < 100k gas");
+    }
+
+    function test_GasAnalysis_NestedCombinator() public {
+        // Not(And(10 x Or(10))) = 100 leaf checks
+        // Each inner Or has 10 AlwaysTrue conditions, so Or returns true immediately (short-circuit)
+        // But And needs all 10 Or results = true, evaluating at least 10 inner checks
+        ICondition[] memory innerOrs = new ICondition[](10);
+        for (uint256 i = 0; i < 10; i++) {
+            ICondition[] memory orConditions = new ICondition[](10);
+            for (uint256 j = 0; j < 10; j++) {
+                orConditions[j] = alwaysTrue;
+            }
+            innerOrs[i] = ICondition(address(new OrCondition(orConditions)));
+        }
+
+        AndCondition andCond = new AndCondition(innerOrs);
+        NotCondition notCond = new NotCondition(andCond);
+
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _dummyPaymentInfo();
+
+        uint256 gasBefore = gasleft();
+        bool result = notCond.check(paymentInfo, 0, address(this));
+        uint256 gasUsed = gasBefore - gasleft();
+
+        // And(10 x Or(10 AlwaysTrue)) = true, Not(true) = false
+        assertFalse(result, "Not(And(10 x Or(10 AlwaysTrue))) should be false");
+        assertLt(gasUsed, 1000000, "Nested combinator (100 leaf) must use < 1M gas");
+    }
+
     // ============ RecorderCombinator Limit Tests ============
 
     function test_RecorderCombinator_AcceptsMaxRecorders() public {

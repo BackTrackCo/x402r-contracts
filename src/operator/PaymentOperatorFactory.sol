@@ -82,6 +82,10 @@ contract PaymentOperatorFactory {
      *      Uses CREATE2 for deterministic addresses.
      * @param config The operator configuration
      * @return operator The operator address
+     * @custom:security ARBITER LOCKOUT: If releaseCondition is address(0), the receiver can
+     *         front-run an arbiter's updateStatus() by calling release() to drain capturableAmount,
+     *         locking out the arbiter (post-escrow = receiver only). Always set a releaseCondition
+     *         (e.g., EscrowPeriod) when using freeze or refund dispute flows.
      */
     function deployOperator(OperatorConfig calldata config) external returns (address operator) {
         // ============ CHECKS ============

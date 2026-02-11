@@ -110,6 +110,9 @@ contract Freeze is ICondition {
      * @dev When ESCROW_PERIOD_CONTRACT is set, only callable during the escrow period.
      *      Authorization checked via FREEZE_CONDITION.
      * @param paymentInfo PaymentInfo struct for the payment to freeze
+     * @custom:security MEV RISK: A block builder can censor this transaction until after the
+     *         escrow period expires, rendering the freeze ineffective. Submit via private mempool
+     *         (Flashbots Protect / MEV Blocker) when freezing near the deadline.
      */
     function freeze(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external {
         // Check authorization via condition
