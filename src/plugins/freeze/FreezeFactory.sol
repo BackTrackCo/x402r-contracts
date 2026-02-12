@@ -44,6 +44,10 @@ contract FreezeFactory {
      * @param freezeDuration Duration that freezes last (0 = permanent until unfrozen)
      * @param escrowPeriodContract Address of the EscrowPeriod contract (address(0) = unconstrained)
      * @return freezeAddr Address of the deployed Freeze contract
+     * @custom:security RACE CONDITION: When the deployed Freeze is composed with EscrowPeriod via
+     *         AndCondition, a race exists at the escrow period boundary — freeze() reverts
+     *         (FreezeWindowExpired) at the exact moment release becomes possible. Deploy with
+     *         sufficient FREEZE_DURATION margin relative to ESCROW_PERIOD to mitigate.
      */
     function deploy(
         address freezeCondition,
