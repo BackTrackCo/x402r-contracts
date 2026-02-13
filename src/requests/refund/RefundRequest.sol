@@ -65,6 +65,11 @@ contract RefundRequest is RefundRequestAccess {
     mapping(address => mapping(bytes32 => bool)) private receiverRefundRequestExists;
     mapping(address => mapping(bytes32 => bool)) private operatorRefundRequestExists;
 
+    // Cancel history: compositeKey => count of cancellations
+    mapping(bytes32 => uint256) public cancelCount;
+    // Cancel history: compositeKey => cancelIndex => cancelled amount
+    mapping(bytes32 => mapping(uint256 => uint120)) private cancelledAmounts;
+
     /// @notice Request a refund for a specific record of a payment
     /// @param paymentInfo PaymentInfo struct
     /// @param amount Amount being requested for refund
@@ -132,6 +137,11 @@ contract RefundRequest is RefundRequestAccess {
         RefundRequestData storage request = refundRequests[compositeKey];
         if (request.paymentInfoHash == bytes32(0)) revert RequestDoesNotExist();
         if (request.status != RequestStatus.Pending) revert RequestNotPending();
+
+        // Record cancel history before updating status
+        uint256 index = cancelCount[compositeKey];
+        cancelledAmounts[compositeKey][index] = request.amount;
+        cancelCount[compositeKey] = index + 1;
 
         request.status = RequestStatus.Cancelled;
 
@@ -362,5 +372,39 @@ contract RefundRequest is RefundRequestAccess {
     function getOperatorRefundRequest(address operator, uint256 index) external view returns (bytes32) {
         if (index >= operatorRefundRequestCount[operator]) revert IndexOutOfBounds();
         return operatorRefundRequests[operator][index];
+    }
+
+    // ============ Cancel History View Functions ============
+
+    /// @notice Get the number of times a refund request has been cancelled
+    /// @param paymentInfo PaymentInfo struct
+    /// @param nonce Record index
+    /// @return The number of cancellations
+    function getCancelCount(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce)
+        external
+        view
+        returns (uint256)
+    {
+        PaymentOperator operator = PaymentOperator(paymentInfo.operator);
+        bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
+        bytes32 compositeKey = keccak256(abi.encodePacked(paymentInfoHash, nonce));
+        return cancelCount[compositeKey];
+    }
+
+    /// @notice Get the cancelled amount at a specific cancel index
+    /// @param paymentInfo PaymentInfo struct
+    /// @param nonce Record index
+    /// @param cancelIndex The cancel index (0-based, must be < getCancelCount)
+    /// @return The amount that was requested when cancelled
+    function getCancelledAmount(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce, uint256 cancelIndex)
+        external
+        view
+        returns (uint120)
+    {
+        PaymentOperator operator = PaymentOperator(paymentInfo.operator);
+        bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
+        bytes32 compositeKey = keccak256(abi.encodePacked(paymentInfoHash, nonce));
+        if (cancelIndex >= cancelCount[compositeKey]) revert IndexOutOfBounds();
+        return cancelledAmounts[compositeKey][cancelIndex];
     }
 }
