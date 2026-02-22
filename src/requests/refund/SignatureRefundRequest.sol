@@ -60,6 +60,9 @@ contract SignatureRefundRequest {
     mapping(address => mapping(bytes32 => bool)) private receiverRefundRequestExists;
     mapping(address => mapping(bytes32 => bool)) private operatorRefundRequestExists;
 
+    // Reverse lookup: paymentInfoHash => full PaymentInfo
+    mapping(bytes32 => AuthCaptureEscrow.PaymentInfo) private paymentInfoStore;
+
     // Cancel history
     mapping(bytes32 => uint256) public cancelCount;
     mapping(bytes32 => mapping(uint256 => uint120)) private cancelledAmounts;
@@ -119,6 +122,11 @@ contract SignatureRefundRequest {
         RefundRequestData storage existingRequest = refundRequests[compositeKey];
         if (existingRequest.paymentInfoHash != bytes32(0) && existingRequest.status != RequestStatus.Cancelled) {
             revert RequestAlreadyExists();
+        }
+
+        // Store paymentInfo by hash (idempotent — same hash always maps to same data)
+        if (paymentInfoStore[paymentInfoHash].operator == address(0)) {
+            paymentInfoStore[paymentInfoHash] = paymentInfo;
         }
 
         // Create or update refund request
@@ -303,6 +311,14 @@ contract SignatureRefundRequest {
         RefundRequestData memory request = refundRequests[compositeKey];
         if (request.paymentInfoHash == bytes32(0)) revert RequestDoesNotExist();
         return request;
+    }
+
+    /// @notice Retrieve the full PaymentInfo for a given hash. Only available after a refund has been requested.
+    /// @param paymentInfoHash The hash returned by operator.ESCROW().getHash(paymentInfo)
+    function getPaymentInfo(bytes32 paymentInfoHash) external view returns (AuthCaptureEscrow.PaymentInfo memory) {
+        AuthCaptureEscrow.PaymentInfo memory info = paymentInfoStore[paymentInfoHash];
+        if (info.operator == address(0)) revert RequestDoesNotExist();
+        return info;
     }
 
     // ============ Paginated View Functions ============
