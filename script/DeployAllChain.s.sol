@@ -13,8 +13,8 @@ import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
 import {StaticFeeCalculator} from "../src/plugins/fees/static-fee-calculator/StaticFeeCalculator.sol";
 
 // Singletons
-import {RefundRequest} from "../src/requests/refund/RefundRequest.sol";
 import {ArbiterRegistry} from "../src/registry/ArbiterRegistry.sol";
+import {SignatureConditionFactory} from "../src/plugins/conditions/access/signature/SignatureConditionFactory.sol";
 import {UsdcTvlLimit} from "../src/plugins/conditions/tvl-limit/UsdcTvlLimit.sol";
 
 // Condition singletons
@@ -108,8 +108,8 @@ contract DeployAllChain is Script {
         // =============================================
         console.log("\n--- 3. Singletons ---");
 
-        RefundRequest refundRequest = new RefundRequest();
-        console.log("RefundRequest:", address(refundRequest));
+        SignatureConditionFactory sigCondFactory = new SignatureConditionFactory();
+        console.log("SignatureConditionFactory:", address(sigCondFactory));
 
         ArbiterRegistry arbiterRegistry = new ArbiterRegistry();
         console.log("ArbiterRegistry:", address(arbiterRegistry));
@@ -171,7 +171,7 @@ contract DeployAllChain is Script {
         console.log("authCaptureEscrow:", address(escrow));
         console.log("tokenCollector:", address(tokenCollector));
         console.log("protocolFeeConfig:", address(protocolFeeConfig));
-        console.log("refundRequest:", address(refundRequest));
+        console.log("signatureConditionFactory:", address(sigCondFactory));
         console.log("arbiterRegistry:", address(arbiterRegistry));
         console.log("usdcTvlLimit:", address(usdcTvlLimit));
         console.log("paymentOperatorFactory:", address(paymentOperatorFactory));

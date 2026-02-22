@@ -3,7 +3,8 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {RefundRequestEvidence} from "../src/evidence/RefundRequestEvidence.sol";
-import {RefundRequest} from "../src/requests/refund/RefundRequest.sol";
+import {SignatureRefundRequest} from "../src/requests/refund/SignatureRefundRequest.sol";
+import {SignatureCondition} from "../src/plugins/conditions/access/signature/SignatureCondition.sol";
 import {PaymentOperator} from "../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
 import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
@@ -17,7 +18,8 @@ import {MockERC20} from "./mocks/MockERC20.sol";
 
 contract RefundRequestEvidenceTest is Test {
     RefundRequestEvidence public refundRequestEvidence;
-    RefundRequest public refundRequest;
+    SignatureRefundRequest public refundRequest;
+    SignatureCondition public sigCondition;
     PaymentOperator public operator;
     PaymentOperatorFactory public operatorFactory;
     ProtocolFeeConfig public protocolFeeConfig;
@@ -95,8 +97,9 @@ contract RefundRequestEvidenceTest is Test {
         });
         operatorNoArbiter = PaymentOperator(operatorFactory.deployOperator(configNoArbiter));
 
-        // Deploy refund request and evidence contracts
-        refundRequest = new RefundRequest();
+        // Deploy SignatureCondition + SignatureRefundRequest + evidence
+        sigCondition = new SignatureCondition(designatedAddress);
+        refundRequest = new SignatureRefundRequest(address(sigCondition));
         refundRequestEvidence = new RefundRequestEvidence(address(refundRequest));
 
         // Setup balances
