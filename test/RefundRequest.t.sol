@@ -481,4 +481,168 @@ contract RefundRequestTest is Test {
         vm.expectRevert(RefundRequest.IndexOutOfBounds.selector);
         refundRequest.getReceiverRefundRequest(receiver, 1);
     }
+
+    // ============ Cancel History Tests ============
+
+    function test_GetCancelCount_ZeroBeforeAnyCancel() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        assertEq(refundRequest.getCancelCount(paymentInfo, 0), 0, "Cancel count should be 0 before any cancel");
+    }
+
+    function test_GetCancelCount_IncrementAfterCancel() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        vm.prank(payer);
+        refundRequest.cancelRefundRequest(paymentInfo, 0);
+
+        assertEq(refundRequest.getCancelCount(paymentInfo, 0), 1, "Cancel count should be 1 after first cancel");
+    }
+
+    function test_GetCancelledAmount_SingleCancel() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        vm.prank(payer);
+        refundRequest.cancelRefundRequest(paymentInfo, 0);
+
+        assertEq(
+            refundRequest.getCancelledAmount(paymentInfo, 0, 0),
+            uint120(PAYMENT_AMOUNT),
+            "Cancelled amount should match original request amount"
+        );
+    }
+
+    function test_GetCancelledAmount_RevertsOutOfBounds() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        // No cancels yet — index 0 is out of bounds
+        vm.expectRevert(RefundRequest.IndexOutOfBounds.selector);
+        refundRequest.getCancelledAmount(paymentInfo, 0, 0);
+
+        // Cancel once, then index 1 is out of bounds
+        vm.prank(payer);
+        refundRequest.cancelRefundRequest(paymentInfo, 0);
+
+        vm.expectRevert(RefundRequest.IndexOutOfBounds.selector);
+        refundRequest.getCancelledAmount(paymentInfo, 0, 1);
+    }
+
+    function test_CancelHistory_MultipleCancelReRequestCycles() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        // Cycle 1: request 1000, cancel
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+        vm.prank(payer);
+        refundRequest.cancelRefundRequest(paymentInfo, 0);
+
+        assertEq(refundRequest.getCancelCount(paymentInfo, 0), 1);
+        assertEq(refundRequest.getCancelledAmount(paymentInfo, 0, 0), uint120(PAYMENT_AMOUNT));
+
+        // Cycle 2: re-request 500, cancel
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT / 2), 0);
+        vm.prank(payer);
+        refundRequest.cancelRefundRequest(paymentInfo, 0);
+
+        assertEq(refundRequest.getCancelCount(paymentInfo, 0), 2);
+        assertEq(refundRequest.getCancelledAmount(paymentInfo, 0, 0), uint120(PAYMENT_AMOUNT));
+        assertEq(refundRequest.getCancelledAmount(paymentInfo, 0, 1), uint120(PAYMENT_AMOUNT / 2));
+
+        // Cycle 3: re-request 250, cancel
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT / 4), 0);
+        vm.prank(payer);
+        refundRequest.cancelRefundRequest(paymentInfo, 0);
+
+        assertEq(refundRequest.getCancelCount(paymentInfo, 0), 3);
+        assertEq(refundRequest.getCancelledAmount(paymentInfo, 0, 0), uint120(PAYMENT_AMOUNT));
+        assertEq(refundRequest.getCancelledAmount(paymentInfo, 0, 1), uint120(PAYMENT_AMOUNT / 2));
+        assertEq(refundRequest.getCancelledAmount(paymentInfo, 0, 2), uint120(PAYMENT_AMOUNT / 4));
+    }
+
+    function test_CancelHistory_ReRequestAfterCancelPreservesHistory() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        // Request, cancel, then re-request (but don't cancel again)
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+        vm.prank(payer);
+        refundRequest.cancelRefundRequest(paymentInfo, 0);
+
+        // Re-request with different amount — history from first cancel still intact
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT / 2), 0);
+
+        assertEq(refundRequest.getCancelCount(paymentInfo, 0), 1, "Cancel count should still be 1");
+        assertEq(
+            refundRequest.getCancelledAmount(paymentInfo, 0, 0),
+            uint120(PAYMENT_AMOUNT),
+            "First cancelled amount preserved after re-request"
+        );
+
+        // Current request is Pending with the new amount
+        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo, 0);
+        assertEq(uint256(data.status), uint256(RequestStatus.Pending));
+        assertEq(data.amount, uint120(PAYMENT_AMOUNT / 2));
+    }
+
+    function test_CancelHistory_IndependentPerNonce() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        // Request nonce 0 and nonce 1
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT / 2), 0);
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT / 4), 1);
+
+        // Cancel only nonce 0
+        vm.prank(payer);
+        refundRequest.cancelRefundRequest(paymentInfo, 0);
+
+        assertEq(refundRequest.getCancelCount(paymentInfo, 0), 1, "Nonce 0 cancel count should be 1");
+        assertEq(refundRequest.getCancelCount(paymentInfo, 1), 0, "Nonce 1 cancel count should be 0");
+        assertEq(refundRequest.getCancelledAmount(paymentInfo, 0, 0), uint120(PAYMENT_AMOUNT / 2));
+
+        // Cancel nonce 1
+        vm.prank(payer);
+        refundRequest.cancelRefundRequest(paymentInfo, 1);
+
+        assertEq(refundRequest.getCancelCount(paymentInfo, 0), 1, "Nonce 0 cancel count still 1");
+        assertEq(refundRequest.getCancelCount(paymentInfo, 1), 1, "Nonce 1 cancel count should be 1");
+        assertEq(refundRequest.getCancelledAmount(paymentInfo, 1, 0), uint120(PAYMENT_AMOUNT / 4));
+    }
+
+    function test_CancelHistory_CountZeroForNeverRequested() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        // Never requested nonce 0 — cancel count should be 0
+        assertEq(refundRequest.getCancelCount(paymentInfo, 0), 0, "Cancel count should be 0 for unrequested nonce");
+    }
+
+    function test_CancelHistory_PublicCancelCountMapping() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+        vm.prank(payer);
+        refundRequest.cancelRefundRequest(paymentInfo, 0);
+
+        // Verify the public cancelCount mapping is also accessible via compositeKey
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+        bytes32 compositeKey = keccak256(abi.encodePacked(paymentInfoHash, uint256(0)));
+        assertEq(refundRequest.cancelCount(compositeKey), 1, "Public mapping should match getCancelCount");
+    }
 }
