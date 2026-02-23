@@ -4,47 +4,42 @@ pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PaymentOperator} from "../../operator/payment/PaymentOperator.sol";
-import {RefundRequestAccess} from "./RefundRequestAccess.sol";
+import {SignatureCondition} from "../../plugins/conditions/access/signature/SignatureCondition.sol";
 import {RequestStatus} from "../types/Types.sol";
-import {
-    RequestAlreadyExists,
-    RequestDoesNotExist,
-    RequestNotPending,
-    InvalidStatus,
-    FullyRefunded,
-    ZeroRefundAmount
-} from "../types/Errors.sol";
+import {RequestAlreadyExists, RequestDoesNotExist, RequestNotPending, ZeroRefundAmount} from "../types/Errors.sol";
 import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} from "../types/Events.sol";
 
 /**
- * @title RefundRequest
- * @notice Contract for managing refund requests with condition-based authorization.
- * @dev Works with any PaymentOperator. Escrow is source of truth.
- *      Only the payer who made the authorization can create a request.
- *      Receiver can always approve/deny requests.
- *      While in escrow, anyone passing the operator's REFUND_IN_ESCROW_CONDITION can also
- *      approve/deny (address(0) condition = anyone allowed).
- *      Post escrow: only receiver can approve/deny.
- *      Actual refund execution is separate — gated by the operator's conditions.
+ * @title SignatureRefundRequest
+ * @notice Refund request lifecycle with signature-gated approval and atomic condition sync.
+ * @dev NOT an extension of RefundRequest — standalone to prevent the updateStatus() backdoor.
+ *      Approval is the only action gated by signature (atomic with SignatureCondition).
+ *      Deny, refuse, and cancel use msg.sender checks.
  *
- *      Each refund request is keyed by (paymentInfoHash, nonce) where nonce is the
- *      record index from PaymentIndexRecorder. This allows multiple refund requests
- *      per payment (one per charge/action).
- *
- *      Storage uses mapping+counter pattern (matching PaymentIndexRecorder) for
- *      gas-efficient writes and paginated reads without unbounded arrays.
+ *      State machine:
+ *        Pending -> Approved   (signature, atomic condition sync)
+ *        Pending -> Denied     (msg.sender, onlyArbiter)
+ *        Pending -> Refused    (msg.sender, onlyArbiter)
+ *        Pending -> Cancelled  (msg.sender, onlyPayer)
  */
-contract RefundRequest is RefundRequestAccess {
+contract SignatureRefundRequest {
+    /// @notice The SignatureCondition this contract syncs approvals with
+    SignatureCondition public immutable SIGNATURE_CONDITION;
+
     struct RefundRequestData {
-        bytes32 paymentInfoHash; // Hash of PaymentInfo
-        uint256 nonce; // Record index this refund is for
-        uint120 amount; // Amount being requested for refund
-        RequestStatus status; // Current status of the request
+        bytes32 paymentInfoHash;
+        uint256 nonce;
+        uint120 amount;
+        RequestStatus status;
     }
 
     // ============ Errors ============
 
     error IndexOutOfBounds();
+    error NotArbiter();
+    error NotPayer();
+    error InvalidOperator();
+    error ZeroCondition();
 
     // ============ Storage ============
 
@@ -65,16 +60,53 @@ contract RefundRequest is RefundRequestAccess {
     mapping(address => mapping(bytes32 => bool)) private receiverRefundRequestExists;
     mapping(address => mapping(bytes32 => bool)) private operatorRefundRequestExists;
 
-    // Cancel history: compositeKey => count of cancellations
+    // Reverse lookup: paymentInfoHash => full PaymentInfo
+    mapping(bytes32 => AuthCaptureEscrow.PaymentInfo) private paymentInfoStore;
+
+    // Cancel history
     mapping(bytes32 => uint256) public cancelCount;
-    // Cancel history: compositeKey => cancelIndex => cancelled amount
     mapping(bytes32 => mapping(uint256 => uint120)) private cancelledAmounts;
 
-    /// @notice Request a refund for a specific record of a payment
+    // ============ Modifiers ============
+
+    modifier onlyArbiter() {
+        _checkOnlyArbiter();
+        _;
+    }
+
+    modifier onlyPayer(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
+        _checkOnlyPayer(paymentInfo);
+        _;
+    }
+
+    modifier operatorNotZero(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
+        _checkOperatorNotZero(paymentInfo);
+        _;
+    }
+
+    function _checkOnlyArbiter() internal view {
+        if (msg.sender != SIGNATURE_CONDITION.SIGNER()) revert NotArbiter();
+    }
+
+    function _checkOnlyPayer(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) internal view {
+        if (msg.sender != paymentInfo.payer) revert NotPayer();
+    }
+
+    function _checkOperatorNotZero(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) internal pure {
+        if (paymentInfo.operator == address(0)) revert InvalidOperator();
+    }
+
+    constructor(address _signatureCondition) {
+        if (_signatureCondition == address(0)) revert ZeroCondition();
+        SIGNATURE_CONDITION = SignatureCondition(_signatureCondition);
+    }
+
+    // ============ Payer Actions ============
+
+    /// @notice Request a refund. Only payer can call.
     /// @param paymentInfo PaymentInfo struct
     /// @param amount Amount being requested for refund
     /// @param nonce Record index (from PaymentIndexRecorder) identifying which charge
-    /// @dev Only the payer can request a refund
     function requestRefund(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint120 amount, uint256 nonce)
         external
         operatorNotZero(paymentInfo)
@@ -92,6 +124,11 @@ contract RefundRequest is RefundRequestAccess {
             revert RequestAlreadyExists();
         }
 
+        // Store paymentInfo by hash (idempotent — same hash always maps to same data)
+        if (paymentInfoStore[paymentInfoHash].operator == address(0)) {
+            paymentInfoStore[paymentInfoHash] = paymentInfo;
+        }
+
         // Create or update refund request
         refundRequests[compositeKey] = RefundRequestData({
             paymentInfoHash: paymentInfoHash, nonce: nonce, amount: amount, status: RequestStatus.Pending
@@ -105,26 +142,9 @@ contract RefundRequest is RefundRequestAccess {
         emit RefundRequested(paymentInfo, paymentInfo.payer, paymentInfo.receiver, amount, nonce);
     }
 
-    /// @notice Update the status of a refund request
+    /// @notice Cancel a pending refund request. Only payer can call.
     /// @param paymentInfo PaymentInfo struct
     /// @param nonce Record index identifying which refund request
-    /// @param newStatus The new status (Approved or Denied)
-    /// @dev Receiver can always approve/deny. While in escrow, anyone passing the
-    ///      operator's REFUND_IN_ESCROW_CONDITION can also approve/deny.
-    ///      Status can only be changed from Pending to Approved or Denied.
-    function updateStatus(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce, RequestStatus newStatus)
-        external
-        operatorNotZero(paymentInfo)
-        onlyAuthorizedForRefundStatus(paymentInfo)
-    {
-        _updateStatus(paymentInfo, nonce, newStatus);
-    }
-
-    /// @notice Cancel a refund request
-    /// @param paymentInfo PaymentInfo struct
-    /// @param nonce Record index identifying which refund request
-    /// @dev Only the payer who created the request can cancel it
-    ///      Request must be in Pending status
     function cancelRefundRequest(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce)
         external
         operatorNotZero(paymentInfo)
@@ -148,16 +168,73 @@ contract RefundRequest is RefundRequestAccess {
         emit RefundRequestCancelled(paymentInfo, msg.sender, nonce);
     }
 
-    // ============ Internal Functions ============
+    // ============ Signature-Gated (Approval only) ============
 
-    /// @notice Internal function to update refund request status
-    function _updateStatus(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce, RequestStatus newStatus)
+    /// @notice Approve a refund request with the signer's off-chain signature.
+    ///         Atomically: validates sig -> stores approval on SignatureCondition ->
+    ///         updates request status to Approved.
+    ///         Anyone can call — the signature IS the authorization.
+    /// @param paymentInfo PaymentInfo struct
+    /// @param nonce Record index identifying which refund request
+    /// @param amount Maximum approved refund amount
+    /// @param expiry Unix timestamp deadline for the approval (0 = no expiry)
+    /// @param signature The EIP-712 signature from the arbiter
+    function approveWithSignature(
+        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
+        uint256 nonce,
+        uint256 amount,
+        uint48 expiry,
+        bytes calldata signature
+    ) external operatorNotZero(paymentInfo) {
+        PaymentOperator operator = PaymentOperator(paymentInfo.operator);
+        bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
+        bytes32 compositeKey = keccak256(abi.encodePacked(paymentInfoHash, nonce));
+
+        // ============ CHECKS ============
+        RefundRequestData storage request = refundRequests[compositeKey];
+        if (request.paymentInfoHash == bytes32(0)) revert RequestDoesNotExist();
+        if (request.status != RequestStatus.Pending) revert RequestNotPending();
+
+        // ============ INTERACTIONS (reverts roll back everything) ============
+        // Submit to SignatureCondition (reverts if sig invalid — rolls back everything)
+        SIGNATURE_CONDITION.submitApproval(paymentInfoHash, amount, expiry, signature);
+
+        // ============ EFFECTS (atomic with condition sync) ============
+        request.status = RequestStatus.Approved;
+        emit RefundRequestStatusUpdated(paymentInfo, RequestStatus.Pending, RequestStatus.Approved, msg.sender, nonce);
+    }
+
+    // ============ Arbiter Actions (msg.sender) ============
+
+    /// @notice Deny a refund request. Only arbiter can call.
+    ///         Arbiter reviewed evidence and rejects the refund claim.
+    /// @param paymentInfo PaymentInfo struct
+    /// @param nonce Record index identifying which refund request
+    function deny(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce)
+        external
+        operatorNotZero(paymentInfo)
+        onlyArbiter
+    {
+        _setStatus(paymentInfo, nonce, RequestStatus.Denied);
+    }
+
+    /// @notice Refuse a refund request. Only arbiter can call.
+    ///         Arbiter won't consider the request (spam, out of jurisdiction, invalid).
+    /// @param paymentInfo PaymentInfo struct
+    /// @param nonce Record index identifying which refund request
+    function refuse(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce)
+        external
+        operatorNotZero(paymentInfo)
+        onlyArbiter
+    {
+        _setStatus(paymentInfo, nonce, RequestStatus.Refused);
+    }
+
+    // ============ Internal ============
+
+    function _setStatus(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce, RequestStatus newStatus)
         internal
     {
-        if (newStatus != RequestStatus.Approved && newStatus != RequestStatus.Denied) {
-            revert InvalidStatus();
-        }
-
         PaymentOperator operator = PaymentOperator(paymentInfo.operator);
         bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
         bytes32 compositeKey = keccak256(abi.encodePacked(paymentInfoHash, nonce));
@@ -166,19 +243,12 @@ contract RefundRequest is RefundRequestAccess {
         if (request.paymentInfoHash == bytes32(0)) revert RequestDoesNotExist();
         if (request.status != RequestStatus.Pending) revert RequestNotPending();
 
-        // If denying, verify not already fully refunded/voided
-        if (newStatus == RequestStatus.Denied) {
-            (, uint120 capturableAmount, uint120 refundableAmount) = operator.ESCROW().paymentState(paymentInfoHash);
-            if (capturableAmount == 0 && refundableAmount == 0) revert FullyRefunded();
-        }
-
         RequestStatus oldStatus = request.status;
         request.status = newStatus;
 
         emit RefundRequestStatusUpdated(paymentInfo, oldStatus, newStatus, msg.sender, nonce);
     }
 
-    /// @notice Add key to payer's index if not already present (O(1) check)
     function _addPayerRequest(address payer, bytes32 key) internal {
         if (payerRefundRequestExists[payer][key]) return;
         payerRefundRequestExists[payer][key] = true;
@@ -186,7 +256,6 @@ contract RefundRequest is RefundRequestAccess {
         payerRefundRequestCount[payer]++;
     }
 
-    /// @notice Add key to receiver's index if not already present (O(1) check)
     function _addReceiverRequest(address receiver, bytes32 key) internal {
         if (receiverRefundRequestExists[receiver][key]) return;
         receiverRefundRequestExists[receiver][key] = true;
@@ -194,20 +263,15 @@ contract RefundRequest is RefundRequestAccess {
         receiverRefundRequestCount[receiver]++;
     }
 
-    /// @notice Add key to operator's index if not already present (O(1) check)
-    function _addOperatorRequest(address operator, bytes32 key) internal {
-        if (operatorRefundRequestExists[operator][key]) return;
-        operatorRefundRequestExists[operator][key] = true;
-        operatorRefundRequests[operator][operatorRefundRequestCount[operator]] = key;
-        operatorRefundRequestCount[operator]++;
+    function _addOperatorRequest(address op, bytes32 key) internal {
+        if (operatorRefundRequestExists[op][key]) return;
+        operatorRefundRequestExists[op][key] = true;
+        operatorRefundRequests[op][operatorRefundRequestCount[op]] = key;
+        operatorRefundRequestCount[op]++;
     }
 
     // ============ View Functions ============
 
-    /// @notice Get a refund request by PaymentInfo and nonce
-    /// @param paymentInfo PaymentInfo struct
-    /// @param nonce Record index
-    /// @return The refund request data
     function getRefundRequest(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce)
         external
         view
@@ -221,10 +285,6 @@ contract RefundRequest is RefundRequestAccess {
         return request;
     }
 
-    /// @notice Check if a refund request exists
-    /// @param paymentInfo PaymentInfo struct
-    /// @param nonce Record index
-    /// @return True if request exists, false otherwise
     function hasRefundRequest(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce)
         external
         view
@@ -236,10 +296,6 @@ contract RefundRequest is RefundRequestAccess {
         return refundRequests[compositeKey].paymentInfoHash != bytes32(0);
     }
 
-    /// @notice Get the status of a refund request
-    /// @param paymentInfo PaymentInfo struct
-    /// @param nonce Record index
-    /// @return The status of the request
     function getRefundRequestStatus(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce)
         external
         view
@@ -251,135 +307,84 @@ contract RefundRequest is RefundRequestAccess {
         return refundRequests[compositeKey].status;
     }
 
-    /// @notice Get refund request data by composite key
-    /// @param compositeKey The keccak256(paymentInfoHash, nonce) key
-    /// @return The refund request data
     function getRefundRequestByKey(bytes32 compositeKey) external view returns (RefundRequestData memory) {
         RefundRequestData memory request = refundRequests[compositeKey];
         if (request.paymentInfoHash == bytes32(0)) revert RequestDoesNotExist();
         return request;
     }
 
+    /// @notice Retrieve the full PaymentInfo for a given hash. Only available after a refund has been requested.
+    /// @param paymentInfoHash The hash returned by operator.ESCROW().getHash(paymentInfo)
+    function getPaymentInfo(bytes32 paymentInfoHash) external view returns (AuthCaptureEscrow.PaymentInfo memory) {
+        AuthCaptureEscrow.PaymentInfo memory info = paymentInfoStore[paymentInfoHash];
+        if (info.operator == address(0)) revert RequestDoesNotExist();
+        return info;
+    }
+
     // ============ Paginated View Functions ============
 
-    /// @notice Get paginated refund request keys for a payer
-    /// @param payer The payer address
-    /// @param offset Starting index (0-based)
-    /// @param count Number of keys to return
-    /// @return keys Array of composite keys
-    /// @return total Total number of refund requests for this payer
     function getPayerRefundRequests(address payer, uint256 offset, uint256 count)
         external
         view
         returns (bytes32[] memory keys, uint256 total)
     {
         total = payerRefundRequestCount[payer];
-
-        if (offset >= total || count == 0) {
-            return (new bytes32[](0), total);
-        }
-
+        if (offset >= total || count == 0) return (new bytes32[](0), total);
         uint256 remaining = total - offset;
         uint256 actualCount = remaining < count ? remaining : count;
-
         keys = new bytes32[](actualCount);
         for (uint256 i = 0; i < actualCount; i++) {
             keys[i] = payerRefundRequests[payer][offset + i];
         }
-
-        return (keys, total);
     }
 
-    /// @notice Get paginated refund request keys for a receiver
-    /// @param receiver The receiver address
-    /// @param offset Starting index (0-based)
-    /// @param count Number of keys to return
-    /// @return keys Array of composite keys
-    /// @return total Total number of refund requests for this receiver
     function getReceiverRefundRequests(address receiver, uint256 offset, uint256 count)
         external
         view
         returns (bytes32[] memory keys, uint256 total)
     {
         total = receiverRefundRequestCount[receiver];
-
-        if (offset >= total || count == 0) {
-            return (new bytes32[](0), total);
-        }
-
+        if (offset >= total || count == 0) return (new bytes32[](0), total);
         uint256 remaining = total - offset;
         uint256 actualCount = remaining < count ? remaining : count;
-
         keys = new bytes32[](actualCount);
         for (uint256 i = 0; i < actualCount; i++) {
             keys[i] = receiverRefundRequests[receiver][offset + i];
         }
-
-        return (keys, total);
     }
 
-    /// @notice Get a single refund request key by index for a payer
-    /// @param payer The payer address
-    /// @param index Index of the request (0-based)
-    /// @return The composite key at the specified index
+    function getOperatorRefundRequests(address op, uint256 offset, uint256 count)
+        external
+        view
+        returns (bytes32[] memory keys, uint256 total)
+    {
+        total = operatorRefundRequestCount[op];
+        if (offset >= total || count == 0) return (new bytes32[](0), total);
+        uint256 remaining = total - offset;
+        uint256 actualCount = remaining < count ? remaining : count;
+        keys = new bytes32[](actualCount);
+        for (uint256 i = 0; i < actualCount; i++) {
+            keys[i] = operatorRefundRequests[op][offset + i];
+        }
+    }
+
     function getPayerRefundRequest(address payer, uint256 index) external view returns (bytes32) {
         if (index >= payerRefundRequestCount[payer]) revert IndexOutOfBounds();
         return payerRefundRequests[payer][index];
     }
 
-    /// @notice Get a single refund request key by index for a receiver
-    /// @param receiver The receiver address
-    /// @param index Index of the request (0-based)
-    /// @return The composite key at the specified index
     function getReceiverRefundRequest(address receiver, uint256 index) external view returns (bytes32) {
         if (index >= receiverRefundRequestCount[receiver]) revert IndexOutOfBounds();
         return receiverRefundRequests[receiver][index];
     }
 
-    /// @notice Get paginated refund request keys for an operator
-    /// @param operator The operator address
-    /// @param offset Starting index (0-based)
-    /// @param count Number of keys to return
-    /// @return keys Array of composite keys
-    /// @return total Total number of refund requests for this operator
-    /// @dev Useful for arbiters who need to query requests by operators they have arbiter rights on
-    function getOperatorRefundRequests(address operator, uint256 offset, uint256 count)
-        external
-        view
-        returns (bytes32[] memory keys, uint256 total)
-    {
-        total = operatorRefundRequestCount[operator];
-
-        if (offset >= total || count == 0) {
-            return (new bytes32[](0), total);
-        }
-
-        uint256 remaining = total - offset;
-        uint256 actualCount = remaining < count ? remaining : count;
-
-        keys = new bytes32[](actualCount);
-        for (uint256 i = 0; i < actualCount; i++) {
-            keys[i] = operatorRefundRequests[operator][offset + i];
-        }
-
-        return (keys, total);
-    }
-
-    /// @notice Get a single refund request key by index for an operator
-    /// @param operator The operator address
-    /// @param index Index of the request (0-based)
-    /// @return The composite key at the specified index
-    function getOperatorRefundRequest(address operator, uint256 index) external view returns (bytes32) {
-        if (index >= operatorRefundRequestCount[operator]) revert IndexOutOfBounds();
-        return operatorRefundRequests[operator][index];
+    function getOperatorRefundRequest(address op, uint256 index) external view returns (bytes32) {
+        if (index >= operatorRefundRequestCount[op]) revert IndexOutOfBounds();
+        return operatorRefundRequests[op][index];
     }
 
     // ============ Cancel History View Functions ============
 
-    /// @notice Get the number of times a refund request has been cancelled
-    /// @param paymentInfo PaymentInfo struct
-    /// @param nonce Record index
-    /// @return The number of cancellations
     function getCancelCount(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce)
         external
         view
@@ -391,11 +396,6 @@ contract RefundRequest is RefundRequestAccess {
         return cancelCount[compositeKey];
     }
 
-    /// @notice Get the cancelled amount at a specific cancel index
-    /// @param paymentInfo PaymentInfo struct
-    /// @param nonce Record index
-    /// @param cancelIndex The cancel index (0-based, must be < getCancelCount)
-    /// @return The amount that was requested when cancelled
     function getCancelledAmount(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce, uint256 cancelIndex)
         external
         view

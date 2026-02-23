@@ -7,8 +7,8 @@ import {Script, console} from "forge-std/Script.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
 
 // Singletons
-import {RefundRequest} from "../src/requests/refund/RefundRequest.sol";
 import {ArbiterRegistry} from "../src/registry/ArbiterRegistry.sol";
+import {SignatureConditionFactory} from "../src/plugins/conditions/access/signature/SignatureConditionFactory.sol";
 import {UsdcTvlLimit} from "../src/plugins/conditions/tvl-limit/UsdcTvlLimit.sol";
 
 // Condition singletons
@@ -52,8 +52,8 @@ contract DeployEthMainnetRedeploy is Script {
         PaymentOperatorFactory paymentOperatorFactory = new PaymentOperatorFactory(ESCROW, PROTOCOL_FEE_CONFIG);
         console.log("PaymentOperatorFactory:", address(paymentOperatorFactory));
 
-        RefundRequest refundRequest = new RefundRequest();
-        console.log("RefundRequest:", address(refundRequest));
+        SignatureConditionFactory sigCondFactory = new SignatureConditionFactory();
+        console.log("SignatureConditionFactory:", address(sigCondFactory));
 
         ArbiterRegistry arbiterRegistry = new ArbiterRegistry();
         console.log("ArbiterRegistry:", address(arbiterRegistry));
@@ -84,7 +84,7 @@ contract DeployEthMainnetRedeploy is Script {
         console.log("  REDEPLOYMENT SUMMARY");
         console.log("========================================");
         console.log("paymentOperatorFactory:", address(paymentOperatorFactory));
-        console.log("refundRequest:", address(refundRequest));
+        console.log("signatureConditionFactory:", address(sigCondFactory));
         console.log("arbiterRegistry:", address(arbiterRegistry));
         console.log("usdcTvlLimit:", address(usdcTvlLimit));
         console.log("payerCondition:", address(payerCondition));

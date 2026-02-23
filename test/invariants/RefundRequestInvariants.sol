@@ -8,16 +8,17 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {ProtocolFeeConfig} from "../../src/plugins/fees/ProtocolFeeConfig.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
-import {RefundRequest} from "../../src/requests/refund/RefundRequest.sol";
+import {SignatureCondition} from "../../src/plugins/conditions/access/signature/SignatureCondition.sol";
+import {SignatureRefundRequest} from "../../src/requests/refund/SignatureRefundRequest.sol";
 import {RequestStatus} from "../../src/requests/types/Types.sol";
 
 /**
  * @title RefundRequestInvariants
- * @notice Echidna property-based testing for RefundRequest state machine.
- * @dev Verifies that Approved and Denied are terminal states, and only
+ * @notice Echidna property-based testing for SignatureRefundRequest state machine.
+ * @dev Verifies that Approved, Denied, and Refused are terminal states, and only
  *      Pending requests can transition to new states.
  *
- * Key design: Cancelled allows re-request (not terminal), Approved/Denied are terminal.
+ * Key design: Cancelled allows re-request (not terminal), Approved/Denied/Refused are terminal.
  *
  * Usage:
  *   echidna . --contract RefundRequestInvariants --config echidna.yaml
@@ -27,8 +28,11 @@ contract RefundRequestInvariants is Test {
     AuthCaptureEscrow public escrow;
     PreApprovalPaymentCollector public collector;
     MockERC20 public token;
-    RefundRequest public refundRequest;
+    SignatureCondition public sigCondition;
+    SignatureRefundRequest public refundRequest;
 
+    uint256 public arbiterPrivateKey = 0xA11CE;
+    address public arbiter;
     address public payer = address(0x1000);
     address public receiver = address(0x2000);
 
@@ -36,13 +40,15 @@ contract RefundRequestInvariants is Test {
 
     // Ghost state for invariant checking
     bytes32[] public trackedKeys; // compositeKeys
-    mapping(bytes32 => bool) public wasTerminallyResolved; // Approved or Denied
+    mapping(bytes32 => bool) public wasTerminallyResolved; // Approved, Denied, or Refused
     mapping(bytes32 => RequestStatus) public lastKnownStatus;
     mapping(bytes32 => AuthCaptureEscrow.PaymentInfo) private trackedPaymentInfos;
     mapping(bytes32 => uint256) private trackedNonces;
     uint256 public nextSalt;
 
     constructor() {
+        arbiter = vm.addr(arbiterPrivateKey);
+
         escrow = new AuthCaptureEscrow();
         token = new MockERC20("Test Token", "TEST");
         collector = new PreApprovalPaymentCollector(address(escrow));
@@ -66,7 +72,8 @@ contract RefundRequestInvariants is Test {
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
 
-        refundRequest = new RefundRequest();
+        sigCondition = new SignatureCondition(arbiter);
+        refundRequest = new SignatureRefundRequest(address(sigCondition));
 
         token.mint(payer, PAYMENT_AMOUNT * 100);
         vm.prank(payer);
@@ -112,8 +119,11 @@ contract RefundRequestInvariants is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = trackedPaymentInfos[compositeKey];
         uint256 nonce = trackedNonces[compositeKey];
 
-        vm.prank(receiver);
-        try refundRequest.updateStatus(paymentInfo, nonce, RequestStatus.Approved) {
+        // Sign approval
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+        bytes memory sig = _signApproval(paymentInfoHash, PAYMENT_AMOUNT, 0);
+
+        try refundRequest.approveWithSignature(paymentInfo, nonce, PAYMENT_AMOUNT, 0, sig) {
             lastKnownStatus[compositeKey] = RequestStatus.Approved;
             wasTerminallyResolved[compositeKey] = true;
         } catch {}
@@ -127,9 +137,24 @@ contract RefundRequestInvariants is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = trackedPaymentInfos[compositeKey];
         uint256 nonce = trackedNonces[compositeKey];
 
-        vm.prank(receiver);
-        try refundRequest.updateStatus(paymentInfo, nonce, RequestStatus.Denied) {
+        vm.prank(arbiter);
+        try refundRequest.deny(paymentInfo, nonce) {
             lastKnownStatus[compositeKey] = RequestStatus.Denied;
+            wasTerminallyResolved[compositeKey] = true;
+        } catch {}
+    }
+
+    function refuseRefund_fuzz(uint256 keyIndex) public {
+        if (trackedKeys.length == 0) return;
+        uint256 index = keyIndex % trackedKeys.length;
+        bytes32 compositeKey = trackedKeys[index];
+
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = trackedPaymentInfos[compositeKey];
+        uint256 nonce = trackedNonces[compositeKey];
+
+        vm.prank(arbiter);
+        try refundRequest.refuse(paymentInfo, nonce) {
+            lastKnownStatus[compositeKey] = RequestStatus.Refused;
             wasTerminallyResolved[compositeKey] = true;
         } catch {}
     }
@@ -150,30 +175,42 @@ contract RefundRequestInvariants is Test {
 
     // ============ Echidna Invariants ============
 
-    /// @notice Once Approved, a request cannot become Pending, Denied, or Cancelled
+    /// @notice Once Approved, a request cannot change state
     function echidna_approved_is_terminal() public view returns (bool) {
         for (uint256 i = 0; i < trackedKeys.length; i++) {
             bytes32 key = trackedKeys[i];
             if (lastKnownStatus[key] == RequestStatus.Approved) {
-                // If we recorded it as Approved, verify it's still Approved on-chain
-                RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequestByKey(key);
+                SignatureRefundRequest.RefundRequestData memory data = refundRequest.getRefundRequestByKey(key);
                 if (data.status != RequestStatus.Approved) {
-                    return false; // Violation: terminal state changed
+                    return false;
                 }
             }
         }
         return true;
     }
 
-    /// @notice Once Denied, a request cannot become Pending, Approved, or Cancelled
+    /// @notice Once Denied, a request cannot change state
     function echidna_denied_is_terminal() public view returns (bool) {
         for (uint256 i = 0; i < trackedKeys.length; i++) {
             bytes32 key = trackedKeys[i];
             if (lastKnownStatus[key] == RequestStatus.Denied) {
-                // If we recorded it as Denied, verify it's still Denied on-chain
-                RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequestByKey(key);
+                SignatureRefundRequest.RefundRequestData memory data = refundRequest.getRefundRequestByKey(key);
                 if (data.status != RequestStatus.Denied) {
-                    return false; // Violation: terminal state changed
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /// @notice Once Refused, a request cannot change state
+    function echidna_refused_is_terminal() public view returns (bool) {
+        for (uint256 i = 0; i < trackedKeys.length; i++) {
+            bytes32 key = trackedKeys[i];
+            if (lastKnownStatus[key] == RequestStatus.Refused) {
+                SignatureRefundRequest.RefundRequestData memory data = refundRequest.getRefundRequestByKey(key);
+                if (data.status != RequestStatus.Refused) {
+                    return false;
                 }
             }
         }
@@ -184,12 +221,14 @@ contract RefundRequestInvariants is Test {
     function echidna_only_pending_can_transition() public view returns (bool) {
         for (uint256 i = 0; i < trackedKeys.length; i++) {
             bytes32 key = trackedKeys[i];
-            // If it was terminally resolved (Approved/Denied), it must stay that way
             if (wasTerminallyResolved[key]) {
-                RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequestByKey(key);
+                SignatureRefundRequest.RefundRequestData memory data = refundRequest.getRefundRequestByKey(key);
                 RequestStatus onChainStatus = data.status;
-                if (onChainStatus != RequestStatus.Approved && onChainStatus != RequestStatus.Denied) {
-                    return false; // Violation: terminal state reverted
+                if (
+                    onChainStatus != RequestStatus.Approved && onChainStatus != RequestStatus.Denied
+                        && onChainStatus != RequestStatus.Refused
+                ) {
+                    return false;
                 }
             }
         }
@@ -213,5 +252,32 @@ contract RefundRequestInvariants is Test {
             feeReceiver: address(operator),
             salt: salt
         });
+    }
+
+    function _signApproval(bytes32 paymentInfoHash, uint256 amount, uint48 expiry)
+        internal
+        view
+        returns (bytes memory)
+    {
+        bytes32 approvalTypehash = sigCondition.APPROVAL_TYPEHASH();
+        bytes32 structHash = keccak256(abi.encode(approvalTypehash, paymentInfoHash, amount, expiry));
+
+        (bytes1 fields, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
+            sigCondition.eip712Domain();
+        fields;
+
+        bytes32 domainSeparator = keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                keccak256(bytes(name)),
+                keccak256(bytes(version)),
+                chainId,
+                verifyingContract
+            )
+        );
+
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(arbiterPrivateKey, digest);
+        return abi.encodePacked(r, s, v);
     }
 }

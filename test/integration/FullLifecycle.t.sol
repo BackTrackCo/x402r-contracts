@@ -15,7 +15,8 @@ import {Freeze} from "../../src/plugins/freeze/Freeze.sol";
 import {ICondition} from "../../src/plugins/conditions/ICondition.sol";
 import {AndCondition} from "../../src/plugins/conditions/combinators/AndCondition.sol";
 import {PayerCondition} from "../../src/plugins/conditions/access/PayerCondition.sol";
-import {RefundRequest} from "../../src/requests/refund/RefundRequest.sol";
+import {SignatureCondition} from "../../src/plugins/conditions/access/signature/SignatureCondition.sol";
+import {SignatureRefundRequest} from "../../src/requests/refund/SignatureRefundRequest.sol";
 import {RequestStatus} from "../../src/requests/types/Types.sol";
 
 /**
@@ -45,7 +46,8 @@ contract FullLifecycleTest is Test {
     PaymentOperator public operator;
 
     // Refund request
-    RefundRequest public refundRequest;
+    SignatureCondition public sigCondition;
+    SignatureRefundRequest public refundRequest;
 
     // Addresses
     address public owner;
@@ -53,6 +55,10 @@ contract FullLifecycleTest is Test {
     address public operatorFeeRecipient;
     address public payer;
     address public receiver;
+
+    // Arbiter signing key
+    uint256 public arbiterPrivateKey;
+    address public arbiter;
 
     // Constants
     uint256 public constant PROTOCOL_BPS = 25; // 0.25%
@@ -68,6 +74,9 @@ contract FullLifecycleTest is Test {
         operatorFeeRecipient = makeAddr("operatorFeeRecipient");
         payer = makeAddr("payer");
         receiver = makeAddr("receiver");
+
+        arbiterPrivateKey = 0xA11CE;
+        arbiter = vm.addr(arbiterPrivateKey);
 
         // Deploy infrastructure
         escrow = new AuthCaptureEscrow();
@@ -115,8 +124,9 @@ contract FullLifecycleTest is Test {
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
 
-        // Deploy refund request contract
-        refundRequest = new RefundRequest();
+        // Deploy SignatureCondition + SignatureRefundRequest
+        sigCondition = new SignatureCondition(arbiter);
+        refundRequest = new SignatureRefundRequest(address(sigCondition));
 
         // Fund accounts
         token.mint(payer, PAYMENT_AMOUNT * 10);
@@ -185,12 +195,13 @@ contract FullLifecycleTest is Test {
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo, uint120(expectedNetAmount), 0);
 
-        RefundRequest.RefundRequestData memory reqData = refundRequest.getRefundRequest(paymentInfo, 0);
+        SignatureRefundRequest.RefundRequestData memory reqData = refundRequest.getRefundRequest(paymentInfo, 0);
         assertEq(uint256(reqData.status), uint256(RequestStatus.Pending), "Step 8: Request pending");
 
-        // --- Step 9: APPROVE REFUND ---
-        vm.prank(receiver);
-        refundRequest.updateStatus(paymentInfo, 0, RequestStatus.Approved);
+        // --- Step 9: APPROVE REFUND (arbiter signs off-chain, anyone relays) ---
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+        bytes memory sig = _signApproval(paymentInfoHash, expectedNetAmount, 0);
+        refundRequest.approveWithSignature(paymentInfo, 0, expectedNetAmount, 0, sig);
 
         reqData = refundRequest.getRefundRequest(paymentInfo, 0);
         assertEq(uint256(reqData.status), uint256(RequestStatus.Approved), "Step 9: Request approved");
@@ -280,5 +291,32 @@ contract FullLifecycleTest is Test {
             feeReceiver: address(operator),
             salt: salt
         });
+    }
+
+    function _signApproval(bytes32 paymentInfoHash, uint256 amount, uint48 expiry)
+        internal
+        view
+        returns (bytes memory)
+    {
+        bytes32 approvalTypehash = sigCondition.APPROVAL_TYPEHASH();
+        bytes32 structHash = keccak256(abi.encode(approvalTypehash, paymentInfoHash, amount, expiry));
+
+        (bytes1 fields, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
+            sigCondition.eip712Domain();
+        fields;
+
+        bytes32 domainSeparator = keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                keccak256(bytes(name)),
+                keccak256(bytes(version)),
+                chainId,
+                verifyingContract
+            )
+        );
+
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(arbiterPrivateKey, digest);
+        return abi.encodePacked(r, s, v);
     }
 }
