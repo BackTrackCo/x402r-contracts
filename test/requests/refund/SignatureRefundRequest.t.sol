@@ -524,4 +524,87 @@ contract SignatureRefundRequestTest is Test {
         assertEq(total, 3);
         assertEq(keys.length, 3);
     }
+
+    // ============ Hash Security Tests ============
+
+    function test_compositeKey_differentNonces() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+
+        // Composite keys with different nonces must be distinct
+        bytes32 key0 = keccak256(abi.encodePacked(paymentInfoHash, uint256(0)));
+        bytes32 key1 = keccak256(abi.encodePacked(paymentInfoHash, uint256(1)));
+        bytes32 key2 = keccak256(abi.encodePacked(paymentInfoHash, uint256(type(uint256).max)));
+
+        assertTrue(key0 != key1, "Nonce 0 and 1 must differ");
+        assertTrue(key1 != key2, "Nonce 1 and max must differ");
+        assertTrue(key0 != key2, "Nonce 0 and max must differ");
+    }
+
+    function test_multipleNonces_independentRequests() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        // Create requests at nonce 0 and nonce 1
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT / 2), 1);
+
+        // Approve nonce 0
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+        bytes memory sig = _signApproval(paymentInfoHash, PAYMENT_AMOUNT, 0);
+        refundRequest.approveWithSignature(paymentInfo, 0, PAYMENT_AMOUNT, 0, sig);
+
+        // Nonce 0 is Approved
+        SignatureRefundRequest.RefundRequestData memory data0 = refundRequest.getRefundRequest(paymentInfo, 0);
+        assertEq(uint256(data0.status), uint256(RequestStatus.Approved));
+
+        // Nonce 1 is still Pending (independent state)
+        SignatureRefundRequest.RefundRequestData memory data1 = refundRequest.getRefundRequest(paymentInfo, 1);
+        assertEq(uint256(data1.status), uint256(RequestStatus.Pending));
+    }
+
+    function test_multipleNonces_shareConditionApproval() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+
+        // Create requests at nonce 0 and nonce 1
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT / 2), 1);
+
+        // Approve nonce 0 — this writes to SignatureCondition (keyed by paymentInfoHash only)
+        bytes memory sig0 = _signApproval(paymentInfoHash, PAYMENT_AMOUNT, 0);
+        refundRequest.approveWithSignature(paymentInfo, 0, PAYMENT_AMOUNT, 0, sig0);
+
+        // SignatureCondition stores approval by paymentInfoHash (not composite key).
+        // So the condition check passes regardless of which nonce was approved.
+        assertTrue(sigCondition.check(paymentInfo, PAYMENT_AMOUNT, address(0)));
+
+        // Approving nonce 1 with a smaller amount would OVERWRITE the condition approval
+        bytes memory sig1 = _signApproval(paymentInfoHash, PAYMENT_AMOUNT / 2, 0);
+        refundRequest.approveWithSignature(paymentInfo, 1, PAYMENT_AMOUNT / 2, 0, sig1);
+
+        // Now the condition only approves PAYMENT_AMOUNT/2
+        assertTrue(sigCondition.check(paymentInfo, PAYMENT_AMOUNT / 2, address(0)));
+        assertFalse(sigCondition.check(paymentInfo, PAYMENT_AMOUNT, address(0)));
+    }
+
+    function test_getPaymentInfo_reverseLookup() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        // Reverse lookup should return the original PaymentInfo
+        AuthCaptureEscrow.PaymentInfo memory stored = refundRequest.getPaymentInfo(paymentInfoHash);
+        assertEq(stored.operator, paymentInfo.operator);
+        assertEq(stored.payer, paymentInfo.payer);
+        assertEq(stored.receiver, paymentInfo.receiver);
+        assertEq(stored.token, paymentInfo.token);
+        assertEq(stored.maxAmount, paymentInfo.maxAmount);
+        assertEq(stored.salt, paymentInfo.salt);
+    }
 }

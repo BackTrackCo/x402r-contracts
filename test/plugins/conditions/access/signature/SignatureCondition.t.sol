@@ -324,4 +324,65 @@ contract SignatureConditionTest is Test {
     function test_signer_immutable() public view {
         assertEq(sigCondition.SIGNER(), signer);
     }
+
+    // ============ Hash Security Tests ============
+
+    function test_approvalHash_structEncoding() public view {
+        bytes32 expectedHash = keccak256("Approval(bytes32 paymentInfoHash,uint256 amount,uint48 expiry)");
+        assertEq(sigCondition.APPROVAL_TYPEHASH(), expectedHash);
+    }
+
+    function test_domainSeparator_matchesEIP712() public view {
+        (
+            bytes1 fields,
+            string memory name,
+            string memory version,
+            uint256 chainId,
+            address verifyingContract,
+            bytes32 salt,
+            uint256[] memory extensions
+        ) = sigCondition.eip712Domain();
+
+        fields; // suppress unused
+        salt; // suppress unused
+        extensions; // suppress unused
+
+        assertEq(name, "SignatureCondition");
+        assertEq(version, "1");
+        assertEq(chainId, block.chainid);
+        assertEq(verifyingContract, address(sigCondition));
+    }
+
+    function test_check_expiryBoundary() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+
+        uint48 expiry = uint48(block.timestamp + 1 hours);
+        bytes memory sig = _signApproval(paymentInfoHash, PAYMENT_AMOUNT, expiry);
+        sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, expiry, sig);
+
+        // At exact expiry, should still pass (uses > not >=)
+        vm.warp(expiry);
+        assertTrue(sigCondition.check(paymentInfo, PAYMENT_AMOUNT, address(0)), "Should pass at exact expiry");
+
+        // One second after expiry, should fail
+        vm.warp(expiry + 1);
+        assertFalse(sigCondition.check(paymentInfo, PAYMENT_AMOUNT, address(0)), "Should fail 1s after expiry");
+    }
+
+    function test_signatureInvalidOnDifferentCondition() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+
+        // Sign approval for sigCondition
+        bytes memory sig = _signApproval(paymentInfoHash, PAYMENT_AMOUNT, 0);
+
+        // Deploy a second SignatureCondition with the SAME signer
+        SignatureCondition otherCondition = new SignatureCondition(signer);
+
+        // The same signature should NOT work on a different contract
+        // because the domain separator includes verifyingContract
+        vm.expectRevert(SignatureCondition.InvalidSignature.selector);
+        otherCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, 0, sig);
+    }
 }
