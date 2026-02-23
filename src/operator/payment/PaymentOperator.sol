@@ -165,30 +165,6 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         totalFeeBps = uint16(combinedFeeBps);
     }
 
-    // ============ Internal Condition Check ============
-
-    /**
-     * @notice Safely check a condition, treating reverts as denial
-     * @dev ICondition.check() MUST NOT revert per spec. This try/catch enforces that:
-     *      if a condition reverts (e.g., external dependency failure), the action is denied
-     *      rather than permanently blocking the operator. Without this, immutable condition
-     *      slots that revert would cause permanent DoS since they cannot be replaced.
-     * @param condition The condition to check (address(0) = always allow)
-     * @param paymentInfo The payment info struct
-     * @param amount The payment amount
-     */
-    function _checkCondition(ICondition condition, AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount)
-        internal
-        view
-    {
-        if (address(condition) == address(0)) return;
-        try condition.check(paymentInfo, amount, msg.sender) returns (bool allowed) {
-            if (!allowed) revert ConditionNotMet();
-        } catch {
-            revert ConditionNotMet();
-        }
-    }
-
     // ============ Payment Functions ============
 
     /**
@@ -209,7 +185,12 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         bytes calldata collectorData
     ) external nonReentrant validFees(paymentInfo) {
         // ============ CHECKS ============
-        _checkCondition(AUTHORIZE_CONDITION, paymentInfo, amount);
+        // Check AUTHORIZE_CONDITION (address(0) = always allow)
+        if (address(AUTHORIZE_CONDITION) != address(0)) {
+            if (!AUTHORIZE_CONDITION.check(paymentInfo, amount, msg.sender)) {
+                revert ConditionNotMet();
+            }
+        }
 
         // Validate fee bounds compatibility - ensure operator's fees fall within payer's accepted range
         // This prevents stuck payments where payer authorizes with bounds incompatible with operator fees
@@ -254,7 +235,12 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         bytes calldata collectorData
     ) external nonReentrant validFees(paymentInfo) {
         // ============ CHECKS ============
-        _checkCondition(CHARGE_CONDITION, paymentInfo, amount);
+        // Check CHARGE_CONDITION (address(0) = always allow)
+        if (address(CHARGE_CONDITION) != address(0)) {
+            if (!CHARGE_CONDITION.check(paymentInfo, amount, msg.sender)) {
+                revert ConditionNotMet();
+            }
+        }
 
         // Validate fee bounds compatibility for charge (no prior authorization)
         (uint16 totalFeeBps, uint16 protocolFeeBps) = _calculateFees(paymentInfo, amount);
@@ -289,7 +275,12 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
      */
     function release(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount) external nonReentrant {
         // ============ CHECKS ============
-        _checkCondition(RELEASE_CONDITION, paymentInfo, amount);
+        // Check RELEASE_CONDITION (address(0) = always allow)
+        if (address(RELEASE_CONDITION) != address(0)) {
+            if (!RELEASE_CONDITION.check(paymentInfo, amount, msg.sender)) {
+                revert ConditionNotMet();
+            }
+        }
 
         // Use fees stored at authorization time (prevents protocol fee changes from breaking capture)
         bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
@@ -322,7 +313,12 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
      */
     function refundInEscrow(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint120 amount) external nonReentrant {
         // ============ CHECKS ============
-        _checkCondition(REFUND_IN_ESCROW_CONDITION, paymentInfo, amount);
+        // Check REFUND_IN_ESCROW_CONDITION (address(0) = always allow)
+        if (address(REFUND_IN_ESCROW_CONDITION) != address(0)) {
+            if (!REFUND_IN_ESCROW_CONDITION.check(paymentInfo, amount, msg.sender)) {
+                revert ConditionNotMet();
+            }
+        }
 
         // ============ EFFECTS ============
         // Emit event before external calls (CEI pattern)
@@ -356,7 +352,12 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         bytes calldata collectorData
     ) external nonReentrant {
         // ============ CHECKS ============
-        _checkCondition(REFUND_POST_ESCROW_CONDITION, paymentInfo, amount);
+        // Check REFUND_POST_ESCROW_CONDITION (address(0) = always allow)
+        if (address(REFUND_POST_ESCROW_CONDITION) != address(0)) {
+            if (!REFUND_POST_ESCROW_CONDITION.check(paymentInfo, amount, msg.sender)) {
+                revert ConditionNotMet();
+            }
+        }
 
         // ============ EFFECTS ============
         // Emit event before external calls (CEI pattern)
