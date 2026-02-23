@@ -109,8 +109,17 @@ contract SignatureRefundRequestTest is Test {
         view
         returns (bytes memory)
     {
+        uint256 nonce = sigCondition.approvalNonces(paymentInfoHash);
+        return _signApprovalWithNonce(paymentInfoHash, amount, expiry, nonce);
+    }
+
+    function _signApprovalWithNonce(bytes32 paymentInfoHash, uint256 amount, uint48 expiry, uint256 nonce)
+        internal
+        view
+        returns (bytes memory)
+    {
         bytes32 approvalTypehash = sigCondition.APPROVAL_TYPEHASH();
-        bytes32 structHash = keccak256(abi.encode(approvalTypehash, paymentInfoHash, amount, expiry));
+        bytes32 structHash = keccak256(abi.encode(approvalTypehash, paymentInfoHash, amount, expiry, nonce));
 
         (bytes1 fields, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
             sigCondition.eip712Domain();
@@ -208,7 +217,8 @@ contract SignatureRefundRequestTest is Test {
         // Sign with wrong key
         uint256 wrongKey = 0xBEEF;
         bytes32 approvalTypehash = sigCondition.APPROVAL_TYPEHASH();
-        bytes32 structHash = keccak256(abi.encode(approvalTypehash, paymentInfoHash, PAYMENT_AMOUNT, uint48(0)));
+        uint256 nonce = sigCondition.approvalNonces(paymentInfoHash);
+        bytes32 structHash = keccak256(abi.encode(approvalTypehash, paymentInfoHash, PAYMENT_AMOUNT, uint48(0), nonce));
 
         (bytes1 fields, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
             sigCondition.eip712Domain();
@@ -272,11 +282,12 @@ contract SignatureRefundRequestTest is Test {
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
 
-        // Approve first
+        // Approve first (nonce=0)
         bytes memory sig = _signApproval(paymentInfoHash, PAYMENT_AMOUNT, 0);
         refundRequest.approveWithSignature(paymentInfo, 0, PAYMENT_AMOUNT, 0, sig);
 
         // Try to approve again — should revert (not pending)
+        // nonce is now 1, _signApproval auto-reads it
         bytes memory sig2 = _signApproval(paymentInfoHash, PAYMENT_AMOUNT, 0);
         vm.expectRevert();
         refundRequest.approveWithSignature(paymentInfo, 0, PAYMENT_AMOUNT, 0, sig2);
@@ -575,6 +586,7 @@ contract SignatureRefundRequestTest is Test {
         refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT / 2), 1);
 
         // Approve nonce 0 — this writes to SignatureCondition (keyed by paymentInfoHash only)
+        // approvalNonce is 0 at this point
         bytes memory sig0 = _signApproval(paymentInfoHash, PAYMENT_AMOUNT, 0);
         refundRequest.approveWithSignature(paymentInfo, 0, PAYMENT_AMOUNT, 0, sig0);
 
@@ -583,6 +595,7 @@ contract SignatureRefundRequestTest is Test {
         assertTrue(sigCondition.check(paymentInfo, PAYMENT_AMOUNT, address(0)));
 
         // Approving nonce 1 with a smaller amount would OVERWRITE the condition approval
+        // approvalNonce is now 1 (auto-read by _signApproval)
         bytes memory sig1 = _signApproval(paymentInfoHash, PAYMENT_AMOUNT / 2, 0);
         refundRequest.approveWithSignature(paymentInfo, 1, PAYMENT_AMOUNT / 2, 0, sig1);
 

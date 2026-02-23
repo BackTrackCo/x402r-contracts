@@ -299,7 +299,8 @@ contract FullLifecycleTest is Test {
         returns (bytes memory)
     {
         bytes32 approvalTypehash = sigCondition.APPROVAL_TYPEHASH();
-        bytes32 structHash = keccak256(abi.encode(approvalTypehash, paymentInfoHash, amount, expiry));
+        uint256 nonce = sigCondition.approvalNonces(paymentInfoHash);
+        bytes32 structHash = keccak256(abi.encode(approvalTypehash, paymentInfoHash, amount, expiry, nonce));
 
         (bytes1 fields, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
             sigCondition.eip712Domain();

@@ -9,8 +9,17 @@ import {ICondition} from "../ICondition.sol";
 /// @notice Limits total USDC in escrow and blocks all other tokens
 /// @dev Temporary safety measure for early mainnet deployment.
 ///      Deploy a new condition to change limits or add tokens.
+///
+/// SECURITY NOTE - Griefing Vector:
+///      This contract uses balanceOf() to determine TVL, which is susceptible to
+///      direct-transfer griefing. An attacker can send USDC directly to the ESCROW
+///      address (bypassing authorize()), inflating the apparent TVL and potentially
+///      blocking legitimate authorizations. The attack is uneconomical because the
+///      attacker permanently loses the sent tokens (they cannot be recovered from
+///      the escrow). For production use beyond the temporary safety measure, replace
+///      with internal escrow accounting that only counts operator-authorized deposits.
 contract UsdcTvlLimit is ICondition {
-    /// @notice The escrow contract to check TVL against
+    /// @notice The address to check TVL against (escrow or token store)
     address public immutable ESCROW;
 
     /// @notice The USDC token address
