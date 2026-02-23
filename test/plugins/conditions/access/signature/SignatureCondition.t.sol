@@ -108,8 +108,17 @@ contract SignatureConditionTest is Test {
         view
         returns (bytes memory)
     {
+        uint256 nonce = sigCondition.approvalNonces(paymentInfoHash);
+        return _signApprovalWithNonce(paymentInfoHash, amount, expiry, nonce);
+    }
+
+    function _signApprovalWithNonce(bytes32 paymentInfoHash, uint256 amount, uint48 expiry, uint256 nonce)
+        internal
+        view
+        returns (bytes memory)
+    {
         bytes32 approvalTypehash = sigCondition.APPROVAL_TYPEHASH();
-        bytes32 structHash = keccak256(abi.encode(approvalTypehash, paymentInfoHash, amount, expiry));
+        bytes32 structHash = keccak256(abi.encode(approvalTypehash, paymentInfoHash, amount, expiry, nonce));
 
         // Get EIP-712 domain separator from the condition contract
         (bytes1 fields, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
@@ -139,16 +148,18 @@ contract SignatureConditionTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
         bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
 
+        uint256 nonce = sigCondition.approvalNonces(paymentInfoHash);
         bytes memory sig = _signApproval(paymentInfoHash, PAYMENT_AMOUNT, 0);
 
         vm.expectEmit(true, false, false, true);
-        emit SignatureCondition.ApprovalSubmitted(paymentInfoHash, PAYMENT_AMOUNT, 0);
+        emit SignatureCondition.ApprovalSubmitted(paymentInfoHash, PAYMENT_AMOUNT, 0, nonce);
 
-        sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, 0, sig);
+        sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, 0, nonce, sig);
 
         (uint256 storedAmount, uint48 storedExpiry) = sigCondition.approvals(paymentInfoHash);
         assertEq(storedAmount, PAYMENT_AMOUNT);
         assertEq(storedExpiry, 0);
+        assertEq(sigCondition.approvalNonces(paymentInfoHash), 1);
     }
 
     function test_submitApproval_invalidSignature() public {
@@ -157,8 +168,9 @@ contract SignatureConditionTest is Test {
 
         // Sign with wrong key
         uint256 wrongKey = 0xBEEF;
+        uint256 nonce = sigCondition.approvalNonces(paymentInfoHash);
         bytes32 approvalTypehash = sigCondition.APPROVAL_TYPEHASH();
-        bytes32 structHash = keccak256(abi.encode(approvalTypehash, paymentInfoHash, PAYMENT_AMOUNT, uint48(0)));
+        bytes32 structHash = keccak256(abi.encode(approvalTypehash, paymentInfoHash, PAYMENT_AMOUNT, uint48(0), nonce));
 
         (bytes1 fields, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
             sigCondition.eip712Domain();
@@ -179,26 +191,45 @@ contract SignatureConditionTest is Test {
         bytes memory badSig = abi.encodePacked(r, s, v);
 
         vm.expectRevert(SignatureCondition.InvalidSignature.selector);
-        sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, 0, badSig);
+        sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, 0, nonce, badSig);
     }
 
-    function test_submitApproval_overwrite() public {
+    function test_submitApproval_overwrite_withNewNonce() public {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
         bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
 
-        // First approval
+        // First approval (nonce 0)
+        assertEq(sigCondition.approvalNonces(paymentInfoHash), 0);
         bytes memory sig1 = _signApproval(paymentInfoHash, PAYMENT_AMOUNT, 0);
-        sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, 0, sig1);
+        sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, 0, 0, sig1);
+        assertEq(sigCondition.approvalNonces(paymentInfoHash), 1);
 
-        // Second approval with different amount overwrites
+        // Second approval with different amount overwrites (nonce 1)
         uint256 newAmount = PAYMENT_AMOUNT / 2;
         uint48 newExpiry = uint48(block.timestamp + 1 days);
         bytes memory sig2 = _signApproval(paymentInfoHash, newAmount, newExpiry);
-        sigCondition.submitApproval(paymentInfoHash, newAmount, newExpiry, sig2);
+        sigCondition.submitApproval(paymentInfoHash, newAmount, newExpiry, 1, sig2);
+        assertEq(sigCondition.approvalNonces(paymentInfoHash), 2);
 
         (uint256 storedAmount, uint48 storedExpiry) = sigCondition.approvals(paymentInfoHash);
         assertEq(storedAmount, newAmount);
         assertEq(storedExpiry, newExpiry);
+    }
+
+    function test_submitApproval_replayOldSignature_reverts() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+
+        // Sign with nonce 0
+        bytes memory sig0 = _signApprovalWithNonce(paymentInfoHash, PAYMENT_AMOUNT, 0, 0);
+
+        // Submit successfully (nonce 0 -> 1)
+        sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, 0, 0, sig0);
+        assertEq(sigCondition.approvalNonces(paymentInfoHash), 1);
+
+        // Replay the same signature with nonce 0 — should revert InvalidNonce
+        vm.expectRevert(SignatureCondition.InvalidNonce.selector);
+        sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, 0, 0, sig0);
     }
 
     // ============ check() Tests ============
@@ -207,8 +238,9 @@ contract SignatureConditionTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
         bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
 
+        uint256 nonce = sigCondition.approvalNonces(paymentInfoHash);
         bytes memory sig = _signApproval(paymentInfoHash, PAYMENT_AMOUNT, 0);
-        sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, 0, sig);
+        sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, 0, nonce, sig);
 
         assertTrue(sigCondition.check(paymentInfo, PAYMENT_AMOUNT, address(0)));
     }
@@ -217,8 +249,9 @@ contract SignatureConditionTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
         bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
 
+        uint256 nonce = sigCondition.approvalNonces(paymentInfoHash);
         bytes memory sig = _signApproval(paymentInfoHash, PAYMENT_AMOUNT, 0);
-        sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, 0, sig);
+        sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, 0, nonce, sig);
 
         // Requesting less than approved amount should pass
         assertTrue(sigCondition.check(paymentInfo, PAYMENT_AMOUNT / 2, address(0)));
@@ -228,8 +261,9 @@ contract SignatureConditionTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
         bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
 
+        uint256 nonce = sigCondition.approvalNonces(paymentInfoHash);
         bytes memory sig = _signApproval(paymentInfoHash, PAYMENT_AMOUNT / 2, 0);
-        sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT / 2, 0, sig);
+        sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT / 2, 0, nonce, sig);
 
         // Requesting more than approved amount should fail
         assertFalse(sigCondition.check(paymentInfo, PAYMENT_AMOUNT, address(0)));
@@ -247,8 +281,9 @@ contract SignatureConditionTest is Test {
         bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
 
         uint48 expiry = uint48(block.timestamp + 1 hours);
+        uint256 nonce = sigCondition.approvalNonces(paymentInfoHash);
         bytes memory sig = _signApproval(paymentInfoHash, PAYMENT_AMOUNT, expiry);
-        sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, expiry, sig);
+        sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, expiry, nonce, sig);
 
         // Should pass before expiry
         assertTrue(sigCondition.check(paymentInfo, PAYMENT_AMOUNT, address(0)));
@@ -263,8 +298,9 @@ contract SignatureConditionTest is Test {
         bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
 
         // expiry = 0 means no expiry
+        uint256 nonce = sigCondition.approvalNonces(paymentInfoHash);
         bytes memory sig = _signApproval(paymentInfoHash, PAYMENT_AMOUNT, 0);
-        sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, 0, sig);
+        sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, 0, nonce, sig);
 
         // Should pass even far in the future
         vm.warp(block.timestamp + 365 days);
@@ -283,8 +319,9 @@ contract SignatureConditionTest is Test {
         bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
 
         // Submit approval
+        uint256 nonce = sigCondition.approvalNonces(paymentInfoHash);
         bytes memory sig = _signApproval(paymentInfoHash, PAYMENT_AMOUNT, 0);
-        sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, 0, sig);
+        sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, 0, nonce, sig);
 
         // Create And(SignatureCondition, AlwaysTrue-like condition that checks caller == payer)
         // We'll use another SignatureCondition as the second operand (already approved)
@@ -314,8 +351,9 @@ contract SignatureConditionTest is Test {
 
         // Submit approval on sigCondition
         bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+        uint256 nonce = sigCondition.approvalNonces(paymentInfoHash);
         bytes memory sig = _signApproval(paymentInfoHash, PAYMENT_AMOUNT, 0);
-        sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, 0, sig);
+        sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, 0, nonce, sig);
 
         // Now Or should pass (first condition passes)
         assertTrue(orCond.check(paymentInfo, PAYMENT_AMOUNT, address(0)));
@@ -328,7 +366,7 @@ contract SignatureConditionTest is Test {
     // ============ Hash Security Tests ============
 
     function test_approvalHash_structEncoding() public view {
-        bytes32 expectedHash = keccak256("Approval(bytes32 paymentInfoHash,uint256 amount,uint48 expiry)");
+        bytes32 expectedHash = keccak256("Approval(bytes32 paymentInfoHash,uint256 amount,uint48 expiry,uint256 nonce)");
         assertEq(sigCondition.APPROVAL_TYPEHASH(), expectedHash);
     }
 
@@ -358,8 +396,9 @@ contract SignatureConditionTest is Test {
         bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
 
         uint48 expiry = uint48(block.timestamp + 1 hours);
+        uint256 nonce = sigCondition.approvalNonces(paymentInfoHash);
         bytes memory sig = _signApproval(paymentInfoHash, PAYMENT_AMOUNT, expiry);
-        sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, expiry, sig);
+        sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, expiry, nonce, sig);
 
         // At exact expiry, should still pass (uses > not >=)
         vm.warp(expiry);
@@ -382,7 +421,8 @@ contract SignatureConditionTest is Test {
 
         // The same signature should NOT work on a different contract
         // because the domain separator includes verifyingContract
+        uint256 otherNonce = otherCondition.approvalNonces(paymentInfoHash);
         vm.expectRevert(SignatureCondition.InvalidSignature.selector);
-        otherCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, 0, sig);
+        otherCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, 0, otherNonce, sig);
     }
 }

@@ -18,6 +18,10 @@ import {PaymentOperator} from "../../../../operator/payment/PaymentOperator.sol"
  *
  *      Uses Solady's SignatureCheckerLib which supports both EOA (ecrecover)
  *      and EIP-1271 contract signers (smart wallets, multi-arbiter aggregators).
+ *
+ *      REPLAY PROTECTION: Each approval includes a per-paymentInfoHash nonce that
+ *      auto-increments on each submitApproval(). This prevents stale signatures
+ *      from being replayed to overwrite newer approvals with older values.
  */
 contract SignatureCondition is ICondition, EIP712 {
     /// @notice The authorized signer (EOA or EIP-1271 contract)
@@ -31,12 +35,17 @@ contract SignatureCondition is ICondition, EIP712 {
     /// @notice Stored approvals keyed by paymentInfoHash
     mapping(bytes32 paymentInfoHash => StoredApproval) public approvals;
 
-    bytes32 public constant APPROVAL_TYPEHASH =
-        keccak256("Approval(bytes32 paymentInfoHash,uint256 amount,uint48 expiry)");
+    /// @notice Per-paymentInfoHash nonce for replay protection
+    /// @dev Increments on each submitApproval(). Signer must include current nonce in signature.
+    mapping(bytes32 paymentInfoHash => uint256) public approvalNonces;
 
-    event ApprovalSubmitted(bytes32 indexed paymentInfoHash, uint256 amount, uint48 expiry);
+    bytes32 public constant APPROVAL_TYPEHASH =
+        keccak256("Approval(bytes32 paymentInfoHash,uint256 amount,uint48 expiry,uint256 nonce)");
+
+    event ApprovalSubmitted(bytes32 indexed paymentInfoHash, uint256 amount, uint48 expiry, uint256 nonce);
 
     error InvalidSignature();
+    error InvalidNonce();
     error ZeroSigner();
 
     constructor(address _signer) {
@@ -54,10 +63,21 @@ contract SignatureCondition is ICondition, EIP712 {
     /// @param paymentInfoHash The hash of the PaymentInfo struct
     /// @param amount Maximum approved refund amount (check passes for <= this)
     /// @param expiry Unix timestamp deadline (0 = no expiry)
+    /// @param nonce Must match current approvalNonces[paymentInfoHash] (prevents replay)
     /// @param signature The EIP-712 signature from SIGNER
-    function submitApproval(bytes32 paymentInfoHash, uint256 amount, uint48 expiry, bytes calldata signature) external {
+    function submitApproval(
+        bytes32 paymentInfoHash,
+        uint256 amount,
+        uint48 expiry,
+        uint256 nonce,
+        bytes calldata signature
+    ) external {
         // ============ CHECKS ============
-        bytes32 digest = _hashTypedData(keccak256(abi.encode(APPROVAL_TYPEHASH, paymentInfoHash, amount, expiry)));
+        uint256 currentNonce = approvalNonces[paymentInfoHash];
+        if (nonce != currentNonce) revert InvalidNonce();
+
+        bytes32 digest =
+            _hashTypedData(keccak256(abi.encode(APPROVAL_TYPEHASH, paymentInfoHash, amount, expiry, nonce)));
         // SignatureCheckerLib: ecrecover for EOAs, EIP-1271 fallback for contracts
         if (!SignatureCheckerLib.isValidSignatureNow(SIGNER, digest, signature)) {
             revert InvalidSignature();
@@ -65,7 +85,8 @@ contract SignatureCondition is ICondition, EIP712 {
 
         // ============ EFFECTS ============
         approvals[paymentInfoHash] = StoredApproval({amount: amount, expiry: expiry});
-        emit ApprovalSubmitted(paymentInfoHash, amount, expiry);
+        approvalNonces[paymentInfoHash] = currentNonce + 1;
+        emit ApprovalSubmitted(paymentInfoHash, amount, expiry, nonce);
     }
 
     /// @notice Check if an approved refund exists for the given payment

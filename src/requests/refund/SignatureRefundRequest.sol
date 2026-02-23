@@ -3,6 +3,7 @@
 pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
+import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {PaymentOperator} from "../../operator/payment/PaymentOperator.sol";
 import {SignatureCondition} from "../../plugins/conditions/access/signature/SignatureCondition.sol";
 import {RequestStatus} from "../types/Types.sol";
@@ -21,8 +22,11 @@ import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} fro
  *        Pending -> Denied     (msg.sender, onlyArbiter)
  *        Pending -> Refused    (msg.sender, onlyArbiter)
  *        Pending -> Cancelled  (msg.sender, onlyPayer)
+ *
+ * SECURITY: ReentrancyGuardTransient protects approveWithSignature() which makes
+ *           an external call to SIGNATURE_CONDITION.submitApproval() before updating state.
  */
-contract SignatureRefundRequest {
+contract SignatureRefundRequest is ReentrancyGuardTransient {
     /// @notice The SignatureCondition this contract syncs approvals with
     SignatureCondition public immutable SIGNATURE_CONDITION;
 
@@ -185,7 +189,7 @@ contract SignatureRefundRequest {
         uint256 amount,
         uint48 expiry,
         bytes calldata signature
-    ) external operatorNotZero(paymentInfo) {
+    ) external nonReentrant operatorNotZero(paymentInfo) {
         PaymentOperator operator = PaymentOperator(paymentInfo.operator);
         bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
         bytes32 compositeKey = keccak256(abi.encodePacked(paymentInfoHash, nonce));
@@ -197,7 +201,9 @@ contract SignatureRefundRequest {
 
         // ============ INTERACTIONS (reverts roll back everything) ============
         // Submit to SignatureCondition (reverts if sig invalid — rolls back everything)
-        SIGNATURE_CONDITION.submitApproval(paymentInfoHash, amount, expiry, signature);
+        // Reads current approvalNonce from the condition for replay protection
+        uint256 approvalNonce = SIGNATURE_CONDITION.approvalNonces(paymentInfoHash);
+        SIGNATURE_CONDITION.submitApproval(paymentInfoHash, amount, expiry, approvalNonce, signature);
 
         // ============ EFFECTS (atomic with condition sync) ============
         request.status = RequestStatus.Approved;
