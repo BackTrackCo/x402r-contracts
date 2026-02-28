@@ -17,7 +17,7 @@ import {ICondition} from "../../src/plugins/conditions/ICondition.sol";
 import {AndCondition} from "../../src/plugins/conditions/combinators/AndCondition.sol";
 import {PayerCondition} from "../../src/plugins/conditions/access/PayerCondition.sol";
 import {ReceiverCondition} from "../../src/plugins/conditions/access/ReceiverCondition.sol";
-import {StaticAddressCondition} from "../../src/plugins/conditions/access/static-address/StaticAddressCondition.sol";
+
 import {SignatureCondition} from "../../src/plugins/conditions/access/signature/SignatureCondition.sol";
 import {SignatureRefundRequest} from "../../src/requests/refund/SignatureRefundRequest.sol";
 import {DisputeEvidence} from "../../src/evidence/DisputeEvidence.sol";
