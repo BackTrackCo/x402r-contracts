@@ -23,6 +23,32 @@ import {SignatureRefundRequest} from "../../src/requests/refund/SignatureRefundR
 import {DisputeEvidence} from "../../src/evidence/DisputeEvidence.sol";
 
 /**
+ * @title BareEscrowCaller
+ * @notice Minimal pass-through to the escrow with no logic. Measures the raw Commerce Payments cost
+ *         without the PaymentOperator layer (no conditions, recorders, or fee calculations).
+ */
+contract BareEscrowCaller {
+    AuthCaptureEscrow public immutable ESCROW;
+
+    constructor(address _escrow) {
+        ESCROW = AuthCaptureEscrow(_escrow);
+    }
+
+    function authorize(
+        AuthCaptureEscrow.PaymentInfo calldata pi,
+        uint256 amount,
+        address paymentCollector,
+        bytes calldata paymentCollectorData
+    ) external {
+        ESCROW.authorize(pi, amount, paymentCollector, paymentCollectorData);
+    }
+
+    function capture(AuthCaptureEscrow.PaymentInfo calldata pi, uint256 amount) external {
+        ESCROW.capture(pi, amount, 0, pi.feeReceiver);
+    }
+}
+
+/**
  * @title GasBenchmark
  * @notice Gas measurements for documentation. Compares:
  *         1. Bare ERC-20 transfer
@@ -49,6 +75,9 @@ contract GasBenchmark is Test {
     Freeze public freeze;
     AndCondition public releaseCondition;
     PayerCondition public payerCondition;
+
+    // ============ Raw Escrow ============
+    BareEscrowCaller public bareEscrowCaller; // Direct escrow calls, no operator layer
 
     // ============ Operators ============
     PaymentOperatorFactory public operatorFactory;
@@ -96,6 +125,9 @@ contract GasBenchmark is Test {
         token = new MockERC20("USDC", "USDC");
         collector = new PreApprovalPaymentCollector(address(escrow));
         refundCollector = new ReceiverRefundCollector(address(escrow));
+
+        // Deploy raw escrow caller (no operator layer)
+        bareEscrowCaller = new BareEscrowCaller(address(escrow));
 
         // Deploy fee calculators
         protocolCalc = new StaticFeeCalculator(PROTOCOL_BPS);
@@ -258,6 +290,39 @@ contract GasBenchmark is Test {
 
         console.log("=== BASELINE ===");
         console.log("ERC-20 transfer (cold):", gasUsed);
+    }
+
+    // ================================================================
+    //  1b. RAW ESCROW (no operator layer)
+    // ================================================================
+
+    function test_gas_rawEscrowAuthorize() public {
+        AuthCaptureEscrow.PaymentInfo memory pi = _createPaymentInfo(address(bareEscrowCaller), 0, 200);
+
+        vm.prank(payer);
+        collector.preApprove(pi);
+
+        uint256 gasBefore = gasleft();
+        bareEscrowCaller.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
+        uint256 gasUsed = gasBefore - gasleft();
+
+        console.log("=== RAW ESCROW (no operator layer) ===");
+        console.log("authorize:", gasUsed);
+    }
+
+    function test_gas_rawEscrowCapture() public {
+        AuthCaptureEscrow.PaymentInfo memory pi = _createPaymentInfo(address(bareEscrowCaller), 0, 201);
+
+        vm.prank(payer);
+        collector.preApprove(pi);
+        bareEscrowCaller.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
+
+        uint256 gasBefore = gasleft();
+        bareEscrowCaller.capture(pi, PAYMENT_AMOUNT);
+        uint256 gasUsed = gasBefore - gasleft();
+
+        console.log("=== RAW ESCROW (no operator layer) ===");
+        console.log("capture:", gasUsed);
     }
 
     // ================================================================
@@ -1062,7 +1127,15 @@ contract GasBenchmark is Test {
     // ================================================================
 
     function test_gas_overhead_authorize() public {
-        // Bare
+        // Raw escrow (no operator layer)
+        AuthCaptureEscrow.PaymentInfo memory piRaw = _createPaymentInfo(address(bareEscrowCaller), 0, 29);
+        vm.prank(payer);
+        collector.preApprove(piRaw);
+        uint256 g0 = gasleft();
+        bareEscrowCaller.authorize(piRaw, PAYMENT_AMOUNT, address(collector), "");
+        uint256 rawGas = g0 - gasleft();
+
+        // Bare operator (no conditions/recorders/fees)
         AuthCaptureEscrow.PaymentInfo memory piBare = _createPaymentInfo(address(bareOperator), 0, 30);
         vm.prank(payer);
         collector.preApprove(piBare);
@@ -1095,11 +1168,13 @@ contract GasBenchmark is Test {
         uint256 fullGas = g4 - gasleft();
 
         console.log("=== AUTHORIZE OVERHEAD ===");
-        console.log("bare (no fees/conditions/recorders):", bareGas);
+        console.log("raw escrow (no operator layer):", rawGas);
+        console.log("PaymentOperator (no plugins/fees):", bareGas);
         console.log("+ fees:", feesGas);
         console.log("+ fees + EscrowPeriod recorder:", escrowGas);
         console.log("+ fees + EscrowPeriod recorder (full):", fullGas);
         console.log("--- marginal costs ---");
+        console.log("operator layer overhead:", bareGas - rawGas);
         console.log("fee calculation:", feesGas - bareGas);
         console.log("EscrowPeriod recorder:", escrowGas - feesGas);
     }
@@ -1108,7 +1183,13 @@ contract GasBenchmark is Test {
         // Authorize ALL operators first, then warp, then release.
         // This avoids preApprovalExpiry issues from warping mid-test.
 
-        // Bare
+        // Raw escrow (no operator layer) — no escrow period, so authorize + capture immediately
+        AuthCaptureEscrow.PaymentInfo memory piRaw = _createPaymentInfo(address(bareEscrowCaller), 0, 33);
+        vm.prank(payer);
+        collector.preApprove(piRaw);
+        bareEscrowCaller.authorize(piRaw, PAYMENT_AMOUNT, address(collector), "");
+
+        // Bare operator
         AuthCaptureEscrow.PaymentInfo memory piBare = _createPaymentInfo(address(bareOperator), 0, 34);
         vm.prank(payer);
         collector.preApprove(piBare);
@@ -1141,7 +1222,12 @@ contract GasBenchmark is Test {
         // Warp past escrow period (needed for escrow-only and full operators)
         vm.warp(block.timestamp + ESCROW_PERIOD_DURATION + 1);
 
-        // Release: bare
+        // Capture: raw escrow (no operator layer)
+        uint256 g0 = gasleft();
+        bareEscrowCaller.capture(piRaw, PAYMENT_AMOUNT);
+        uint256 rawGas = g0 - gasleft();
+
+        // Release: bare operator
         vm.prank(receiver);
         uint256 g1 = gasleft();
         bareOperator.release(piBare, PAYMENT_AMOUNT);
@@ -1172,12 +1258,14 @@ contract GasBenchmark is Test {
         uint256 fullGas = g5 - gasleft();
 
         console.log("=== RELEASE OVERHEAD ===");
-        console.log("bare (no fees/conditions):", bareGas);
+        console.log("raw escrow (no operator layer):", rawGas);
+        console.log("PaymentOperator (no plugins/fees):", bareGas);
         console.log("+ fees:", feesGas);
         console.log("+ fees + ReceiverCondition:", simpleGas);
         console.log("+ fees + EscrowPeriod:", escrowGas);
         console.log("+ fees + EscrowPeriod + Freeze (AndCondition):", fullGas);
         console.log("--- marginal costs ---");
+        console.log("operator layer overhead:", bareGas - rawGas);
         console.log("fee retrieval + distribution:", feesGas - bareGas);
         console.log("ReceiverCondition (pure calldata):", simpleGas - feesGas);
         console.log("EscrowPeriod (cross-contract storage):", escrowGas - feesGas);
