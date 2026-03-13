@@ -6,20 +6,55 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
 // ============ Arbitration Operator Events ============
 event AuthorizationCreated(
-    bytes32 indexed paymentInfoHash, address indexed payer, address indexed receiver, uint256 amount, uint256 timestamp
+    AuthCaptureEscrow.PaymentInfo paymentInfo,
+    bytes32 indexed paymentInfoHash,
+    address indexed payer,
+    address indexed receiver,
+    uint256 amount,
+    uint256 timestamp
 );
-
-event ReleaseExecuted(AuthCaptureEscrow.PaymentInfo paymentInfo, uint256 amount, uint256 timestamp);
 
 event ChargeExecuted(
-    bytes32 indexed paymentInfoHash, address indexed payer, address indexed receiver, uint256 amount, uint256 timestamp
+    AuthCaptureEscrow.PaymentInfo paymentInfo,
+    bytes32 indexed paymentInfoHash,
+    address indexed payer,
+    address indexed receiver,
+    uint256 amount,
+    uint256 timestamp
 );
 
-event RefundInEscrowExecuted(AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed payer, uint256 amount);
+event ReleaseExecuted(
+    AuthCaptureEscrow.PaymentInfo paymentInfo,
+    bytes32 indexed paymentInfoHash,
+    address indexed payer,
+    address indexed receiver,
+    uint256 amount,
+    uint256 timestamp
+);
 
-event RefundPostEscrowExecuted(AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed payer, uint256 amount);
+event RefundInEscrowExecuted(
+    AuthCaptureEscrow.PaymentInfo paymentInfo,
+    bytes32 indexed paymentInfoHash,
+    address indexed payer,
+    address indexed receiver,
+    uint256 amount
+);
+
+event RefundPostEscrowExecuted(
+    AuthCaptureEscrow.PaymentInfo paymentInfo,
+    bytes32 indexed paymentInfoHash,
+    address indexed payer,
+    address indexed receiver,
+    uint256 amount
+);
 
 event FeesDistributed(address indexed token, uint256 protocolAmount, uint256 arbiterAmount);
 
 // ============ Factory Events ============
-event OperatorDeployed(address indexed operator, address indexed feeRecipient, address indexed releaseCondition);
+event OperatorDeployed(
+    address indexed operator,
+    address indexed deployer,
+    address indexed feeRecipient,
+    address releaseCondition,
+    uint256 deployerIndex
+);
