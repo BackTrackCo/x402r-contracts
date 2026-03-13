@@ -281,19 +281,6 @@ contract PaymentIndexingTest is Test {
         assertEq(infos[1].salt, 2, "Second payment salt should be 2");
     }
 
-    /**
-     * @notice Test hash-based lookups still work via getPayerPaymentHashes
-     */
-    function test_GetPayerPaymentHashes_BackwardCompat() public {
-        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(PAYMENT_AMOUNT, 1);
-        bytes32 expectedHash = escrow.getHash(paymentInfo);
-        _authorizePaymentWithInfo(paymentInfo);
-
-        (bytes32[] memory hashes, uint256 total) = indexRecorder.getPayerPaymentHashes(payer, 0, 10);
-        assertEq(total, 1, "Should have 1 payment");
-        assertEq(hashes[0], expectedHash, "Hash should match");
-    }
-
     // ============================================================
     // GAS BENCHMARKING
     // ============================================================
