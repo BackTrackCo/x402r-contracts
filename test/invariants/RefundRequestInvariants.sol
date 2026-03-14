@@ -8,13 +8,12 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {ProtocolFeeConfig} from "../../src/plugins/fees/ProtocolFeeConfig.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
-import {SignatureCondition} from "../../src/plugins/conditions/access/signature/SignatureCondition.sol";
-import {SignatureRefundRequest} from "../../src/requests/refund/SignatureRefundRequest.sol";
+import {RefundRequestCondition} from "../../src/requests/refund/RefundRequestCondition.sol";
 import {RequestStatus} from "../../src/requests/types/Types.sol";
 
 /**
  * @title RefundRequestInvariants
- * @notice Echidna property-based testing for SignatureRefundRequest state machine.
+ * @notice Echidna property-based testing for RefundRequestCondition state machine.
  * @dev Verifies that Approved, Denied, and Refused are terminal states, and only
  *      Pending requests can transition to new states.
  *
@@ -28,10 +27,8 @@ contract RefundRequestInvariants is Test {
     AuthCaptureEscrow public escrow;
     PreApprovalPaymentCollector public collector;
     MockERC20 public token;
-    SignatureCondition public sigCondition;
-    SignatureRefundRequest public refundRequest;
+    RefundRequestCondition public refundRequest;
 
-    uint256 public arbiterPrivateKey = 0xA11CE;
     address public arbiter;
     address public payer = address(0x1000);
     address public receiver = address(0x2000);
@@ -47,7 +44,7 @@ contract RefundRequestInvariants is Test {
     uint256 public nextSalt;
 
     constructor() {
-        arbiter = vm.addr(arbiterPrivateKey);
+        arbiter = makeAddr("arbiter");
 
         escrow = new AuthCaptureEscrow();
         token = new MockERC20("Test Token", "TEST");
@@ -72,8 +69,7 @@ contract RefundRequestInvariants is Test {
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
 
-        sigCondition = new SignatureCondition(arbiter);
-        refundRequest = new SignatureRefundRequest(address(sigCondition));
+        refundRequest = new RefundRequestCondition(arbiter);
 
         token.mint(payer, PAYMENT_AMOUNT * 100);
         vm.prank(payer);
@@ -119,11 +115,8 @@ contract RefundRequestInvariants is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = trackedPaymentInfos[compositeKey];
         uint256 nonce = trackedNonces[compositeKey];
 
-        // Sign approval
-        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
-        bytes memory sig = _signApproval(paymentInfoHash, PAYMENT_AMOUNT, 0);
-
-        try refundRequest.approveWithSignature(paymentInfo, nonce, PAYMENT_AMOUNT, 0, sig) {
+        vm.prank(arbiter);
+        try refundRequest.approve(paymentInfo, nonce) {
             lastKnownStatus[compositeKey] = RequestStatus.Approved;
             wasTerminallyResolved[compositeKey] = true;
         } catch {}
@@ -180,7 +173,7 @@ contract RefundRequestInvariants is Test {
         for (uint256 i = 0; i < trackedKeys.length; i++) {
             bytes32 key = trackedKeys[i];
             if (lastKnownStatus[key] == RequestStatus.Approved) {
-                SignatureRefundRequest.RefundRequestData memory data = refundRequest.getRefundRequestByKey(key);
+                RefundRequestCondition.RefundRequestData memory data = refundRequest.getRefundRequestByKey(key);
                 if (data.status != RequestStatus.Approved) {
                     return false;
                 }
@@ -194,7 +187,7 @@ contract RefundRequestInvariants is Test {
         for (uint256 i = 0; i < trackedKeys.length; i++) {
             bytes32 key = trackedKeys[i];
             if (lastKnownStatus[key] == RequestStatus.Denied) {
-                SignatureRefundRequest.RefundRequestData memory data = refundRequest.getRefundRequestByKey(key);
+                RefundRequestCondition.RefundRequestData memory data = refundRequest.getRefundRequestByKey(key);
                 if (data.status != RequestStatus.Denied) {
                     return false;
                 }
@@ -208,7 +201,7 @@ contract RefundRequestInvariants is Test {
         for (uint256 i = 0; i < trackedKeys.length; i++) {
             bytes32 key = trackedKeys[i];
             if (lastKnownStatus[key] == RequestStatus.Refused) {
-                SignatureRefundRequest.RefundRequestData memory data = refundRequest.getRefundRequestByKey(key);
+                RefundRequestCondition.RefundRequestData memory data = refundRequest.getRefundRequestByKey(key);
                 if (data.status != RequestStatus.Refused) {
                     return false;
                 }
@@ -222,7 +215,7 @@ contract RefundRequestInvariants is Test {
         for (uint256 i = 0; i < trackedKeys.length; i++) {
             bytes32 key = trackedKeys[i];
             if (wasTerminallyResolved[key]) {
-                SignatureRefundRequest.RefundRequestData memory data = refundRequest.getRefundRequestByKey(key);
+                RefundRequestCondition.RefundRequestData memory data = refundRequest.getRefundRequestByKey(key);
                 RequestStatus onChainStatus = data.status;
                 if (
                     onChainStatus != RequestStatus.Approved && onChainStatus != RequestStatus.Denied
@@ -252,32 +245,5 @@ contract RefundRequestInvariants is Test {
             feeReceiver: address(operator),
             salt: salt
         });
-    }
-
-    function _signApproval(bytes32 paymentInfoHash, uint256 amount, uint48 expiry)
-        internal
-        view
-        returns (bytes memory)
-    {
-        bytes32 approvalTypehash = sigCondition.APPROVAL_TYPEHASH();
-        bytes32 structHash = keccak256(abi.encode(approvalTypehash, paymentInfoHash, amount, expiry));
-
-        (bytes1 fields, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
-            sigCondition.eip712Domain();
-        fields;
-
-        bytes32 domainSeparator = keccak256(
-            abi.encode(
-                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
-                keccak256(bytes(name)),
-                keccak256(bytes(version)),
-                chainId,
-                verifyingContract
-            )
-        );
-
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(arbiterPrivateKey, digest);
-        return abi.encodePacked(r, s, v);
     }
 }

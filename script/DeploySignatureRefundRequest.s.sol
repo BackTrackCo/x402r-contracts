@@ -2,38 +2,31 @@
 pragma solidity ^0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
-import {SignatureRefundRequest} from "../src/requests/refund/SignatureRefundRequest.sol";
+import {RefundRequestCondition} from "../src/requests/refund/RefundRequestCondition.sol";
 
 /**
- * @title DeploySignatureRefundRequest
- * @notice Deploy SignatureRefundRequest with a reference to a specific SignatureCondition
- *
- *      Requires SIGNATURE_CONDITION_ADDRESS env var.
+ * @title DeployRefundRequestCondition
+ * @notice Deploy RefundRequestCondition for a given arbiter
  *
  *      Usage:
- *      SIGNATURE_CONDITION_ADDRESS=0x... forge script \
- *        script/DeploySignatureRefundRequest.s.sol:DeploySignatureRefundRequest \
+ *      ARBITER=0x... forge script script/DeploySignatureRefundRequest.s.sol:DeployRefundRequestCondition \
  *        --rpc-url $RPC_URL \
  *        --broadcast \
  *        --verify \
  *        --private-key $PRIVATE_KEY
  */
-contract DeploySignatureRefundRequest is Script {
+contract DeployRefundRequestCondition is Script {
     function run() public {
-        address signatureCondition = vm.envAddress("SIGNATURE_CONDITION_ADDRESS");
+        address arbiter = vm.envAddress("ARBITER");
 
         vm.startBroadcast();
 
-        console.log("=== Deploying SignatureRefundRequest ===");
-        console.log("SignatureCondition:", signatureCondition);
+        console.log("=== Deploying RefundRequestCondition ===");
+        console.log("Arbiter:", arbiter);
 
-        SignatureRefundRequest refundRequest = new SignatureRefundRequest(signatureCondition);
-        console.log("SignatureRefundRequest:", address(refundRequest));
+        RefundRequestCondition refundRequest = new RefundRequestCondition(arbiter);
+        console.log("RefundRequestCondition:", address(refundRequest));
 
         vm.stopBroadcast();
-
-        console.log("\n=== Deployment Summary ===");
-        console.log("SignatureCondition:", signatureCondition);
-        console.log("SignatureRefundRequest:", address(refundRequest));
     }
 }

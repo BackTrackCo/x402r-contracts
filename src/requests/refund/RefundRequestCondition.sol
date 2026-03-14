@@ -5,31 +5,28 @@ pragma solidity ^0.8.28;
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {PaymentOperator} from "../../operator/payment/PaymentOperator.sol";
-import {SignatureCondition} from "../../plugins/conditions/access/signature/SignatureCondition.sol";
+import {ICondition} from "../../plugins/conditions/ICondition.sol";
 import {RequestStatus} from "../types/Types.sol";
 import {RequestAlreadyExists, RequestDoesNotExist, RequestNotPending, ZeroRefundAmount} from "../types/Errors.sol";
 import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} from "../types/Events.sol";
 
 /**
- * @title SignatureRefundRequest
- * @notice Refund request lifecycle with signature-gated approval and atomic condition sync.
- * @dev NOT an extension of RefundRequest — standalone to prevent the updateStatus() backdoor.
- *      Approval is the only action gated by signature (atomic with SignatureCondition).
- *      Deny, refuse, and cancel use msg.sender checks.
+ * @title RefundRequestCondition
+ * @notice Refund request lifecycle with msg.sender-gated approval. Implements ICondition
+ *         so approval IS the condition state change, enabling permissionless refund execution.
+ * @dev One deployment per arbiter (immutable ARBITER). No EIP-712 signatures, no tree walking.
+ *
+ *      Operator condition tree: OrCondition(ReceiverCondition, RefundRequestCondition)
  *
  *      State machine:
- *        Pending -> Approved   (signature, atomic condition sync)
+ *        Pending -> Approved   (msg.sender, onlyArbiterOrReceiver)
  *        Pending -> Denied     (msg.sender, onlyArbiter)
  *        Pending -> Refused    (msg.sender, onlyArbiter)
  *        Pending -> Cancelled  (msg.sender, onlyPayer)
  *
- * SECURITY: ReentrancyGuardTransient protects approveWithSignature() which makes
- *           an external call to SIGNATURE_CONDITION.submitApproval() before updating state.
+ * SECURITY: ReentrancyGuardTransient protects approve() which modifies approvedRefundAmounts.
  */
-contract SignatureRefundRequest is ReentrancyGuardTransient {
-    /// @notice The SignatureCondition this contract syncs approvals with
-    SignatureCondition public immutable SIGNATURE_CONDITION;
-
+contract RefundRequestCondition is ICondition, ReentrancyGuardTransient {
     struct RefundRequestData {
         bytes32 paymentInfoHash;
         uint256 nonce;
@@ -41,11 +38,19 @@ contract SignatureRefundRequest is ReentrancyGuardTransient {
 
     error IndexOutOfBounds();
     error NotArbiter();
+    error NotArbiterOrReceiver();
     error NotPayer();
     error InvalidOperator();
-    error ZeroCondition();
+    error ZeroArbiter();
+
+    // ============ Immutables ============
+
+    address public immutable ARBITER;
 
     // ============ Storage ============
+
+    // Cumulative approved refund amounts per payment
+    mapping(bytes32 paymentInfoHash => uint120) public approvedRefundAmounts;
 
     // compositeKey => refund request
     // compositeKey = keccak256(abi.encodePacked(paymentInfoHash, nonce))
@@ -71,38 +76,51 @@ contract SignatureRefundRequest is ReentrancyGuardTransient {
     mapping(bytes32 => uint256) public cancelCount;
     mapping(bytes32 => mapping(uint256 => uint120)) private cancelledAmounts;
 
+    // ============ Constructor ============
+
+    constructor(address _arbiter) {
+        if (_arbiter == address(0)) revert ZeroArbiter();
+        ARBITER = _arbiter;
+    }
+
     // ============ Modifiers ============
 
     modifier onlyArbiter() {
-        _checkOnlyArbiter();
+        if (msg.sender != ARBITER) revert NotArbiter();
+        _;
+    }
+
+    modifier onlyArbiterOrReceiver(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
+        if (msg.sender != ARBITER && msg.sender != paymentInfo.receiver) revert NotArbiterOrReceiver();
         _;
     }
 
     modifier onlyPayer(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
-        _checkOnlyPayer(paymentInfo);
+        if (msg.sender != paymentInfo.payer) revert NotPayer();
         _;
     }
 
     modifier operatorNotZero(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
-        _checkOperatorNotZero(paymentInfo);
+        if (paymentInfo.operator == address(0)) revert InvalidOperator();
         _;
     }
 
-    function _checkOnlyArbiter() internal view {
-        if (msg.sender != SIGNATURE_CONDITION.SIGNER()) revert NotArbiter();
-    }
+    // ============ ICondition ============
 
-    function _checkOnlyPayer(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) internal view {
-        if (msg.sender != paymentInfo.payer) revert NotPayer();
-    }
-
-    function _checkOperatorNotZero(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) internal pure {
-        if (paymentInfo.operator == address(0)) revert InvalidOperator();
-    }
-
-    constructor(address _signatureCondition) {
-        if (_signatureCondition == address(0)) revert ZeroCondition();
-        SIGNATURE_CONDITION = SignatureCondition(_signatureCondition);
+    /// @notice Returns true if the requested amount is within the cumulative approved refund amount.
+    /// @dev Called by the escrow/operator to check if a refund is allowed.
+    function check(
+        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
+        uint256 amount,
+        address /* caller */
+    )
+        external
+        view
+        override
+        returns (bool)
+    {
+        bytes32 key = PaymentOperator(paymentInfo.operator).ESCROW().getHash(paymentInfo);
+        return amount <= approvedRefundAmounts[key];
     }
 
     // ============ Payer Actions ============
@@ -172,24 +190,18 @@ contract SignatureRefundRequest is ReentrancyGuardTransient {
         emit RefundRequestCancelled(paymentInfo, msg.sender, nonce);
     }
 
-    // ============ Signature-Gated (Approval only) ============
+    // ============ Arbiter/Receiver Actions ============
 
-    /// @notice Approve a refund request with the signer's off-chain signature.
-    ///         Atomically: validates sig -> stores approval on SignatureCondition ->
-    ///         updates request status to Approved.
-    ///         Anyone can call — the signature IS the authorization.
+    /// @notice Approve a refund request. Only arbiter or receiver can call.
+    ///         Atomically updates the condition state (approvedRefundAmounts) and request status.
     /// @param paymentInfo PaymentInfo struct
     /// @param nonce Record index identifying which refund request
-    /// @param amount Maximum approved refund amount
-    /// @param expiry Unix timestamp deadline for the approval (0 = no expiry)
-    /// @param signature The EIP-712 signature from the arbiter
-    function approveWithSignature(
-        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
-        uint256 nonce,
-        uint256 amount,
-        uint48 expiry,
-        bytes calldata signature
-    ) external nonReentrant operatorNotZero(paymentInfo) {
+    function approve(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce)
+        external
+        nonReentrant
+        operatorNotZero(paymentInfo)
+        onlyArbiterOrReceiver(paymentInfo)
+    {
         PaymentOperator operator = PaymentOperator(paymentInfo.operator);
         bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
         bytes32 compositeKey = keccak256(abi.encodePacked(paymentInfoHash, nonce));
@@ -199,18 +211,14 @@ contract SignatureRefundRequest is ReentrancyGuardTransient {
         if (request.paymentInfoHash == bytes32(0)) revert RequestDoesNotExist();
         if (request.status != RequestStatus.Pending) revert RequestNotPending();
 
-        // ============ INTERACTIONS (reverts roll back everything) ============
-        // Submit to SignatureCondition (reverts if sig invalid — rolls back everything)
-        // Reads current approvalNonce from the condition for replay protection
-        uint256 approvalNonce = SIGNATURE_CONDITION.approvalNonces(paymentInfoHash);
-        SIGNATURE_CONDITION.submitApproval(paymentInfoHash, amount, expiry, approvalNonce, signature);
-
-        // ============ EFFECTS (atomic with condition sync) ============
+        // ============ EFFECTS ============
+        approvedRefundAmounts[paymentInfoHash] += request.amount;
         request.status = RequestStatus.Approved;
+
         emit RefundRequestStatusUpdated(paymentInfo, RequestStatus.Pending, RequestStatus.Approved, msg.sender, nonce);
     }
 
-    // ============ Arbiter Actions (msg.sender) ============
+    // ============ Arbiter-Only Actions ============
 
     /// @notice Deny a refund request. Only arbiter can call.
     ///         Arbiter reviewed evidence and rejects the refund claim.
@@ -262,11 +270,11 @@ contract SignatureRefundRequest is ReentrancyGuardTransient {
         payerRefundRequestCount[payer]++;
     }
 
-    function _addReceiverRequest(address receiver, bytes32 key) internal {
-        if (receiverRefundRequestExists[receiver][key]) return;
-        receiverRefundRequestExists[receiver][key] = true;
-        receiverRefundRequests[receiver][receiverRefundRequestCount[receiver]] = key;
-        receiverRefundRequestCount[receiver]++;
+    function _addReceiverRequest(address _receiver, bytes32 key) internal {
+        if (receiverRefundRequestExists[_receiver][key]) return;
+        receiverRefundRequestExists[_receiver][key] = true;
+        receiverRefundRequests[_receiver][receiverRefundRequestCount[_receiver]] = key;
+        receiverRefundRequestCount[_receiver]++;
     }
 
     function _addOperatorRequest(address op, bytes32 key) internal {
@@ -344,18 +352,18 @@ contract SignatureRefundRequest is ReentrancyGuardTransient {
         }
     }
 
-    function getReceiverRefundRequests(address receiver, uint256 offset, uint256 count)
+    function getReceiverRefundRequests(address _receiver, uint256 offset, uint256 count)
         external
         view
         returns (bytes32[] memory keys, uint256 total)
     {
-        total = receiverRefundRequestCount[receiver];
+        total = receiverRefundRequestCount[_receiver];
         if (offset >= total || count == 0) return (new bytes32[](0), total);
         uint256 remaining = total - offset;
         uint256 actualCount = remaining < count ? remaining : count;
         keys = new bytes32[](actualCount);
         for (uint256 i = 0; i < actualCount; i++) {
-            keys[i] = receiverRefundRequests[receiver][offset + i];
+            keys[i] = receiverRefundRequests[_receiver][offset + i];
         }
     }
 
@@ -379,9 +387,9 @@ contract SignatureRefundRequest is ReentrancyGuardTransient {
         return payerRefundRequests[payer][index];
     }
 
-    function getReceiverRefundRequest(address receiver, uint256 index) external view returns (bytes32) {
-        if (index >= receiverRefundRequestCount[receiver]) revert IndexOutOfBounds();
-        return receiverRefundRequests[receiver][index];
+    function getReceiverRefundRequest(address _receiver, uint256 index) external view returns (bytes32) {
+        if (index >= receiverRefundRequestCount[_receiver]) revert IndexOutOfBounds();
+        return receiverRefundRequests[_receiver][index];
     }
 
     function getOperatorRefundRequest(address op, uint256 index) external view returns (bytes32) {

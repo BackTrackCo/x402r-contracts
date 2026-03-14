@@ -18,8 +18,7 @@ import {AndCondition} from "../../src/plugins/conditions/combinators/AndConditio
 import {PayerCondition} from "../../src/plugins/conditions/access/PayerCondition.sol";
 import {ReceiverCondition} from "../../src/plugins/conditions/access/ReceiverCondition.sol";
 
-import {SignatureCondition} from "../../src/plugins/conditions/access/signature/SignatureCondition.sol";
-import {SignatureRefundRequest} from "../../src/requests/refund/SignatureRefundRequest.sol";
+import {RefundRequestCondition} from "../../src/requests/refund/RefundRequestCondition.sol";
 import {DisputeEvidence} from "../../src/evidence/DisputeEvidence.sol";
 
 /**
@@ -60,8 +59,7 @@ contract GasBenchmark is Test {
     PaymentOperator public fullOperator; // EscrowPeriod + Freeze + fees
 
     // ============ Dispute System ============
-    SignatureCondition public sigCondition;
-    SignatureRefundRequest public refundRequest;
+    RefundRequestCondition public refundRequest;
     DisputeEvidence public disputeEvidence;
 
     // ============ Accounts ============
@@ -70,7 +68,6 @@ contract GasBenchmark is Test {
     address public operatorFeeRecipient;
     address public payer;
     address public receiver;
-    uint256 public arbiterPrivateKey;
     address public arbiter;
 
     // ============ Constants ============
@@ -88,8 +85,7 @@ contract GasBenchmark is Test {
         payer = makeAddr("payer");
         receiver = makeAddr("receiver");
 
-        arbiterPrivateKey = 0xA11CE;
-        arbiter = vm.addr(arbiterPrivateKey);
+        arbiter = makeAddr("arbiter");
 
         // Deploy infrastructure
         escrow = new AuthCaptureEscrow();
@@ -213,8 +209,7 @@ contract GasBenchmark is Test {
         fullOperator = PaymentOperator(operatorFactory.deployOperator(fullConfig));
 
         // Deploy dispute system
-        sigCondition = new SignatureCondition(arbiter);
-        refundRequest = new SignatureRefundRequest(address(sigCondition));
+        refundRequest = new RefundRequestCondition(arbiter);
         disputeEvidence = new DisputeEvidence(address(refundRequest));
 
         // Fund accounts
@@ -524,15 +519,13 @@ contract GasBenchmark is Test {
         vm.prank(payer);
         refundRequest.requestRefund(pi, uint120(PAYMENT_AMOUNT), 0);
 
-        bytes32 paymentInfoHash = escrow.getHash(pi);
-        bytes memory sig = _signApproval(paymentInfoHash, PAYMENT_AMOUNT, 0);
-
         uint256 gasBefore = gasleft();
-        refundRequest.approveWithSignature(pi, 0, PAYMENT_AMOUNT, 0, sig);
+        vm.prank(arbiter);
+        refundRequest.approve(pi, 0);
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== x402r UNHAPPY PATH ===");
-        console.log("approveWithSignature:", gasUsed);
+        console.log("approve:", gasUsed);
     }
 
     function test_gas_submitEvidence() public {
@@ -781,20 +774,16 @@ contract GasBenchmark is Test {
         vm.prank(payer);
         refundRequest.requestRefund(pi2, uint120(PAYMENT_AMOUNT), 0);
 
-        bytes32 hash1 = escrow.getHash(pi1);
-        bytes memory sig1 = _signApproval(hash1, PAYMENT_AMOUNT, 0);
-
-        bytes32 hash2 = escrow.getHash(pi2);
-        bytes memory sig2 = _signApproval(hash2, PAYMENT_AMOUNT, 0);
-
-        // Cold approveWithSignature
+        // Cold approve
         uint256 g1 = gasleft();
-        refundRequest.approveWithSignature(pi1, 0, PAYMENT_AMOUNT, 0, sig1);
+        vm.prank(arbiter);
+        refundRequest.approve(pi1, 0);
         uint256 coldGas = g1 - gasleft();
 
-        // Warm approveWithSignature
+        // Warm approve
         uint256 g2 = gasleft();
-        refundRequest.approveWithSignature(pi2, 0, PAYMENT_AMOUNT, 0, sig2);
+        vm.prank(arbiter);
+        refundRequest.approve(pi2, 0);
         uint256 warmGas = g2 - gasleft();
 
         console.log("=== APPROVE REFUND COLD vs WARM ===");
@@ -1256,11 +1245,10 @@ contract GasBenchmark is Test {
         disputeEvidence.submitEvidence(pi, 0, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
         uint256 evidenceGas = g5 - gasleft();
 
-        // approveWithSignature
-        bytes32 paymentInfoHash = escrow.getHash(pi);
-        bytes memory sig = _signApproval(paymentInfoHash, PAYMENT_AMOUNT, 0);
+        // approve
         uint256 g6 = gasleft();
-        refundRequest.approveWithSignature(pi, 0, PAYMENT_AMOUNT, 0, sig);
+        vm.prank(arbiter);
+        refundRequest.approve(pi, 0);
         uint256 approveGas = g6 - gasleft();
 
         // refundPostEscrow
@@ -1277,7 +1265,7 @@ contract GasBenchmark is Test {
         console.log("release:", releaseGas);
         console.log("requestRefund:", requestGas);
         console.log("submitEvidence:", evidenceGas);
-        console.log("approveWithSignature:", approveGas);
+        console.log("approve:", approveGas);
         console.log("refundPostEscrow:", refundGas);
         console.log("TOTAL:", total);
     }
@@ -1305,33 +1293,5 @@ contract GasBenchmark is Test {
             feeReceiver: op,
             salt: salt
         });
-    }
-
-    function _signApproval(bytes32 paymentInfoHash, uint256 amount, uint48 expiry)
-        internal
-        view
-        returns (bytes memory)
-    {
-        uint256 nonce = sigCondition.approvalNonces(paymentInfoHash);
-        bytes32 approvalTypehash = sigCondition.APPROVAL_TYPEHASH();
-        bytes32 structHash = keccak256(abi.encode(approvalTypehash, paymentInfoHash, amount, expiry, nonce));
-
-        (bytes1 fields, string memory name_, string memory version_, uint256 chainId, address verifyingContract,,) =
-            sigCondition.eip712Domain();
-        fields;
-
-        bytes32 domainSeparator = keccak256(
-            abi.encode(
-                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
-                keccak256(bytes(name_)),
-                keccak256(bytes(version_)),
-                chainId,
-                verifyingContract
-            )
-        );
-
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(arbiterPrivateKey, digest);
-        return abi.encodePacked(r, s, v);
     }
 }
