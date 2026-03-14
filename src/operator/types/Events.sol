@@ -10,8 +10,7 @@ event AuthorizationCreated(
     bytes32 indexed paymentInfoHash,
     address indexed payer,
     address indexed receiver,
-    uint256 amount,
-    uint256 timestamp
+    uint256 amount
 );
 
 event ChargeExecuted(
@@ -19,8 +18,7 @@ event ChargeExecuted(
     bytes32 indexed paymentInfoHash,
     address indexed payer,
     address indexed receiver,
-    uint256 amount,
-    uint256 timestamp
+    uint256 amount
 );
 
 event ReleaseExecuted(
@@ -28,8 +26,7 @@ event ReleaseExecuted(
     bytes32 indexed paymentInfoHash,
     address indexed payer,
     address indexed receiver,
-    uint256 amount,
-    uint256 timestamp
+    uint256 amount
 );
 
 event RefundInEscrowExecuted(
@@ -52,9 +49,5 @@ event FeesDistributed(address indexed token, uint256 protocolAmount, uint256 arb
 
 // ============ Factory Events ============
 event OperatorDeployed(
-    address indexed operator,
-    address indexed deployer,
-    address indexed feeRecipient,
-    address releaseCondition,
-    uint256 deployerIndex
+    address indexed operator, address indexed deployer, address indexed feeRecipient, uint256 deployerIndex
 );

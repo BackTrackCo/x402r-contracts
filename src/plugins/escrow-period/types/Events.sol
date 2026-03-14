@@ -6,8 +6,7 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
 /// @notice Emitted when a payment's authorization time is recorded
 /// @param paymentInfo The PaymentInfo struct
-/// @param authorizationTime Timestamp when the payment was authorized
-event AuthorizationRecorded(AuthCaptureEscrow.PaymentInfo paymentInfo, uint256 authorizationTime);
+event AuthorizationRecorded(AuthCaptureEscrow.PaymentInfo paymentInfo);
 
 /// @notice Emitted when an EscrowPeriod contract is deployed via factory
 /// @param escrowPeriod Address of the deployed EscrowPeriod contract

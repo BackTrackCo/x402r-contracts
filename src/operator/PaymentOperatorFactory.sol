@@ -123,7 +123,7 @@ contract PaymentOperatorFactory {
         deployerOperators[msg.sender][deployerIndex] = operator;
         deployerOperatorCount[msg.sender]++;
 
-        emit OperatorDeployed(operator, msg.sender, config.feeRecipient, config.releaseCondition, deployerIndex);
+        emit OperatorDeployed(operator, msg.sender, config.feeRecipient, deployerIndex);
 
         // ============ INTERACTIONS ============
         // Deploy new operator - address is deterministic via CREATE2

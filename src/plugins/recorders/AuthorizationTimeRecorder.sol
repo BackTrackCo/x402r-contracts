@@ -54,7 +54,7 @@ contract AuthorizationTimeRecorder is BaseRecorder {
         // Store authorization timestamp
         authorizationTimes[paymentInfoHash] = block.timestamp;
 
-        emit AuthorizationRecorded(paymentInfo, block.timestamp);
+        emit AuthorizationRecorded(paymentInfo);
     }
 
     // ============ View Functions ============
