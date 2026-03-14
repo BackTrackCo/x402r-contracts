@@ -13,7 +13,7 @@ import {MockERC20} from "./mocks/MockERC20.sol";
 /**
  * @title PaymentIndexingTest
  * @notice Tests for optimized payment indexing (mapping + counter pattern)
- * @dev Verifies pagination, gas savings, and backward compatibility
+ * @dev Verifies pagination, gas savings, full PaymentInfo retrieval, and backward compatibility
  */
 contract PaymentIndexingTest is Test {
     PaymentOperator public operator;
@@ -88,9 +88,10 @@ contract PaymentIndexingTest is Test {
         assertEq(indexRecorder.payerPaymentCount(payer), 1, "Should have 1 payment");
         assertEq(indexRecorder.receiverPaymentCount(receiver), 1, "Should have 1 payment");
 
-        // Get payment by index
-        bytes32 paymentHash = indexRecorder.getPayerPayment(payer, 0);
-        assertTrue(paymentHash != bytes32(0), "Hash should not be zero");
+        // Get payment by index — now returns full PaymentInfo
+        AuthCaptureEscrow.PaymentInfo memory info = indexRecorder.getPayerPayment(payer, 0);
+        assertEq(info.payer, payer, "Payer should match");
+        assertEq(info.receiver, receiver, "Receiver should match");
     }
 
     /**
@@ -109,10 +110,11 @@ contract PaymentIndexingTest is Test {
         // Check counter
         assertEq(indexRecorder.payerPaymentCount(payer), numPayments, "Should have correct count");
 
-        // Verify each payment
+        // Verify each payment returns correct PaymentInfo
         for (uint256 i = 0; i < numPayments; i++) {
-            bytes32 paymentHash = indexRecorder.getPayerPayment(payer, i);
-            assertEq(paymentHash, expectedHashes[i], "Hash should match");
+            AuthCaptureEscrow.PaymentInfo memory info = indexRecorder.getPayerPayment(payer, i);
+            assertEq(info.salt, i + 1, "Salt should match payment index");
+            assertEq(info.payer, payer, "Payer should match");
         }
     }
 
@@ -128,21 +130,21 @@ contract PaymentIndexingTest is Test {
         }
 
         // Get first 5 payments
-        (bytes32[] memory payments, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 5);
+        (AuthCaptureEscrow.PaymentInfo[] memory payments, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 5);
 
         assertEq(total, 10, "Total should be 10");
         assertEq(payments.length, 5, "Should return 5 payments");
 
         // Get next 5 payments
-        (bytes32[] memory payments2, uint256 total2) = indexRecorder.getPayerPayments(payer, 5, 5);
+        (AuthCaptureEscrow.PaymentInfo[] memory payments2, uint256 total2) = indexRecorder.getPayerPayments(payer, 5, 5);
 
         assertEq(total2, 10, "Total should still be 10");
         assertEq(payments2.length, 5, "Should return 5 payments");
 
-        // Verify no overlap
+        // Verify no overlap via salt (each payment has unique salt)
         for (uint256 i = 0; i < 5; i++) {
             for (uint256 j = 0; j < 5; j++) {
-                assertTrue(payments[i] != payments2[j], "Should have no overlap");
+                assertTrue(payments[i].salt != payments2[j].salt, "Should have no overlap");
             }
         }
     }
@@ -157,7 +159,7 @@ contract PaymentIndexingTest is Test {
         }
 
         // Request 10 payments (only 3 exist)
-        (bytes32[] memory payments, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 10);
+        (AuthCaptureEscrow.PaymentInfo[] memory payments, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 10);
 
         assertEq(total, 3, "Total should be 3");
         assertEq(payments.length, 3, "Should return only 3 payments");
@@ -173,7 +175,7 @@ contract PaymentIndexingTest is Test {
         }
 
         // Request from offset 10 (beyond total of 5)
-        (bytes32[] memory payments, uint256 total) = indexRecorder.getPayerPayments(payer, 10, 5);
+        (AuthCaptureEscrow.PaymentInfo[] memory payments, uint256 total) = indexRecorder.getPayerPayments(payer, 10, 5);
 
         assertEq(total, 5, "Total should still be 5");
         assertEq(payments.length, 0, "Should return empty array");
@@ -191,14 +193,18 @@ contract PaymentIndexingTest is Test {
         _authorizePayment(payer, receiver2, PAYMENT_AMOUNT, 3);
 
         // Check receiver1 has 2 payments
-        (bytes32[] memory payments, uint256 total) = indexRecorder.getReceiverPayments(receiver, 0, 10);
+        (AuthCaptureEscrow.PaymentInfo[] memory payments, uint256 total) =
+            indexRecorder.getReceiverPayments(receiver, 0, 10);
         assertEq(total, 2, "Receiver should have 2 payments");
         assertEq(payments.length, 2, "Should return 2 payments");
+        assertEq(payments[0].receiver, receiver, "Receiver should match");
 
         // Check receiver2 has 1 payment
-        (bytes32[] memory payments2, uint256 total2) = indexRecorder.getReceiverPayments(receiver2, 0, 10);
+        (AuthCaptureEscrow.PaymentInfo[] memory payments2, uint256 total2) =
+            indexRecorder.getReceiverPayments(receiver2, 0, 10);
         assertEq(total2, 1, "Receiver2 should have 1 payment");
         assertEq(payments2.length, 1, "Should return 1 payment");
+        assertEq(payments2[0].receiver, receiver2, "Receiver2 should match");
     }
 
     /**
@@ -224,6 +230,58 @@ contract PaymentIndexingTest is Test {
     }
 
     // ============================================================
+    // PAYMENT INFO RETRIEVAL TESTS
+    // ============================================================
+
+    /**
+     * @notice Test getPaymentInfo returns full struct
+     */
+    function test_GetPaymentInfo_ReturnsFullStruct() public {
+        AuthCaptureEscrow.PaymentInfo memory original = _createPaymentInfo(PAYMENT_AMOUNT, 42);
+        bytes32 hash = escrow.getHash(original);
+        _authorizePaymentWithInfo(original);
+
+        AuthCaptureEscrow.PaymentInfo memory retrieved = indexRecorder.getPaymentInfo(hash);
+
+        assertEq(retrieved.operator, original.operator, "operator mismatch");
+        assertEq(retrieved.payer, original.payer, "payer mismatch");
+        assertEq(retrieved.receiver, original.receiver, "receiver mismatch");
+        assertEq(retrieved.token, original.token, "token mismatch");
+        assertEq(retrieved.maxAmount, original.maxAmount, "maxAmount mismatch");
+        assertEq(retrieved.preApprovalExpiry, original.preApprovalExpiry, "preApprovalExpiry mismatch");
+        assertEq(retrieved.authorizationExpiry, original.authorizationExpiry, "authorizationExpiry mismatch");
+        assertEq(retrieved.refundExpiry, original.refundExpiry, "refundExpiry mismatch");
+        assertEq(retrieved.minFeeBps, original.minFeeBps, "minFeeBps mismatch");
+        assertEq(retrieved.maxFeeBps, original.maxFeeBps, "maxFeeBps mismatch");
+        assertEq(retrieved.feeReceiver, original.feeReceiver, "feeReceiver mismatch");
+        assertEq(retrieved.salt, original.salt, "salt mismatch");
+    }
+
+    /**
+     * @notice Test getPaymentInfo returns zeros for unknown hash
+     */
+    function test_GetPaymentInfo_UnknownHash() public view {
+        AuthCaptureEscrow.PaymentInfo memory info = indexRecorder.getPaymentInfo(bytes32(uint256(999)));
+        assertEq(info.operator, address(0), "Should return zero struct");
+    }
+
+    /**
+     * @notice Test getPayerPayments returns full PaymentInfo structs
+     */
+    function test_GetPayerPayments_ReturnsFullStructs() public {
+        _authorizePayment(payer, receiver, PAYMENT_AMOUNT, 1);
+        _authorizePayment(payer, receiver, PAYMENT_AMOUNT, 2);
+
+        (AuthCaptureEscrow.PaymentInfo[] memory infos, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 10);
+
+        assertEq(total, 2, "Should have 2 payments");
+        assertEq(infos.length, 2, "Should return 2 infos");
+        assertEq(infos[0].payer, payer, "First payment payer should match");
+        assertEq(infos[0].salt, 1, "First payment salt should be 1");
+        assertEq(infos[1].salt, 2, "Second payment salt should be 2");
+    }
+
+    // ============================================================
     // GAS BENCHMARKING
     // ============================================================
 
@@ -236,8 +294,7 @@ contract PaymentIndexingTest is Test {
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("First payment gas:", gasUsed);
-        // Expected: ~432k (down from ~473k with arrays)
-        // Indexing portion: ~22k (down from ~40k)
+        // Expected: ~590k (up from ~432k due to PaymentInfo storage — 7 extra SSTORE slots)
     }
 
     /**
@@ -253,8 +310,7 @@ contract PaymentIndexingTest is Test {
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("Subsequent payment gas:", gasUsed);
-        // Expected: ~462k (down from ~473k with arrays)
-        // Indexing portion: ~5k (down from ~10k)
+        // Expected: ~620k (up from ~462k due to PaymentInfo storage)
     }
 
     /**
@@ -270,10 +326,6 @@ contract PaymentIndexingTest is Test {
 
             console.log("Payment", i, "gas:", gasUsed);
         }
-
-        // Expected pattern:
-        // Payment 1: ~432k (new storage slots)
-        // Payment 2-5: ~462k (existing storage slots)
     }
 
     /**
@@ -291,19 +343,27 @@ contract PaymentIndexingTest is Test {
         uint256 gasBefore = gasleft();
         indexRecorder.getPayerPayments(payer, 0, 10);
         uint256 gasUsed = gasBefore - gasleft();
-        console.log("Get 10 payments gas:", gasUsed);
+        console.log("Get 10 PaymentInfos gas:", gasUsed);
 
         // Get first 50
         gasBefore = gasleft();
         indexRecorder.getPayerPayments(payer, 0, 50);
         gasUsed = gasBefore - gasleft();
-        console.log("Get 50 payments gas:", gasUsed);
+        console.log("Get 50 PaymentInfos gas:", gasUsed);
 
         // Get single payment
         gasBefore = gasleft();
         indexRecorder.getPayerPayment(payer, 0);
         gasUsed = gasBefore - gasleft();
-        console.log("Get single payment gas:", gasUsed);
+        console.log("Get single PaymentInfo gas:", gasUsed);
+
+        // Get single by hash
+        AuthCaptureEscrow.PaymentInfo memory info = _createPaymentInfo(PAYMENT_AMOUNT, 1);
+        bytes32 hash = escrow.getHash(info);
+        gasBefore = gasleft();
+        indexRecorder.getPaymentInfo(hash);
+        gasUsed = gasBefore - gasleft();
+        console.log("Get PaymentInfo by hash gas:", gasUsed);
     }
 
     // ============================================================
@@ -313,8 +373,8 @@ contract PaymentIndexingTest is Test {
     /**
      * @notice Test pagination with zero payments
      */
-    function test_Pagination_ZeroPayments() public {
-        (bytes32[] memory payments, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 10);
+    function test_Pagination_ZeroPayments() public view {
+        (AuthCaptureEscrow.PaymentInfo[] memory payments, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 10);
 
         assertEq(total, 0, "Total should be 0");
         assertEq(payments.length, 0, "Should return empty array");
@@ -326,7 +386,7 @@ contract PaymentIndexingTest is Test {
     function test_Pagination_ZeroCount() public {
         _authorizePayment(payer, receiver, PAYMENT_AMOUNT, 1);
 
-        (bytes32[] memory payments, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 0);
+        (AuthCaptureEscrow.PaymentInfo[] memory payments, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 0);
 
         assertEq(total, 1, "Total should be 1");
         assertEq(payments.length, 0, "Should return empty array");
@@ -351,8 +411,13 @@ contract PaymentIndexingTest is Test {
         uint256 totalRetrieved = 0;
 
         for (uint256 offset = 0; offset < numPayments; offset += pageSize) {
-            (bytes32[] memory payments,) = indexRecorder.getPayerPayments(payer, offset, pageSize);
+            (AuthCaptureEscrow.PaymentInfo[] memory payments,) = indexRecorder.getPayerPayments(payer, offset, pageSize);
             totalRetrieved += payments.length;
+
+            // Verify each returned PaymentInfo has correct payer
+            for (uint256 i = 0; i < payments.length; i++) {
+                assertEq(payments[i].payer, payer, "Payer should match in paginated result");
+            }
         }
 
         assertEq(totalRetrieved, numPayments, "Should retrieve all payments");

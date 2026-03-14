@@ -98,7 +98,7 @@ contract RecorderCoverageTest is Test {
         }
 
         // Get page 1 (offset 0, count 2)
-        (bytes32[] memory records, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 2);
+        (AuthCaptureEscrow.PaymentInfo[] memory records, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 2);
         assertEq(total, 3, "Total should be 3");
         assertEq(records.length, 2, "Page should have 2 records");
 
@@ -109,7 +109,7 @@ contract RecorderCoverageTest is Test {
 
     function test_PaymentIndexRecorder_GetPayerPayments_OffsetBeyondTotal() public {
         PaymentIndexRecorder indexRecorder = new PaymentIndexRecorder(address(escrow), bytes32(0));
-        (bytes32[] memory records, uint256 total) = indexRecorder.getPayerPayments(payer, 100, 10);
+        (AuthCaptureEscrow.PaymentInfo[] memory records, uint256 total) = indexRecorder.getPayerPayments(payer, 100, 10);
         assertEq(total, 0, "Total should be 0 for no payments");
         assertEq(records.length, 0, "Should return empty array");
     }
@@ -123,7 +123,7 @@ contract RecorderCoverageTest is Test {
         collector.preApprove(paymentInfo);
         op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
-        (bytes32[] memory records, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 0);
+        (AuthCaptureEscrow.PaymentInfo[] memory records, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 0);
         assertEq(total, 1, "Total should be 1");
         assertEq(records.length, 0, "Should return empty for zero count");
     }
@@ -143,7 +143,8 @@ contract RecorderCoverageTest is Test {
         collector.preApprove(paymentInfo);
         op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
-        (bytes32[] memory records, uint256 total) = indexRecorder.getReceiverPayments(receiver, 0, 10);
+        (AuthCaptureEscrow.PaymentInfo[] memory records, uint256 total) =
+            indexRecorder.getReceiverPayments(receiver, 0, 10);
         assertEq(total, 1, "Receiver should have 1 payment");
         assertEq(records.length, 1, "Should return 1 record");
     }
