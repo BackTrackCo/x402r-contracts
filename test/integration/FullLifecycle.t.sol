@@ -195,7 +195,7 @@ contract FullLifecycleTest is Test {
 
         // --- Step 9: APPROVE REFUND (arbiter calls approve) ---
         vm.prank(arbiter);
-        refundRequest.approve(paymentInfo, 0);
+        refundRequest.approve(paymentInfo, 0, uint120(expectedNetAmount));
 
         reqData = refundRequest.getRefundRequest(paymentInfo, 0);
         assertEq(uint256(reqData.status), uint256(RequestStatus.Approved), "Step 9: Request approved");

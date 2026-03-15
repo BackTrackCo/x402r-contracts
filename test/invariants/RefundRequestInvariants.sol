@@ -115,8 +115,11 @@ contract RefundRequestInvariants is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = trackedPaymentInfos[compositeKey];
         uint256 nonce = trackedNonces[compositeKey];
 
+        // Read the requested amount to pass as approve amount
+        RefundRequestCondition.RefundRequestData memory data = refundRequest.getRefundRequestByKey(compositeKey);
+
         vm.prank(arbiter);
-        try refundRequest.approve(paymentInfo, nonce) {
+        try refundRequest.approve(paymentInfo, nonce, data.amount) {
             lastKnownStatus[compositeKey] = RequestStatus.Approved;
             wasTerminallyResolved[compositeKey] = true;
         } catch {}

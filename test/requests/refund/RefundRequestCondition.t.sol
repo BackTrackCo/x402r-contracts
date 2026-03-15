@@ -148,10 +148,11 @@ contract RefundRequestConditionTest is Test {
         refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
 
         vm.prank(arbiter);
-        refundRequest.approve(paymentInfo, 0);
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
 
         RefundRequestCondition.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo, 0);
         assertEq(uint256(data.status), uint256(RequestStatus.Approved));
+        assertEq(data.approvedAmount, uint120(PAYMENT_AMOUNT));
 
         // approvedRefundAmounts should be updated
         bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
@@ -165,10 +166,11 @@ contract RefundRequestConditionTest is Test {
         refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
 
         vm.prank(receiver);
-        refundRequest.approve(paymentInfo, 0);
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
 
         RefundRequestCondition.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo, 0);
         assertEq(uint256(data.status), uint256(RequestStatus.Approved));
+        assertEq(data.approvedAmount, uint120(PAYMENT_AMOUNT));
 
         bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
         assertEq(refundRequest.approvedRefundAmounts(paymentInfoHash), uint120(PAYMENT_AMOUNT));
@@ -183,7 +185,7 @@ contract RefundRequestConditionTest is Test {
         address random = makeAddr("random");
         vm.prank(random);
         vm.expectRevert(RefundRequestCondition.NotArbiterOrReceiver.selector);
-        refundRequest.approve(paymentInfo, 0);
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
     }
 
     function test_approve_conditionCheck() public {
@@ -196,7 +198,7 @@ contract RefundRequestConditionTest is Test {
         assertFalse(refundRequest.check(paymentInfo, PAYMENT_AMOUNT, address(0)));
 
         vm.prank(arbiter);
-        refundRequest.approve(paymentInfo, 0);
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
 
         // After approval, check() should return true
         assertTrue(refundRequest.check(paymentInfo, PAYMENT_AMOUNT, address(0)));
@@ -214,12 +216,12 @@ contract RefundRequestConditionTest is Test {
 
         // Approve first
         vm.prank(arbiter);
-        refundRequest.approve(paymentInfo, 0);
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT / 4));
         assertEq(refundRequest.approvedRefundAmounts(paymentInfoHash), uint120(PAYMENT_AMOUNT / 4));
 
         // Approve second — should accumulate
         vm.prank(arbiter);
-        refundRequest.approve(paymentInfo, 1);
+        refundRequest.approve(paymentInfo, 1, uint120(PAYMENT_AMOUNT / 4));
         assertEq(refundRequest.approvedRefundAmounts(paymentInfoHash), uint120(PAYMENT_AMOUNT / 2));
 
         // check() should pass for cumulative amount
@@ -232,7 +234,7 @@ contract RefundRequestConditionTest is Test {
 
         vm.prank(arbiter);
         vm.expectRevert();
-        refundRequest.approve(paymentInfo, 0);
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
     }
 
     function test_approve_requestMustBePending() public {
@@ -242,12 +244,58 @@ contract RefundRequestConditionTest is Test {
         refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
 
         vm.prank(arbiter);
-        refundRequest.approve(paymentInfo, 0);
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
 
         // Try to approve again — should revert (not pending)
         vm.prank(arbiter);
         vm.expectRevert();
-        refundRequest.approve(paymentInfo, 0);
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
+    }
+
+    function test_approve_partialAmount() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        // Approve only half the requested amount
+        vm.prank(arbiter);
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT / 2));
+
+        RefundRequestCondition.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo, 0);
+        assertEq(uint256(data.status), uint256(RequestStatus.Approved));
+        assertEq(data.amount, uint120(PAYMENT_AMOUNT));
+        assertEq(data.approvedAmount, uint120(PAYMENT_AMOUNT / 2));
+
+        // approvedRefundAmounts should reflect partial amount
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+        assertEq(refundRequest.approvedRefundAmounts(paymentInfoHash), uint120(PAYMENT_AMOUNT / 2));
+
+        // check() should pass for partial amount but fail for full
+        assertTrue(refundRequest.check(paymentInfo, PAYMENT_AMOUNT / 2, address(0)));
+        assertFalse(refundRequest.check(paymentInfo, PAYMENT_AMOUNT, address(0)));
+    }
+
+    function test_approve_revertsIfZeroAmount() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        vm.prank(arbiter);
+        vm.expectRevert();
+        refundRequest.approve(paymentInfo, 0, 0);
+    }
+
+    function test_approve_revertsIfExceedsRequested() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT / 2), 0);
+
+        vm.prank(arbiter);
+        vm.expectRevert();
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
     }
 
     // ============ ICondition.check() Tests ============
@@ -268,7 +316,7 @@ contract RefundRequestConditionTest is Test {
         refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
 
         vm.prank(arbiter);
-        refundRequest.approve(paymentInfo, 0);
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
 
         assertTrue(refundRequest.check(paymentInfo, PAYMENT_AMOUNT, address(0)));
     }
@@ -280,7 +328,7 @@ contract RefundRequestConditionTest is Test {
         refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT / 2), 0);
 
         vm.prank(arbiter);
-        refundRequest.approve(paymentInfo, 0);
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT / 2));
 
         // Approved half — requesting more should fail
         assertTrue(refundRequest.check(paymentInfo, PAYMENT_AMOUNT / 2, address(0)));
@@ -431,7 +479,7 @@ contract RefundRequestConditionTest is Test {
 
         // Step 2: Arbiter approves
         vm.prank(arbiter);
-        refundRequest.approve(paymentInfo, 0);
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
 
         // Step 3: check() now passes
         assertTrue(refundRequest.check(paymentInfo, PAYMENT_AMOUNT, address(0)));
@@ -515,7 +563,7 @@ contract RefundRequestConditionTest is Test {
 
         // Approve nonce 0
         vm.prank(arbiter);
-        refundRequest.approve(paymentInfo, 0);
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
 
         // Nonce 0 is Approved
         RefundRequestCondition.RefundRequestData memory data0 = refundRequest.getRefundRequest(paymentInfo, 0);
@@ -644,7 +692,7 @@ contract RefundRequestConditionOrConditionTest is Test {
 
         // Arbiter approves
         vm.prank(arbiter);
-        refundRequest.approve(paymentInfo, 0);
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
 
         // OrCondition.check() passes (refundRequestCondition has the approval)
         assertTrue(orCondition.check(paymentInfo, PAYMENT_AMOUNT, address(0)));
@@ -665,7 +713,7 @@ contract RefundRequestConditionOrConditionTest is Test {
 
         // Receiver approves (instead of arbiter)
         vm.prank(receiver);
-        refundRequest.approve(paymentInfo, 0);
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
 
         // OrCondition.check() passes via refundRequestCondition
         assertTrue(orCondition.check(paymentInfo, PAYMENT_AMOUNT, address(0)));

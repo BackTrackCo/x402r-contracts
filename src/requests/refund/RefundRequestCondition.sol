@@ -7,7 +7,13 @@ import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.so
 import {PaymentOperator} from "../../operator/payment/PaymentOperator.sol";
 import {ICondition} from "../../plugins/conditions/ICondition.sol";
 import {RequestStatus} from "../types/Types.sol";
-import {RequestAlreadyExists, RequestDoesNotExist, RequestNotPending, ZeroRefundAmount} from "../types/Errors.sol";
+import {
+    ApproveAmountExceedsRequest,
+    RequestAlreadyExists,
+    RequestDoesNotExist,
+    RequestNotPending,
+    ZeroRefundAmount
+} from "../types/Errors.sol";
 import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} from "../types/Events.sol";
 
 /**
@@ -32,6 +38,7 @@ contract RefundRequestCondition is ICondition, ReentrancyGuardTransient {
         bytes32 paymentInfoHash;
         uint256 nonce;
         uint120 amount;
+        uint120 approvedAmount;
         RequestStatus status;
     }
 
@@ -154,7 +161,11 @@ contract RefundRequestCondition is ICondition, ReentrancyGuardTransient {
 
         // Create or update refund request
         refundRequests[compositeKey] = RefundRequestData({
-            paymentInfoHash: paymentInfoHash, nonce: nonce, amount: amount, status: RequestStatus.Pending
+            paymentInfoHash: paymentInfoHash,
+            nonce: nonce,
+            amount: amount,
+            approvedAmount: 0,
+            status: RequestStatus.Pending
         });
 
         // Update indexing mappings (only add if not already indexed)
@@ -195,9 +206,11 @@ contract RefundRequestCondition is ICondition, ReentrancyGuardTransient {
 
     /// @notice Approve a refund request. Only arbiter or receiver can call.
     ///         Atomically updates the condition state (approvedRefundAmounts) and request status.
+    ///         The approved amount may differ from the requested amount (partial approval).
     /// @param paymentInfo PaymentInfo struct
     /// @param nonce Record index identifying which refund request
-    function approve(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce)
+    /// @param amount Amount to approve (must be > 0 and <= requested amount)
+    function approve(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce, uint120 amount)
         external
         nonReentrant
         operatorNotZero(paymentInfo)
@@ -211,12 +224,17 @@ contract RefundRequestCondition is ICondition, ReentrancyGuardTransient {
         RefundRequestData storage request = refundRequests[compositeKey];
         if (request.paymentInfoHash == bytes32(0)) revert RequestDoesNotExist();
         if (request.status != RequestStatus.Pending) revert RequestNotPending();
+        if (amount == 0) revert ZeroRefundAmount();
+        if (amount > request.amount) revert ApproveAmountExceedsRequest();
 
         // ============ EFFECTS ============
-        approvedRefundAmounts[paymentInfoHash] += request.amount;
+        approvedRefundAmounts[paymentInfoHash] += amount;
+        request.approvedAmount = amount;
         request.status = RequestStatus.Approved;
 
-        emit RefundRequestStatusUpdated(paymentInfo, RequestStatus.Pending, RequestStatus.Approved, msg.sender, nonce);
+        emit RefundRequestStatusUpdated(
+            paymentInfo, RequestStatus.Pending, RequestStatus.Approved, msg.sender, nonce, amount
+        );
     }
 
     // ============ Arbiter-Only Actions ============
@@ -261,7 +279,7 @@ contract RefundRequestCondition is ICondition, ReentrancyGuardTransient {
         RequestStatus oldStatus = request.status;
         request.status = newStatus;
 
-        emit RefundRequestStatusUpdated(paymentInfo, oldStatus, newStatus, msg.sender, nonce);
+        emit RefundRequestStatusUpdated(paymentInfo, oldStatus, newStatus, msg.sender, nonce, 0);
     }
 
     function _addPayerRequest(address _payer, bytes32 key) internal {

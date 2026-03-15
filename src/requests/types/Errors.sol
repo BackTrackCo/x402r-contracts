@@ -10,3 +10,4 @@ error RequestDoesNotExist();
 error RequestNotPending();
 error InvalidStatus();
 error FullyRefunded();
+error ApproveAmountExceedsRequest();
