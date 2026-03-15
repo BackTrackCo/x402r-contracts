@@ -9,7 +9,7 @@ import {RefundRequestCondition} from "../src/requests/refund/RefundRequestCondit
  * @notice Deploy RefundRequestCondition for a given arbiter
  *
  *      Usage:
- *      ARBITER=0x... forge script script/DeploySignatureRefundRequest.s.sol:DeployRefundRequestCondition \
+ *      ARBITER=0x... forge script script/DeployRefundRequestCondition.s.sol:DeployRefundRequestCondition \
  *        --rpc-url $RPC_URL \
  *        --broadcast \
  *        --verify \

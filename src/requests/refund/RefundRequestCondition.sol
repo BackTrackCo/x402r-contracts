@@ -24,7 +24,8 @@ import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} fro
  *        Pending -> Refused    (msg.sender, onlyArbiter)
  *        Pending -> Cancelled  (msg.sender, onlyPayer)
  *
- * SECURITY: ReentrancyGuardTransient protects approve() which modifies approvedRefundAmounts.
+ * SECURITY: ReentrancyGuardTransient on approve() is defense-in-depth — no external calls
+ *           precede state updates, but the guard prevents future regressions.
  */
 contract RefundRequestCondition is ICondition, ReentrancyGuardTransient {
     struct RefundRequestData {
@@ -263,11 +264,11 @@ contract RefundRequestCondition is ICondition, ReentrancyGuardTransient {
         emit RefundRequestStatusUpdated(paymentInfo, oldStatus, newStatus, msg.sender, nonce);
     }
 
-    function _addPayerRequest(address payer, bytes32 key) internal {
-        if (payerRefundRequestExists[payer][key]) return;
-        payerRefundRequestExists[payer][key] = true;
-        payerRefundRequests[payer][payerRefundRequestCount[payer]] = key;
-        payerRefundRequestCount[payer]++;
+    function _addPayerRequest(address _payer, bytes32 key) internal {
+        if (payerRefundRequestExists[_payer][key]) return;
+        payerRefundRequestExists[_payer][key] = true;
+        payerRefundRequests[_payer][payerRefundRequestCount[_payer]] = key;
+        payerRefundRequestCount[_payer]++;
     }
 
     function _addReceiverRequest(address _receiver, bytes32 key) internal {

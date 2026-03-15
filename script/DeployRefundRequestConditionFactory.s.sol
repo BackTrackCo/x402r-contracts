@@ -9,7 +9,7 @@ import {RefundRequestConditionFactory} from "../src/requests/refund/RefundReques
  * @notice Deploy RefundRequestConditionFactory for deterministic per-arbiter deployment
  *
  *      Usage:
- *      forge script script/DeploySignatureRefundRequestFactory.s.sol:DeployRefundRequestConditionFactory \
+ *      forge script script/DeployRefundRequestConditionFactory.s.sol:DeployRefundRequestConditionFactory \
  *        --rpc-url $RPC_URL \
  *        --broadcast \
  *        --verify \
