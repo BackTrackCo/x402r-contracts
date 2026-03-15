@@ -32,6 +32,11 @@ contract RefundRequestEvidence is RefundRequestEvidenceAccess {
 
     error IndexOutOfBounds();
 
+    // ============ Immutables ============
+
+    /// @notice The SignatureRefundRequest contract used to validate prerequisite
+    SignatureRefundRequest public immutable REFUND_REQUEST;
+
     // ============ Storage ============
 
     /// @notice Evidence entries per composite key
@@ -41,20 +46,23 @@ contract RefundRequestEvidence is RefundRequestEvidenceAccess {
     /// @notice Count of evidence entries per composite key
     mapping(bytes32 => uint256) private evidenceCount;
 
+    // ============ Constructor ============
+
+    constructor(address refundRequest) {
+        REFUND_REQUEST = SignatureRefundRequest(refundRequest);
+    }
+
     // ============ Write Functions ============
 
     /// @notice Submit evidence for a refund request
     /// @param paymentInfo PaymentInfo struct identifying the payment
     /// @param nonce Record index identifying which refund request
     /// @param cid IPFS CID pointing to the evidence document
-    /// @param refundRequest SignatureRefundRequest contract to validate prerequisite
     /// @dev Follows CEI pattern. All external calls in Checks phase are view-only.
-    function submitEvidence(
-        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
-        uint256 nonce,
-        string calldata cid,
-        address refundRequest
-    ) external operatorNotZero(paymentInfo) {
+    function submitEvidence(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce, string calldata cid)
+        external
+        operatorNotZero(paymentInfo)
+    {
         // === CHECKS ===
 
         // Validate CID is not empty
@@ -64,7 +72,7 @@ contract RefundRequestEvidence is RefundRequestEvidenceAccess {
         SubmitterRole role = _checkAccessAndGetRole(paymentInfo);
 
         // Validate RefundRequest exists
-        if (!SignatureRefundRequest(refundRequest).hasRefundRequest(paymentInfo, nonce)) {
+        if (!REFUND_REQUEST.hasRefundRequest(paymentInfo, nonce)) {
             revert RefundRequestRequired();
         }
 
