@@ -558,6 +558,145 @@ contract FactoryCoverageTest is Test {
         assertEq(address(factory.PROTOCOL_FEE_CONFIG()), address(protocolFeeConfig), "FEE_CONFIG should be immutable");
     }
 
+    // ============ PaymentOperatorFactory — Deployer Indexing ============
+
+    function test_PaymentOperatorFactory_DeployerCount_Increments() public {
+        PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
+
+        assertEq(factory.deployerOperatorCount(address(this)), 0, "Count starts at zero");
+
+        PaymentOperatorFactory.OperatorConfig memory config1 = _defaultConfig(address(0));
+        factory.deployOperator(config1);
+        assertEq(factory.deployerOperatorCount(address(this)), 1, "Count should be 1 after first deploy");
+
+        PaymentOperatorFactory.OperatorConfig memory config2 = _defaultConfig(address(0));
+        config2.feeRecipient = makeAddr("recipient2");
+        factory.deployOperator(config2);
+        assertEq(factory.deployerOperatorCount(address(this)), 2, "Count should be 2 after second deploy");
+    }
+
+    function test_PaymentOperatorFactory_GetDeployerOperator_ReturnsCorrectAddress() public {
+        PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
+
+        PaymentOperatorFactory.OperatorConfig memory config1 = _defaultConfig(address(0));
+        address op1 = factory.deployOperator(config1);
+
+        PaymentOperatorFactory.OperatorConfig memory config2 = _defaultConfig(address(0));
+        config2.feeRecipient = makeAddr("recipient2");
+        address op2 = factory.deployOperator(config2);
+
+        assertEq(factory.getDeployerOperator(address(this), 0), op1, "Index 0 should be first operator");
+        assertEq(factory.getDeployerOperator(address(this), 1), op2, "Index 1 should be second operator");
+    }
+
+    function test_PaymentOperatorFactory_GetDeployerOperator_IndexOutOfBounds() public {
+        PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
+
+        vm.expectRevert(PaymentOperatorFactory.IndexOutOfBounds.selector);
+        factory.getDeployerOperator(address(this), 0);
+    }
+
+    function test_PaymentOperatorFactory_GetDeployerOperators_Pagination() public {
+        PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
+
+        // Deploy 3 operators
+        address[] memory deployed = new address[](3);
+        for (uint256 i = 0; i < 3; i++) {
+            PaymentOperatorFactory.OperatorConfig memory config = _defaultConfig(address(0));
+            config.feeRecipient = makeAddr(string(abi.encodePacked("recipient", i)));
+            deployed[i] = factory.deployOperator(config);
+        }
+
+        // Get all
+        (address[] memory ops, uint256 total) = factory.getDeployerOperators(address(this), 0, 10);
+        assertEq(total, 3, "Total should be 3");
+        assertEq(ops.length, 3, "Should return all 3");
+        assertEq(ops[0], deployed[0]);
+        assertEq(ops[1], deployed[1]);
+        assertEq(ops[2], deployed[2]);
+
+        // Get page of 2 starting at offset 1
+        (ops, total) = factory.getDeployerOperators(address(this), 1, 2);
+        assertEq(total, 3);
+        assertEq(ops.length, 2);
+        assertEq(ops[0], deployed[1]);
+        assertEq(ops[1], deployed[2]);
+
+        // Offset past end
+        (ops, total) = factory.getDeployerOperators(address(this), 5, 10);
+        assertEq(total, 3);
+        assertEq(ops.length, 0, "Should return empty when offset past end");
+
+        // Count of zero
+        (ops, total) = factory.getDeployerOperators(address(this), 0, 0);
+        assertEq(total, 3);
+        assertEq(ops.length, 0, "Should return empty when count is zero");
+    }
+
+    function test_PaymentOperatorFactory_GetDeployerOperators_EmptyDeployer() public {
+        PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
+        address nobody = makeAddr("nobody");
+
+        (address[] memory ops, uint256 total) = factory.getDeployerOperators(nobody, 0, 10);
+        assertEq(total, 0);
+        assertEq(ops.length, 0);
+    }
+
+    function test_PaymentOperatorFactory_IdempotentDeploy_DoesNotReindex() public {
+        PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
+
+        PaymentOperatorFactory.OperatorConfig memory config = _defaultConfig(address(0));
+        address op1 = factory.deployOperator(config);
+        assertEq(factory.deployerOperatorCount(address(this)), 1);
+
+        // Same caller deploys same config again — idempotent, should NOT increment count
+        address op2 = factory.deployOperator(config);
+        assertEq(op1, op2, "Should return same operator");
+        assertEq(factory.deployerOperatorCount(address(this)), 1, "Count should not increase for idempotent deploy");
+    }
+
+    function test_PaymentOperatorFactory_IdempotentDeploy_DifferentCaller_NotIndexed() public {
+        PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
+        address alice = makeAddr("alice");
+        address bob = makeAddr("bob");
+
+        PaymentOperatorFactory.OperatorConfig memory config = _defaultConfig(address(0));
+
+        // Alice deploys first
+        vm.prank(alice);
+        address op = factory.deployOperator(config);
+        assertEq(factory.deployerOperatorCount(alice), 1);
+        assertEq(factory.deployerOperatorCount(bob), 0);
+
+        // Bob calls same config — idempotent early return, Bob gets NO index entry
+        vm.prank(bob);
+        address op2 = factory.deployOperator(config);
+        assertEq(op, op2, "Should return same operator");
+        assertEq(factory.deployerOperatorCount(bob), 0, "Bob should not be indexed for idempotent deploy");
+    }
+
+    function test_PaymentOperatorFactory_DeployerIndexing_MultipleDeployers() public {
+        PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
+        address alice = makeAddr("alice");
+        address bob = makeAddr("bob");
+
+        PaymentOperatorFactory.OperatorConfig memory config1 = _defaultConfig(address(0));
+        PaymentOperatorFactory.OperatorConfig memory config2 = _defaultConfig(address(0));
+        config2.feeRecipient = makeAddr("recipient2");
+
+        vm.prank(alice);
+        address aliceOp = factory.deployOperator(config1);
+
+        vm.prank(bob);
+        address bobOp = factory.deployOperator(config2);
+
+        assertEq(factory.deployerOperatorCount(alice), 1);
+        assertEq(factory.deployerOperatorCount(bob), 1);
+        assertEq(factory.getDeployerOperator(alice, 0), aliceOp);
+        assertEq(factory.getDeployerOperator(bob, 0), bobOp);
+        assertTrue(aliceOp != bobOp);
+    }
+
     // ============ Helpers ============
 
     function _defaultConfig(address feeCalc) internal view returns (PaymentOperatorFactory.OperatorConfig memory) {

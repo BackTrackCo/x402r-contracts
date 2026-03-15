@@ -199,15 +199,14 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
             revert FeeBoundsIncompatible(totalFeeBps, paymentInfo.minFeeBps, paymentInfo.maxFeeBps);
         }
 
+        bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
+
         // ============ EFFECTS ============
         // Store fees at authorization time to prevent protocol fee changes from breaking capture
-        bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
         authorizedFees[paymentInfoHash] = AuthorizedFees({totalFeeBps: totalFeeBps, protocolFeeBps: protocolFeeBps});
 
         // Emit event before external calls (CEI pattern)
-        emit AuthorizationCreated(
-            paymentInfo, paymentInfoHash, paymentInfo.payer, paymentInfo.receiver, amount, block.timestamp
-        );
+        emit AuthorizationCreated(paymentInfo, paymentInfoHash, paymentInfo.payer, paymentInfo.receiver, amount);
 
         // ============ INTERACTIONS ============
         ESCROW.authorize(paymentInfo, amount, tokenCollector, collectorData);
@@ -252,14 +251,13 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         uint256 protocolFeeAmount = (amount * protocolFeeBps) / 10000;
         address feeReceiver = address(this);
 
-        // ============ EFFECTS ============
         bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
+
+        // ============ EFFECTS ============
         accumulatedProtocolFees[paymentInfo.token] += protocolFeeAmount;
 
         // Emit event before external calls (CEI pattern)
-        emit ChargeExecuted(
-            paymentInfo, paymentInfoHash, paymentInfo.payer, paymentInfo.receiver, amount, block.timestamp
-        );
+        emit ChargeExecuted(paymentInfo, paymentInfoHash, paymentInfo.payer, paymentInfo.receiver, amount);
 
         // ============ INTERACTIONS ============
         ESCROW.charge(paymentInfo, amount, tokenCollector, collectorData, totalFeeBps, feeReceiver);
@@ -296,9 +294,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         accumulatedProtocolFees[paymentInfo.token] += protocolFeeAmount;
 
         // Emit event before external calls (CEI pattern)
-        emit ReleaseExecuted(
-            paymentInfo, paymentInfoHash, paymentInfo.payer, paymentInfo.receiver, amount, block.timestamp
-        );
+        emit ReleaseExecuted(paymentInfo, paymentInfoHash, paymentInfo.payer, paymentInfo.receiver, amount);
 
         // ============ INTERACTIONS ============
         // Forward to escrow - escrow validates payment exists
@@ -326,8 +322,9 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
             }
         }
 
-        // ============ EFFECTS ============
         bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
+
+        // ============ EFFECTS ============
         // Emit event before external calls (CEI pattern)
         emit RefundInEscrowExecuted(paymentInfo, paymentInfoHash, paymentInfo.payer, paymentInfo.receiver, amount);
 
@@ -366,8 +363,9 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
             }
         }
 
-        // ============ EFFECTS ============
         bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
+
+        // ============ EFFECTS ============
         // Emit event before external calls (CEI pattern)
         emit RefundPostEscrowExecuted(paymentInfo, paymentInfoHash, paymentInfo.payer, paymentInfo.receiver, amount);
 
