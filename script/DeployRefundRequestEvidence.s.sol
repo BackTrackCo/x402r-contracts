@@ -7,11 +7,11 @@ import {RefundRequestEvidence} from "../src/evidence/RefundRequestEvidence.sol";
 /**
  * @title DeployRefundRequestEvidence
  * @notice Deploys the RefundRequestEvidence contract for x402r
- * @dev RefundRequestEvidence requires a RefundRequest address as constructor parameter.
- *      Set REFUND_REQUEST_ADDRESS env var to the deployed RefundRequest on the target chain.
+ * @dev RefundRequestEvidence is a stateless singleton — no constructor parameters.
+ *      The RefundRequestCondition address is passed per-call to submitEvidence.
  *
  *      Usage:
- *      REFUND_REQUEST_ADDRESS=0x... forge script script/DeployRefundRequestEvidence.s.sol:DeployRefundRequestEvidence \
+ *      forge script script/DeployRefundRequestEvidence.s.sol:DeployRefundRequestEvidence \
  *        --rpc-url <RPC> \
  *        --broadcast \
  *        --verify \
@@ -19,15 +19,11 @@ import {RefundRequestEvidence} from "../src/evidence/RefundRequestEvidence.sol";
  */
 contract DeployRefundRequestEvidence is Script {
     function run() public {
-        address refundRequestAddr = vm.envAddress("REFUND_REQUEST_ADDRESS");
-        require(refundRequestAddr != address(0), "REFUND_REQUEST_ADDRESS must be set");
-
         vm.startBroadcast();
 
         console.log("=== Deploying RefundRequestEvidence ===");
-        console.log("RefundRequest:", refundRequestAddr);
 
-        RefundRequestEvidence evidence = new RefundRequestEvidence(refundRequestAddr);
+        RefundRequestEvidence evidence = new RefundRequestEvidence();
 
         console.log("\n=== Deployment Summary ===");
         console.log("RefundRequestEvidence:", address(evidence));

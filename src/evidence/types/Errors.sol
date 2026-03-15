@@ -6,3 +6,4 @@ pragma solidity ^0.8.28;
 error EmptyCid();
 error RefundRequestRequired();
 error NotPayerReceiverOrArbiter();
+error ZeroRefundRequest();

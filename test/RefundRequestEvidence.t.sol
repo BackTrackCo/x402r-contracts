@@ -97,7 +97,7 @@ contract RefundRequestEvidenceTest is Test {
 
         // Deploy RefundRequestCondition + evidence
         refundRequest = new RefundRequestCondition(designatedAddress);
-        refundRequestEvidence = new RefundRequestEvidence(address(refundRequest));
+        refundRequestEvidence = new RefundRequestEvidence();
 
         // Setup balances
         token.mint(payer, INITIAL_BALANCE);
@@ -176,7 +176,7 @@ contract RefundRequestEvidenceTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizeAndRequestRefund();
 
         vm.prank(payer);
-        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmPayerEvidence123");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmPayerEvidence123", address(refundRequest));
 
         RefundRequestEvidence.Evidence memory ev = refundRequestEvidence.getEvidence(paymentInfo, 0, 0);
         assertEq(ev.submitter, payer);
@@ -189,7 +189,7 @@ contract RefundRequestEvidenceTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizeAndRequestRefund();
 
         vm.prank(receiver);
-        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmReceiverEvidence456");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmReceiverEvidence456", address(refundRequest));
 
         RefundRequestEvidence.Evidence memory ev = refundRequestEvidence.getEvidence(paymentInfo, 0, 0);
         assertEq(ev.submitter, receiver);
@@ -201,7 +201,7 @@ contract RefundRequestEvidenceTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizeAndRequestRefund();
 
         vm.prank(designatedAddress);
-        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmArbiterEvidence789");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmArbiterEvidence789", address(refundRequest));
 
         RefundRequestEvidence.Evidence memory ev = refundRequestEvidence.getEvidence(paymentInfo, 0, 0);
         assertEq(ev.submitter, designatedAddress);
@@ -215,7 +215,7 @@ contract RefundRequestEvidenceTest is Test {
         address randomAddress = makeAddr("random");
         vm.prank(randomAddress);
         vm.expectRevert(NotPayerReceiverOrArbiter.selector);
-        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmUnauthorized");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmUnauthorized", address(refundRequest));
     }
 
     function test_submitEvidence_emptyCid() public {
@@ -223,7 +223,7 @@ contract RefundRequestEvidenceTest is Test {
 
         vm.prank(payer);
         vm.expectRevert(EmptyCid.selector);
-        refundRequestEvidence.submitEvidence(paymentInfo, 0, "");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "", address(refundRequest));
     }
 
     function test_submitEvidence_noRefundRequest() public {
@@ -236,7 +236,7 @@ contract RefundRequestEvidenceTest is Test {
 
         vm.prank(payer);
         vm.expectRevert(RefundRequestRequired.selector);
-        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmNoRefund");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmNoRefund", address(refundRequest));
     }
 
     function test_submitEvidence_appendOnly() public {
@@ -244,13 +244,13 @@ contract RefundRequestEvidenceTest is Test {
 
         // Submit 3 evidence entries
         vm.prank(payer);
-        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmFirst");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmFirst", address(refundRequest));
 
         vm.prank(payer);
-        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmSecond");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmSecond", address(refundRequest));
 
         vm.prank(payer);
-        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmThird");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmThird", address(refundRequest));
 
         // Verify count incremented correctly
         assertEq(refundRequestEvidence.getEvidenceCount(paymentInfo, 0), 3);
@@ -273,7 +273,7 @@ contract RefundRequestEvidenceTest is Test {
         vm.warp(block.timestamp + 100);
 
         vm.prank(receiver);
-        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmViewTest");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmViewTest", address(refundRequest));
 
         RefundRequestEvidence.Evidence memory ev = refundRequestEvidence.getEvidence(paymentInfo, 0, 0);
         assertEq(ev.submitter, receiver);
@@ -296,7 +296,7 @@ contract RefundRequestEvidenceTest is Test {
         for (uint256 i = 0; i < 5; i++) {
             vm.prank(payer);
             refundRequestEvidence.submitEvidence(
-                paymentInfo, 0, string(abi.encodePacked("QmEvidence", bytes1(uint8(48 + i))))
+                paymentInfo, 0, string(abi.encodePacked("QmEvidence", bytes1(uint8(48 + i)))), address(refundRequest)
             );
         }
 
@@ -317,7 +317,7 @@ contract RefundRequestEvidenceTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizeAndRequestRefund();
 
         vm.prank(payer);
-        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmSingle");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmSingle", address(refundRequest));
 
         (RefundRequestEvidence.Evidence[] memory entries, uint256 total) =
             refundRequestEvidence.getEvidenceBatch(paymentInfo, 0, 10, 5);
@@ -329,7 +329,7 @@ contract RefundRequestEvidenceTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizeAndRequestRefund();
 
         vm.prank(payer);
-        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmSingle");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmSingle", address(refundRequest));
 
         (RefundRequestEvidence.Evidence[] memory entries, uint256 total) =
             refundRequestEvidence.getEvidenceBatch(paymentInfo, 0, 0, 0);
@@ -343,11 +343,11 @@ contract RefundRequestEvidenceTest is Test {
         assertEq(refundRequestEvidence.getEvidenceCount(paymentInfo, 0), 0);
 
         vm.prank(payer);
-        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmOne");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmOne", address(refundRequest));
         assertEq(refundRequestEvidence.getEvidenceCount(paymentInfo, 0), 1);
 
         vm.prank(receiver);
-        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmTwo");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmTwo", address(refundRequest));
         assertEq(refundRequestEvidence.getEvidenceCount(paymentInfo, 0), 2);
     }
 
@@ -358,15 +358,15 @@ contract RefundRequestEvidenceTest is Test {
 
         // Payer and receiver should still work
         vm.prank(payer);
-        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmPayerOk");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmPayerOk", address(refundRequest));
 
         vm.prank(receiver);
-        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmReceiverOk");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmReceiverOk", address(refundRequest));
 
         // Designated address is NOT arbiter here (no condition configured)
         vm.prank(designatedAddress);
         vm.expectRevert(NotPayerReceiverOrArbiter.selector);
-        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmShouldFail");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmShouldFail", address(refundRequest));
 
         assertEq(refundRequestEvidence.getEvidenceCount(paymentInfo, 0), 2);
     }
@@ -378,13 +378,13 @@ contract RefundRequestEvidenceTest is Test {
 
         // All three parties submit evidence
         vm.prank(payer);
-        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmPayerClaim");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmPayerClaim", address(refundRequest));
 
         vm.prank(receiver);
-        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmReceiverResponse");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmReceiverResponse", address(refundRequest));
 
         vm.prank(designatedAddress);
-        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmArbiterAnalysis");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmArbiterAnalysis", address(refundRequest));
 
         // Verify count
         assertEq(refundRequestEvidence.getEvidenceCount(paymentInfo, 0), 3);
@@ -411,6 +411,6 @@ contract RefundRequestEvidenceTest is Test {
 
         vm.prank(payer);
         vm.expectRevert(InvalidOperator.selector);
-        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmBadOperator");
+        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmBadOperator", address(refundRequest));
     }
 }

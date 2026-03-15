@@ -7,7 +7,7 @@ import {PaymentOperator} from "../operator/payment/PaymentOperator.sol";
 import {RefundRequestCondition} from "../requests/refund/RefundRequestCondition.sol";
 import {RefundRequestEvidenceAccess} from "./RefundRequestEvidenceAccess.sol";
 import {SubmitterRole} from "./types/Types.sol";
-import {EmptyCid, RefundRequestRequired} from "./types/Errors.sol";
+import {EmptyCid, RefundRequestRequired, ZeroRefundRequest} from "./types/Errors.sol";
 import {EvidenceSubmitted} from "./types/Events.sol";
 
 /**
@@ -19,6 +19,8 @@ import {EvidenceSubmitted} from "./types/Events.sol";
  *
  *      Requires a RefundRequest to exist before evidence can be submitted.
  *      Evidence is keyed by (paymentInfoHash, nonce) matching RefundRequest composite keys.
+ *
+ *      The RefundRequestCondition address is passed per-call to support per-arbiter deployments.
  */
 contract RefundRequestEvidence is RefundRequestEvidenceAccess {
     struct Evidence {
@@ -32,11 +34,6 @@ contract RefundRequestEvidence is RefundRequestEvidenceAccess {
 
     error IndexOutOfBounds();
 
-    // ============ Immutables ============
-
-    /// @notice The RefundRequestCondition contract used to validate prerequisite
-    RefundRequestCondition public immutable REFUND_REQUEST;
-
     // ============ Storage ============
 
     /// @notice Evidence entries per composite key
@@ -46,33 +43,31 @@ contract RefundRequestEvidence is RefundRequestEvidenceAccess {
     /// @notice Count of evidence entries per composite key
     mapping(bytes32 => uint256) private evidenceCount;
 
-    // ============ Constructor ============
-
-    constructor(address refundRequest) {
-        REFUND_REQUEST = RefundRequestCondition(refundRequest);
-    }
-
     // ============ Write Functions ============
 
     /// @notice Submit evidence for a refund request
     /// @param paymentInfo PaymentInfo struct identifying the payment
     /// @param nonce Record index identifying which refund request
     /// @param cid IPFS CID pointing to the evidence document
+    /// @param refundRequest Address of the RefundRequestCondition to validate against
     /// @dev Follows CEI pattern. All external calls in Checks phase are view-only.
-    function submitEvidence(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce, string calldata cid)
-        external
-        operatorNotZero(paymentInfo)
-    {
+    function submitEvidence(
+        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
+        uint256 nonce,
+        string calldata cid,
+        address refundRequest
+    ) external operatorNotZero(paymentInfo) {
         // === CHECKS ===
 
-        // Validate CID is not empty
+        // Validate inputs
         if (bytes(cid).length == 0) revert EmptyCid();
+        if (refundRequest == address(0)) revert ZeroRefundRequest();
 
         // Validate caller is payer, receiver, or arbiter (also determines role)
         SubmitterRole role = _checkAccessAndGetRole(paymentInfo);
 
         // Validate RefundRequest exists
-        if (!REFUND_REQUEST.hasRefundRequest(paymentInfo, nonce)) {
+        if (!RefundRequestCondition(refundRequest).hasRefundRequest(paymentInfo, nonce)) {
             revert RefundRequestRequired();
         }
 
