@@ -411,47 +411,37 @@ contract RefundRequestTest is Test {
         refundRequest.approve(paymentInfo, 0, halfAmount + 1);
     }
 
-    // ============ capturableAmount Guard Tests ============
+    // ============ Post-Escrow Tests ============
 
-    function test_approve_postEscrow_recordsWithoutExecution() public {
+    function test_approve_revertsPostEscrow() public {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
 
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
 
-        // Capture all funds (moves them out of escrow)
+        // Release all funds (moves them out of escrow)
         operator.release(paymentInfo, PAYMENT_AMOUNT);
 
-        uint256 payerBalanceBefore = token.balanceOf(payer);
-
-        // Approve — capturableAmount is 0, so no refundInEscrow call
+        // Approve reverts — no capturable funds left
         vm.prank(arbiter);
+        vm.expectRevert();
         refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
-
-        // Status updated but no funds moved
-        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo, 0);
-        assertEq(uint256(data.status), uint256(RequestStatus.Approved));
-        assertEq(data.approvedAmount, uint120(PAYMENT_AMOUNT));
-
-        // Payer balance unchanged — funds not in escrow
-        uint256 payerBalanceAfter = token.balanceOf(payer);
-        assertEq(payerBalanceAfter, payerBalanceBefore);
     }
 
-    function test_approve_partialCapture_refundsRemaining() public {
+    function test_approve_partialRelease_refundsRemaining() public {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
-        uint120 captureAmount = uint120(PAYMENT_AMOUNT / 2);
+        uint120 releaseAmount = uint120(PAYMENT_AMOUNT / 2);
         uint120 refundAmount = uint120(PAYMENT_AMOUNT / 2);
 
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo, refundAmount, 0);
 
-        // Capture half — half remains in escrow
-        operator.release(paymentInfo, uint256(captureAmount));
+        // Release half — half remains in escrow
+        operator.release(paymentInfo, uint256(releaseAmount));
 
         uint256 payerBalanceBefore = token.balanceOf(payer);
 
-        // Approve refund — should execute since refundAmount <= capturableAmount
+        // Approve refund — succeeds since refundAmount <= capturableAmount
         vm.prank(arbiter);
         refundRequest.approve(paymentInfo, 0, refundAmount);
 
@@ -462,38 +452,6 @@ contract RefundRequestTest is Test {
         // Payer received funds
         uint256 payerBalanceAfter = token.balanceOf(payer);
         assertEq(payerBalanceAfter - payerBalanceBefore, uint256(refundAmount));
-    }
-
-    function test_approve_topUpPostEscrow_firstExecutesSecondRecords() public {
-        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
-        uint120 halfAmount = uint120(PAYMENT_AMOUNT / 2);
-
-        vm.prank(payer);
-        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
-
-        uint256 payerBalanceBefore = token.balanceOf(payer);
-
-        // First approval — funds in escrow, should execute
-        vm.prank(arbiter);
-        refundRequest.approve(paymentInfo, 0, halfAmount);
-
-        uint256 payerBalanceAfterFirst = token.balanceOf(payer);
-        assertEq(payerBalanceAfterFirst - payerBalanceBefore, uint256(halfAmount));
-
-        // Release remaining half (moves rest out of escrow to receiver)
-        operator.release(paymentInfo, uint256(halfAmount));
-
-        // Second approval — no capturableAmount left, records only
-        vm.prank(receiver);
-        refundRequest.approve(paymentInfo, 0, halfAmount);
-
-        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo, 0);
-        assertEq(data.approvedAmount, uint120(PAYMENT_AMOUNT));
-        assertEq(uint256(data.status), uint256(RequestStatus.Approved));
-
-        // No additional funds moved to payer after second approval
-        uint256 payerBalanceFinal = token.balanceOf(payer);
-        assertEq(payerBalanceFinal, payerBalanceAfterFirst);
     }
 
     // ============ deny Tests ============

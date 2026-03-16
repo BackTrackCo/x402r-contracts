@@ -23,7 +23,7 @@ import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} fro
  *      StaticAddressCondition(address(this)) to gate refundInEscrow access.
  *
  *      State machine:
- *        Pending  -> Approved  (onlyArbiterOrReceiver, approve + refundInEscrow atomic if in escrow)
+ *        Pending  -> Approved  (onlyArbiterOrReceiver, approve + refundInEscrow atomic)
  *        Approved -> Approved  (onlyArbiterOrReceiver, cumulative top-up)
  *        Pending  -> Denied    (onlyArbiter)
  *        Pending  -> Refused   (onlyArbiter)
@@ -195,10 +195,10 @@ contract RefundRequest is ReentrancyGuardTransient {
 
     // ============ Arbiter/Receiver Actions ============
 
-    /// @notice Approve a refund and atomically execute if funds are in escrow.
+    /// @notice Approve a refund and atomically execute refundInEscrow.
     ///         Both arbiter and receiver can call. Approvals are cumulative — each call
     ///         adds `amount` to the running `approvedAmount`. The total cannot exceed
-    ///         the requested amount.
+    ///         the requested amount. Reverts if funds are no longer in escrow.
     /// @param paymentInfo PaymentInfo struct
     /// @param nonce Record index identifying which refund request
     /// @param amount Additional refund amount to approve (added to previous approvals)
@@ -230,12 +230,8 @@ contract RefundRequest is ReentrancyGuardTransient {
             paymentInfo, previousStatus, RequestStatus.Approved, msg.sender, nonce, request.approvedAmount
         );
 
-        // INTERACTIONS — atomic refund execution if funds are still in escrow
-        AuthCaptureEscrow escrow = operator.ESCROW();
-        (, uint120 capturableAmount,) = escrow.paymentState(paymentInfoHash);
-        if (amount <= capturableAmount) {
-            operator.refundInEscrow(paymentInfo, amount);
-        }
+        // INTERACTIONS — atomic refund execution
+        operator.refundInEscrow(paymentInfo, amount);
     }
 
     // ============ Arbiter Actions (msg.sender) ============
