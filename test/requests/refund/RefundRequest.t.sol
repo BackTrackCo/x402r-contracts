@@ -9,6 +9,7 @@ import {PaymentOperator} from "../../../src/operator/payment/PaymentOperator.sol
 import {PaymentOperatorFactory} from "../../../src/operator/PaymentOperatorFactory.sol";
 import {ProtocolFeeConfig} from "../../../src/plugins/fees/ProtocolFeeConfig.sol";
 import {RequestStatus} from "../../../src/requests/types/Types.sol";
+import {RequestNotPending, ApproveAmountExceedsRequest} from "../../../src/requests/types/Errors.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
@@ -247,20 +248,36 @@ contract RefundRequestTest is Test {
         refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
     }
 
-    function test_approve_revertsIfNotPending() public {
+    function test_approve_revertsIfDenied() public {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
 
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
 
-        // Approve first
+        // Deny first
+        vm.prank(arbiter);
+        refundRequest.deny(paymentInfo, 0);
+
+        // Cannot approve a denied request
+        vm.prank(arbiter);
+        vm.expectRevert(RequestNotPending.selector);
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
+    }
+
+    function test_approve_revertsIfFullyApproved() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        // Approve full amount
         vm.prank(arbiter);
         refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
 
-        // Try again — not pending
+        // Try again — exceeds request
         vm.prank(arbiter);
-        vm.expectRevert();
-        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
+        vm.expectRevert(ApproveAmountExceedsRequest.selector);
+        refundRequest.approve(paymentInfo, 0, 1);
     }
 
     function test_approve_revertsIfZeroAmount() public {
@@ -293,6 +310,190 @@ contract RefundRequestTest is Test {
         vm.prank(arbiter);
         vm.expectRevert(RefundRequest.InvalidOperator.selector);
         refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
+    }
+
+    // ============ Cumulative Top-Up Tests ============
+
+    function test_approve_cumulativeTopUp_arbiterThenReceiver() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+        uint120 firstAmount = uint120(PAYMENT_AMOUNT / 4);
+        uint120 secondAmount = uint120(PAYMENT_AMOUNT / 4);
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        uint256 payerBalanceBefore = token.balanceOf(payer);
+
+        // Arbiter approves first chunk
+        vm.prank(arbiter);
+        refundRequest.approve(paymentInfo, 0, firstAmount);
+
+        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo, 0);
+        assertEq(data.approvedAmount, firstAmount);
+        assertEq(uint256(data.status), uint256(RequestStatus.Approved));
+
+        // Receiver tops up second chunk
+        vm.prank(receiver);
+        refundRequest.approve(paymentInfo, 0, secondAmount);
+
+        data = refundRequest.getRefundRequest(paymentInfo, 0);
+        assertEq(data.approvedAmount, firstAmount + secondAmount);
+        assertEq(uint256(data.status), uint256(RequestStatus.Approved));
+
+        // Total refunded to payer
+        uint256 payerBalanceAfter = token.balanceOf(payer);
+        assertEq(payerBalanceAfter - payerBalanceBefore, uint256(firstAmount) + uint256(secondAmount));
+    }
+
+    function test_approve_cumulativeTopUp_receiverThenArbiter() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+        uint120 firstAmount = uint120(PAYMENT_AMOUNT / 5);
+        uint120 secondAmount = uint120(PAYMENT_AMOUNT / 5 * 3);
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        uint256 payerBalanceBefore = token.balanceOf(payer);
+
+        // Receiver approves first
+        vm.prank(receiver);
+        refundRequest.approve(paymentInfo, 0, firstAmount);
+
+        // Arbiter tops up
+        vm.prank(arbiter);
+        refundRequest.approve(paymentInfo, 0, secondAmount);
+
+        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo, 0);
+        assertEq(data.approvedAmount, firstAmount + secondAmount);
+
+        uint256 payerBalanceAfter = token.balanceOf(payer);
+        assertEq(payerBalanceAfter - payerBalanceBefore, uint256(firstAmount) + uint256(secondAmount));
+    }
+
+    function test_approve_cumulativeTopUp_threeIncrements() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+        uint120 chunk = uint120(PAYMENT_AMOUNT / 4);
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        uint256 payerBalanceBefore = token.balanceOf(payer);
+
+        vm.prank(arbiter);
+        refundRequest.approve(paymentInfo, 0, chunk);
+        vm.prank(receiver);
+        refundRequest.approve(paymentInfo, 0, chunk);
+        vm.prank(arbiter);
+        refundRequest.approve(paymentInfo, 0, chunk);
+
+        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo, 0);
+        assertEq(data.approvedAmount, chunk * 3);
+        assertEq(uint256(data.status), uint256(RequestStatus.Approved));
+
+        uint256 payerBalanceAfter = token.balanceOf(payer);
+        assertEq(payerBalanceAfter - payerBalanceBefore, uint256(chunk) * 3);
+    }
+
+    function test_approve_cumulativeTopUp_revertsIfExceedsTotal() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+        uint120 halfAmount = uint120(PAYMENT_AMOUNT / 2);
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        // Approve half
+        vm.prank(arbiter);
+        refundRequest.approve(paymentInfo, 0, halfAmount);
+
+        // Try to approve more than remaining — should revert
+        vm.prank(receiver);
+        vm.expectRevert(ApproveAmountExceedsRequest.selector);
+        refundRequest.approve(paymentInfo, 0, halfAmount + 1);
+    }
+
+    // ============ capturableAmount Guard Tests ============
+
+    function test_approve_postEscrow_recordsWithoutExecution() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        // Capture all funds (moves them out of escrow)
+        operator.release(paymentInfo, PAYMENT_AMOUNT);
+
+        uint256 payerBalanceBefore = token.balanceOf(payer);
+
+        // Approve — capturableAmount is 0, so no refundInEscrow call
+        vm.prank(arbiter);
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
+
+        // Status updated but no funds moved
+        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo, 0);
+        assertEq(uint256(data.status), uint256(RequestStatus.Approved));
+        assertEq(data.approvedAmount, uint120(PAYMENT_AMOUNT));
+
+        // Payer balance unchanged — funds not in escrow
+        uint256 payerBalanceAfter = token.balanceOf(payer);
+        assertEq(payerBalanceAfter, payerBalanceBefore);
+    }
+
+    function test_approve_partialCapture_refundsRemaining() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+        uint120 captureAmount = uint120(PAYMENT_AMOUNT / 2);
+        uint120 refundAmount = uint120(PAYMENT_AMOUNT / 2);
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, refundAmount, 0);
+
+        // Capture half — half remains in escrow
+        operator.release(paymentInfo, uint256(captureAmount));
+
+        uint256 payerBalanceBefore = token.balanceOf(payer);
+
+        // Approve refund — should execute since refundAmount <= capturableAmount
+        vm.prank(arbiter);
+        refundRequest.approve(paymentInfo, 0, refundAmount);
+
+        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo, 0);
+        assertEq(uint256(data.status), uint256(RequestStatus.Approved));
+        assertEq(data.approvedAmount, refundAmount);
+
+        // Payer received funds
+        uint256 payerBalanceAfter = token.balanceOf(payer);
+        assertEq(payerBalanceAfter - payerBalanceBefore, uint256(refundAmount));
+    }
+
+    function test_approve_topUpPostEscrow_firstExecutesSecondRecords() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+        uint120 halfAmount = uint120(PAYMENT_AMOUNT / 2);
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        uint256 payerBalanceBefore = token.balanceOf(payer);
+
+        // First approval — funds in escrow, should execute
+        vm.prank(arbiter);
+        refundRequest.approve(paymentInfo, 0, halfAmount);
+
+        uint256 payerBalanceAfterFirst = token.balanceOf(payer);
+        assertEq(payerBalanceAfterFirst - payerBalanceBefore, uint256(halfAmount));
+
+        // Release remaining half (moves rest out of escrow to receiver)
+        operator.release(paymentInfo, uint256(halfAmount));
+
+        // Second approval — no capturableAmount left, records only
+        vm.prank(receiver);
+        refundRequest.approve(paymentInfo, 0, halfAmount);
+
+        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo, 0);
+        assertEq(data.approvedAmount, uint120(PAYMENT_AMOUNT));
+        assertEq(uint256(data.status), uint256(RequestStatus.Approved));
+
+        // No additional funds moved to payer after second approval
+        uint256 payerBalanceFinal = token.balanceOf(payer);
+        assertEq(payerBalanceFinal, payerBalanceAfterFirst);
     }
 
     // ============ deny Tests ============

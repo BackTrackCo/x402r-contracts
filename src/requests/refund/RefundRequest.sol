@@ -23,10 +23,11 @@ import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} fro
  *      StaticAddressCondition(address(this)) to gate refundInEscrow access.
  *
  *      State machine:
- *        Pending -> Approved   (onlyArbiterOrReceiver, approve + refundInEscrow atomic)
- *        Pending -> Denied     (msg.sender, onlyArbiter)
- *        Pending -> Refused    (msg.sender, onlyArbiter)
- *        Pending -> Cancelled  (msg.sender, onlyPayer)
+ *        Pending  -> Approved  (onlyArbiterOrReceiver, approve + refundInEscrow atomic if in escrow)
+ *        Approved -> Approved  (onlyArbiterOrReceiver, cumulative top-up)
+ *        Pending  -> Denied    (onlyArbiter)
+ *        Pending  -> Refused   (onlyArbiter)
+ *        Pending  -> Cancelled (onlyPayer)
  *
  * SECURITY: ReentrancyGuardTransient protects approve() which makes an external call
  *           to operator.refundInEscrow() after updating state (CEI pattern with defense-in-depth).
@@ -194,11 +195,13 @@ contract RefundRequest is ReentrancyGuardTransient {
 
     // ============ Arbiter/Receiver Actions ============
 
-    /// @notice Approve a refund request and atomically execute the refund.
-    ///         Only arbiter or receiver can call.
+    /// @notice Approve a refund and atomically execute if funds are in escrow.
+    ///         Both arbiter and receiver can call. Approvals are cumulative — each call
+    ///         adds `amount` to the running `approvedAmount`. The total cannot exceed
+    ///         the requested amount.
     /// @param paymentInfo PaymentInfo struct
     /// @param nonce Record index identifying which refund request
-    /// @param amount Approved refund amount (may be less than requested for partial approval)
+    /// @param amount Additional refund amount to approve (added to previous approvals)
     function approve(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce, uint120 amount)
         external
         nonReentrant
@@ -212,20 +215,27 @@ contract RefundRequest is ReentrancyGuardTransient {
         // CHECKS
         RefundRequestData storage request = refundRequests[compositeKey];
         if (request.paymentInfoHash == bytes32(0)) revert RequestDoesNotExist();
-        if (request.status != RequestStatus.Pending) revert RequestNotPending();
+        if (request.status != RequestStatus.Pending && request.status != RequestStatus.Approved) {
+            revert RequestNotPending();
+        }
         if (amount == 0) revert ZeroRefundAmount();
-        if (amount > request.amount) revert ApproveAmountExceedsRequest();
+        if (request.approvedAmount + amount > request.amount) revert ApproveAmountExceedsRequest();
 
         // EFFECTS
-        request.approvedAmount = amount;
+        RequestStatus previousStatus = request.status;
+        request.approvedAmount += amount;
         request.status = RequestStatus.Approved;
 
         emit RefundRequestStatusUpdated(
-            paymentInfo, RequestStatus.Pending, RequestStatus.Approved, msg.sender, nonce, amount
+            paymentInfo, previousStatus, RequestStatus.Approved, msg.sender, nonce, request.approvedAmount
         );
 
-        // INTERACTIONS — atomic refund execution
-        operator.refundInEscrow(paymentInfo, amount);
+        // INTERACTIONS — atomic refund execution if funds are still in escrow
+        AuthCaptureEscrow escrow = operator.ESCROW();
+        (, uint120 capturableAmount,) = escrow.paymentState(paymentInfoHash);
+        if (amount <= capturableAmount) {
+            operator.refundInEscrow(paymentInfo, amount);
+        }
     }
 
     // ============ Arbiter Actions (msg.sender) ============
