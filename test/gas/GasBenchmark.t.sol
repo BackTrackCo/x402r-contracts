@@ -19,7 +19,7 @@ import {PayerCondition} from "../../src/plugins/conditions/access/PayerCondition
 import {ReceiverCondition} from "../../src/plugins/conditions/access/ReceiverCondition.sol";
 
 import {RefundRequestCondition} from "../../src/requests/refund/RefundRequestCondition.sol";
-import {DisputeEvidence} from "../../src/evidence/DisputeEvidence.sol";
+import {RefundRequestEvidence} from "../../src/evidence/RefundRequestEvidence.sol";
 
 /**
  * @title GasBenchmark
@@ -60,7 +60,7 @@ contract GasBenchmark is Test {
 
     // ============ Dispute System ============
     RefundRequestCondition public refundRequest;
-    DisputeEvidence public disputeEvidence;
+    RefundRequestEvidence public evidence;
 
     // ============ Accounts ============
     address public owner;
@@ -210,7 +210,7 @@ contract GasBenchmark is Test {
 
         // Deploy dispute system
         refundRequest = new RefundRequestCondition(arbiter);
-        disputeEvidence = new DisputeEvidence(address(refundRequest));
+        evidence = new RefundRequestEvidence(address(refundRequest));
 
         // Fund accounts
         token.mint(payer, PAYMENT_AMOUNT * 100);
@@ -540,7 +540,7 @@ contract GasBenchmark is Test {
 
         vm.prank(payer);
         uint256 gasBefore = gasleft();
-        disputeEvidence.submitEvidence(pi, 0, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
+        evidence.submitEvidence(pi, 0, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== x402r UNHAPPY PATH ===");
@@ -743,13 +743,13 @@ contract GasBenchmark is Test {
         // Cold submitEvidence
         vm.prank(payer);
         uint256 g1 = gasleft();
-        disputeEvidence.submitEvidence(pi1, 0, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
+        evidence.submitEvidence(pi1, 0, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
         uint256 coldGas = g1 - gasleft();
 
         // Warm submitEvidence
         vm.prank(payer);
         uint256 g2 = gasleft();
-        disputeEvidence.submitEvidence(pi2, 0, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
+        evidence.submitEvidence(pi2, 0, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
         uint256 warmGas = g2 - gasleft();
 
         console.log("=== SUBMIT EVIDENCE COLD vs WARM ===");
@@ -1242,7 +1242,7 @@ contract GasBenchmark is Test {
         // submitEvidence (payer)
         vm.prank(payer);
         uint256 g5 = gasleft();
-        disputeEvidence.submitEvidence(pi, 0, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
+        evidence.submitEvidence(pi, 0, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
         uint256 evidenceGas = g5 - gasleft();
 
         // approve
