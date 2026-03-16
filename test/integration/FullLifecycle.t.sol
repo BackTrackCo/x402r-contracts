@@ -15,8 +15,8 @@ import {Freeze} from "../../src/plugins/freeze/Freeze.sol";
 import {ICondition} from "../../src/plugins/conditions/ICondition.sol";
 import {AndCondition} from "../../src/plugins/conditions/combinators/AndCondition.sol";
 import {PayerCondition} from "../../src/plugins/conditions/access/PayerCondition.sol";
-import {RefundRequestCondition} from "../../src/requests/refund/RefundRequestCondition.sol";
-import {RequestStatus} from "../../src/requests/types/Types.sol";
+import {RefundRequestCondition} from "../../src/plugins/conditions/refund-request/RefundRequestCondition.sol";
+import {RequestStatus} from "../../src/plugins/conditions/refund-request/types/Types.sol";
 
 /**
  * @title FullLifecycleTest

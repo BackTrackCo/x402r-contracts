@@ -24,6 +24,3 @@ event RefundRequestStatusUpdated(
 );
 
 event RefundRequestCancelled(AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed payer, uint256 nonce);
-
-// ============ Factory Events ============
-event RefundRequestDeployed(address indexed refundRequest);

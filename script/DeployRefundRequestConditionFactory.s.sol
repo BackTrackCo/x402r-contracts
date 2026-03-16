@@ -2,7 +2,9 @@
 pragma solidity ^0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
-import {RefundRequestConditionFactory} from "../src/requests/refund/RefundRequestConditionFactory.sol";
+import {
+    RefundRequestConditionFactory
+} from "../src/plugins/conditions/refund-request/RefundRequestConditionFactory.sol";
 
 /**
  * @title DeployRefundRequestConditionFactory

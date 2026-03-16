@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {RefundRequestEvidence} from "../src/evidence/RefundRequestEvidence.sol";
-import {RefundRequestCondition} from "../src/requests/refund/RefundRequestCondition.sol";
+import {RefundRequestCondition} from "../src/plugins/conditions/refund-request/RefundRequestCondition.sol";
 import {PaymentOperator} from "../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
 import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";

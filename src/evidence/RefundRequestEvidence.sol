@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PaymentOperator} from "../operator/payment/PaymentOperator.sol";
-import {RefundRequestCondition} from "../requests/refund/RefundRequestCondition.sol";
+import {RefundRequestCondition} from "../plugins/conditions/refund-request/RefundRequestCondition.sol";
 import {RefundRequestEvidenceAccess} from "./RefundRequestEvidenceAccess.sol";
 import {SubmitterRole} from "./types/Types.sol";
 import {EmptyCid, RefundRequestRequired} from "./types/Errors.sol";

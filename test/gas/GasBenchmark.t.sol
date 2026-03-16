@@ -18,7 +18,7 @@ import {AndCondition} from "../../src/plugins/conditions/combinators/AndConditio
 import {PayerCondition} from "../../src/plugins/conditions/access/PayerCondition.sol";
 import {ReceiverCondition} from "../../src/plugins/conditions/access/ReceiverCondition.sol";
 
-import {RefundRequestCondition} from "../../src/requests/refund/RefundRequestCondition.sol";
+import {RefundRequestCondition} from "../../src/plugins/conditions/refund-request/RefundRequestCondition.sol";
 import {RefundRequestEvidence} from "../../src/evidence/RefundRequestEvidence.sol";
 
 /**

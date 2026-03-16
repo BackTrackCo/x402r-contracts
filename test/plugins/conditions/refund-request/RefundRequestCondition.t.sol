@@ -2,18 +2,20 @@
 pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
-import {RefundRequestCondition} from "../../../src/requests/refund/RefundRequestCondition.sol";
-import {RefundRequestConditionFactory} from "../../../src/requests/refund/RefundRequestConditionFactory.sol";
-import {ICondition} from "../../../src/plugins/conditions/ICondition.sol";
-import {OrCondition} from "../../../src/plugins/conditions/combinators/OrCondition.sol";
-import {ReceiverCondition} from "../../../src/plugins/conditions/access/ReceiverCondition.sol";
-import {PaymentOperator} from "../../../src/operator/payment/PaymentOperator.sol";
-import {PaymentOperatorFactory} from "../../../src/operator/PaymentOperatorFactory.sol";
-import {ProtocolFeeConfig} from "../../../src/plugins/fees/ProtocolFeeConfig.sol";
-import {RequestStatus} from "../../../src/requests/types/Types.sol";
+import {RefundRequestCondition} from "../../../../src/plugins/conditions/refund-request/RefundRequestCondition.sol";
+import {
+    RefundRequestConditionFactory
+} from "../../../../src/plugins/conditions/refund-request/RefundRequestConditionFactory.sol";
+import {ICondition} from "../../../../src/plugins/conditions/ICondition.sol";
+import {OrCondition} from "../../../../src/plugins/conditions/combinators/OrCondition.sol";
+import {ReceiverCondition} from "../../../../src/plugins/conditions/access/ReceiverCondition.sol";
+import {PaymentOperator} from "../../../../src/operator/payment/PaymentOperator.sol";
+import {PaymentOperatorFactory} from "../../../../src/operator/PaymentOperatorFactory.sol";
+import {ProtocolFeeConfig} from "../../../../src/plugins/fees/ProtocolFeeConfig.sol";
+import {RequestStatus} from "../../../../src/plugins/conditions/refund-request/types/Types.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
-import {MockERC20} from "../../mocks/MockERC20.sol";
+import {MockERC20} from "../../../mocks/MockERC20.sol";
 
 contract RefundRequestConditionTest is Test {
     RefundRequestCondition public refundRequest;
@@ -536,6 +538,339 @@ contract RefundRequestConditionTest is Test {
         (bytes32[] memory keys, uint256 total) = refundRequest.getPayerRefundRequests(payer, 0, 10);
         assertEq(total, 3);
         assertEq(keys.length, 3);
+    }
+
+    // ============ revoke Tests ============
+
+    function test_revoke_setsPendingAndDecrements() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        vm.prank(arbiter);
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
+        assertEq(refundRequest.approvedRefundAmounts(paymentInfoHash), uint120(PAYMENT_AMOUNT));
+
+        vm.prank(arbiter);
+        refundRequest.revoke(paymentInfo, 0);
+
+        RefundRequestCondition.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo, 0);
+        assertEq(uint256(data.status), uint256(RequestStatus.Pending));
+        assertEq(data.approvedAmount, 0);
+        assertEq(refundRequest.approvedRefundAmounts(paymentInfoHash), 0);
+
+        // check() should now return false
+        assertFalse(refundRequest.check(paymentInfo, PAYMENT_AMOUNT, address(0)));
+    }
+
+    function test_revoke_receiverAsApprover() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        // Receiver approves
+        vm.prank(receiver);
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
+
+        // Arbiter cannot revoke receiver's approval
+        vm.prank(arbiter);
+        vm.expectRevert(RefundRequestCondition.NotApprover.selector);
+        refundRequest.revoke(paymentInfo, 0);
+
+        // Receiver can revoke their own approval
+        vm.prank(receiver);
+        refundRequest.revoke(paymentInfo, 0);
+
+        RefundRequestCondition.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo, 0);
+        assertEq(uint256(data.status), uint256(RequestStatus.Pending));
+        assertEq(refundRequest.approvedRefundAmounts(paymentInfoHash), 0);
+    }
+
+    function test_revoke_onlyApprover() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        // Arbiter approves
+        vm.prank(arbiter);
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
+
+        // Receiver cannot revoke arbiter's approval
+        vm.prank(receiver);
+        vm.expectRevert(RefundRequestCondition.NotApprover.selector);
+        refundRequest.revoke(paymentInfo, 0);
+
+        // Payer cannot revoke
+        vm.prank(payer);
+        vm.expectRevert(RefundRequestCondition.NotApprover.selector);
+        refundRequest.revoke(paymentInfo, 0);
+
+        // Random address cannot revoke
+        address random = makeAddr("random");
+        vm.prank(random);
+        vm.expectRevert(RefundRequestCondition.NotApprover.selector);
+        refundRequest.revoke(paymentInfo, 0);
+    }
+
+    function test_revoke_onlyApproved() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        // Can't revoke a Pending request
+        vm.prank(arbiter);
+        vm.expectRevert(RefundRequestCondition.RequestNotApproved.selector);
+        refundRequest.revoke(paymentInfo, 0);
+    }
+
+    function test_revoke_thenReapprove() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        // Approve full amount
+        vm.prank(arbiter);
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
+
+        // Revoke
+        vm.prank(arbiter);
+        refundRequest.revoke(paymentInfo, 0);
+
+        // Re-approve with partial amount
+        vm.prank(arbiter);
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT / 2));
+
+        RefundRequestCondition.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo, 0);
+        assertEq(uint256(data.status), uint256(RequestStatus.Approved));
+        assertEq(data.approvedAmount, uint120(PAYMENT_AMOUNT / 2));
+        assertEq(refundRequest.approvedRefundAmounts(paymentInfoHash), uint120(PAYMENT_AMOUNT / 2));
+    }
+
+    function test_revoke_thenDeny() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        vm.prank(arbiter);
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
+
+        vm.prank(arbiter);
+        refundRequest.revoke(paymentInfo, 0);
+
+        vm.prank(arbiter);
+        refundRequest.deny(paymentInfo, 0);
+
+        RefundRequestCondition.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo, 0);
+        assertEq(uint256(data.status), uint256(RequestStatus.Denied));
+    }
+
+    function test_revoke_cumulativeAccounting() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+
+        // Two requests, approve both
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT / 4), 0);
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT / 4), 1);
+
+        vm.prank(arbiter);
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT / 4));
+        vm.prank(arbiter);
+        refundRequest.approve(paymentInfo, 1, uint120(PAYMENT_AMOUNT / 4));
+        assertEq(refundRequest.approvedRefundAmounts(paymentInfoHash), uint120(PAYMENT_AMOUNT / 2));
+
+        // Revoke only the first — cumulative should drop by that amount
+        vm.prank(arbiter);
+        refundRequest.revoke(paymentInfo, 0);
+        assertEq(refundRequest.approvedRefundAmounts(paymentInfoHash), uint120(PAYMENT_AMOUNT / 4));
+    }
+
+    // ============ operatorNotZero Tests ============
+
+    function test_requestRefund_revertsIfZeroOperator() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+        paymentInfo.operator = address(0);
+
+        vm.prank(payer);
+        vm.expectRevert(RefundRequestCondition.InvalidOperator.selector);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+    }
+
+    function test_approve_revertsIfZeroOperator() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        paymentInfo.operator = address(0);
+        vm.prank(arbiter);
+        vm.expectRevert(RefundRequestCondition.InvalidOperator.selector);
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
+    }
+
+    function test_cancel_revertsIfZeroOperator() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        paymentInfo.operator = address(0);
+        vm.prank(payer);
+        vm.expectRevert(RefundRequestCondition.InvalidOperator.selector);
+        refundRequest.cancelRefundRequest(paymentInfo, 0);
+    }
+
+    function test_deny_revertsIfZeroOperator() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        paymentInfo.operator = address(0);
+        vm.prank(arbiter);
+        vm.expectRevert(RefundRequestCondition.InvalidOperator.selector);
+        refundRequest.deny(paymentInfo, 0);
+    }
+
+    function test_refuse_revertsIfZeroOperator() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        paymentInfo.operator = address(0);
+        vm.prank(arbiter);
+        vm.expectRevert(RefundRequestCondition.InvalidOperator.selector);
+        refundRequest.refuse(paymentInfo, 0);
+    }
+
+    function test_check_revertsIfZeroOperator() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        paymentInfo.operator = address(0);
+        vm.expectRevert(RefundRequestCondition.InvalidOperator.selector);
+        refundRequest.check(paymentInfo, PAYMENT_AMOUNT, address(0));
+    }
+
+    // ============ RequestAlreadyExists Tests ============
+
+    function test_requestRefund_revertsIfAlreadyExists() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        // Same nonce without cancelling — should revert
+        vm.prank(payer);
+        vm.expectRevert();
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT / 2), 0);
+    }
+
+    // ============ Terminal State Transition Tests ============
+
+    function test_approve_revertsIfDenied() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        vm.prank(arbiter);
+        refundRequest.deny(paymentInfo, 0);
+
+        vm.prank(arbiter);
+        vm.expectRevert();
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
+    }
+
+    function test_approve_revertsIfRefused() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        vm.prank(arbiter);
+        refundRequest.refuse(paymentInfo, 0);
+
+        vm.prank(arbiter);
+        vm.expectRevert();
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
+    }
+
+    // ============ Payer Approve Rejection Test ============
+
+    function test_approve_revertsIfPayer() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        vm.prank(payer);
+        vm.expectRevert(RefundRequestCondition.NotArbiterOrReceiver.selector);
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
+    }
+
+    // ============ Pagination Boundary Tests ============
+
+    function test_pagination_offsetBeyondTotal() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        (bytes32[] memory keys, uint256 total) = refundRequest.getPayerRefundRequests(payer, 100, 10);
+        assertEq(total, 1);
+        assertEq(keys.length, 0);
+    }
+
+    function test_pagination_zeroCount() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        (bytes32[] memory keys, uint256 total) = refundRequest.getPayerRefundRequests(payer, 0, 0);
+        assertEq(total, 1);
+        assertEq(keys.length, 0);
+    }
+
+    function test_pagination_receiverAndOperator() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
+
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
+
+        // Receiver pagination
+        (bytes32[] memory receiverKeys, uint256 receiverTotal) =
+            refundRequest.getReceiverRefundRequests(receiver, 0, 10);
+        assertEq(receiverTotal, 1);
+        assertEq(receiverKeys.length, 1);
+
+        // Operator pagination
+        (bytes32[] memory operatorKeys, uint256 operatorTotal) =
+            refundRequest.getOperatorRefundRequests(address(operator), 0, 10);
+        assertEq(operatorTotal, 1);
+        assertEq(operatorKeys.length, 1);
+    }
+
+    function test_singleIndexGetter_revertsOutOfBounds() public {
+        vm.expectRevert(RefundRequestCondition.IndexOutOfBounds.selector);
+        refundRequest.getPayerRefundRequest(payer, 0);
+
+        vm.expectRevert(RefundRequestCondition.IndexOutOfBounds.selector);
+        refundRequest.getReceiverRefundRequest(receiver, 0);
+
+        vm.expectRevert(RefundRequestCondition.IndexOutOfBounds.selector);
+        refundRequest.getOperatorRefundRequest(address(operator), 0);
     }
 
     // ============ Hash Security Tests ============

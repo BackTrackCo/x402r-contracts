@@ -8,8 +8,8 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {ProtocolFeeConfig} from "../../src/plugins/fees/ProtocolFeeConfig.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
-import {RefundRequestCondition} from "../../src/requests/refund/RefundRequestCondition.sol";
-import {RequestStatus} from "../../src/requests/types/Types.sol";
+import {RefundRequestCondition} from "../../src/plugins/conditions/refund-request/RefundRequestCondition.sol";
+import {RequestStatus} from "../../src/plugins/conditions/refund-request/types/Types.sol";
 
 /**
  * @title RefundRequestInvariants

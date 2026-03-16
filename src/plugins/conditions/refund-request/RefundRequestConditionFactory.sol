@@ -15,6 +15,8 @@ import {RefundRequestCondition} from "./RefundRequestCondition.sol";
 contract RefundRequestConditionFactory {
     error ZeroArbiter();
 
+    bytes32 private constant SALT_PREFIX = "refundRequestCondition";
+
     /// @notice Deployed condition addresses
     /// @dev Key: keccak256(abi.encodePacked(arbiter))
     mapping(bytes32 => address) public deployments;
@@ -38,7 +40,7 @@ contract RefundRequestConditionFactory {
         }
 
         // ============ EFFECTS ============
-        bytes32 salt = keccak256(abi.encodePacked("refundRequestCondition", key));
+        bytes32 salt = keccak256(abi.encodePacked(SALT_PREFIX, key));
         bytes memory bytecode = abi.encodePacked(type(RefundRequestCondition).creationCode, abi.encode(arbiter));
         refundRequestCondition = address(
             uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)))))
@@ -46,12 +48,12 @@ contract RefundRequestConditionFactory {
 
         deployments[key] = refundRequestCondition;
 
-        emit RefundRequestConditionDeployed(refundRequestCondition, arbiter);
-
         // ============ INTERACTIONS ============
         address deployed = address(new RefundRequestCondition{salt: salt}(arbiter));
 
         assert(deployed == refundRequestCondition);
+
+        emit RefundRequestConditionDeployed(refundRequestCondition, arbiter);
     }
 
     /**
@@ -70,7 +72,7 @@ contract RefundRequestConditionFactory {
      */
     function computeAddress(address arbiter) external view returns (address refundRequestCondition) {
         bytes32 key = getKey(arbiter);
-        bytes32 salt = keccak256(abi.encodePacked("refundRequestCondition", key));
+        bytes32 salt = keccak256(abi.encodePacked(SALT_PREFIX, key));
         bytes memory bytecode = abi.encodePacked(type(RefundRequestCondition).creationCode, abi.encode(arbiter));
         bytes32 hash = keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)));
         refundRequestCondition = address(uint160(uint256(hash)));

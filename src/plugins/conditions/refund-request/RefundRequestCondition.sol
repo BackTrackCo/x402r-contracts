@@ -4,17 +4,17 @@ pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
-import {PaymentOperator} from "../../operator/payment/PaymentOperator.sol";
-import {ICondition} from "../../plugins/conditions/ICondition.sol";
-import {RequestStatus} from "../types/Types.sol";
+import {PaymentOperator} from "../../../operator/payment/PaymentOperator.sol";
+import {ICondition} from "../ICondition.sol";
+import {RequestStatus} from "./types/Types.sol";
 import {
     ApproveAmountExceedsRequest,
     RequestAlreadyExists,
     RequestDoesNotExist,
     RequestNotPending,
     ZeroRefundAmount
-} from "../types/Errors.sol";
-import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} from "../types/Events.sol";
+} from "./types/Errors.sol";
+import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} from "./types/Events.sol";
 
 /**
  * @title RefundRequestCondition
@@ -25,10 +25,11 @@ import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} fro
  *      Operator condition tree: OrCondition(ReceiverCondition, RefundRequestCondition)
  *
  *      State machine:
- *        Pending -> Approved   (msg.sender, onlyArbiterOrReceiver)
- *        Pending -> Denied     (msg.sender, onlyArbiter)
- *        Pending -> Refused    (msg.sender, onlyArbiter)
- *        Pending -> Cancelled  (msg.sender, onlyPayer)
+ *        Pending  -> Approved  (msg.sender, onlyArbiterOrReceiver)
+ *        Approved -> Pending   (msg.sender, onlyApprover) via revoke()
+ *        Pending  -> Denied    (msg.sender, onlyArbiter)
+ *        Pending  -> Refused   (msg.sender, onlyArbiter)
+ *        Pending  -> Cancelled (msg.sender, onlyPayer)
  *
  * SECURITY: ReentrancyGuardTransient on approve() is defense-in-depth — no external calls
  *           precede state updates, but the guard prevents future regressions.
@@ -39,6 +40,7 @@ contract RefundRequestCondition is ICondition, ReentrancyGuardTransient {
         uint256 nonce;
         uint120 amount;
         uint120 approvedAmount;
+        address approvedBy;
         RequestStatus status;
     }
 
@@ -47,8 +49,10 @@ contract RefundRequestCondition is ICondition, ReentrancyGuardTransient {
     error IndexOutOfBounds();
     error NotArbiter();
     error NotArbiterOrReceiver();
+    error NotApprover();
     error NotPayer();
     error InvalidOperator();
+    error RequestNotApproved();
     error ZeroArbiter();
 
     // ============ Immutables ============
@@ -115,8 +119,11 @@ contract RefundRequestCondition is ICondition, ReentrancyGuardTransient {
 
     // ============ ICondition ============
 
-    /// @notice Returns true if the requested amount is within the cumulative approved refund amount.
-    /// @dev Called by the escrow/operator to check if a refund is allowed.
+    /// @notice Returns true if the requested amount is within the cumulative approved refund ceiling.
+    /// @dev This is a ceiling check, NOT a remaining-balance check. `approvedRefundAmounts` tracks the
+    ///      cumulative total ever approved and is never decremented by executed refunds. The escrow
+    ///      itself enforces fund availability — if insufficient funds remain, the refund tx reverts.
+    ///      Off-chain consumers should query escrow balance separately to determine actual refundability.
     function check(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint256 amount,
@@ -125,6 +132,7 @@ contract RefundRequestCondition is ICondition, ReentrancyGuardTransient {
         external
         view
         override
+        operatorNotZero(paymentInfo)
         returns (bool)
     {
         bytes32 key = PaymentOperator(paymentInfo.operator).ESCROW().getHash(paymentInfo);
@@ -165,6 +173,7 @@ contract RefundRequestCondition is ICondition, ReentrancyGuardTransient {
             nonce: nonce,
             amount: amount,
             approvedAmount: 0,
+            approvedBy: address(0),
             status: RequestStatus.Pending
         });
 
@@ -230,10 +239,42 @@ contract RefundRequestCondition is ICondition, ReentrancyGuardTransient {
         // ============ EFFECTS ============
         approvedRefundAmounts[paymentInfoHash] += amount;
         request.approvedAmount = amount;
+        request.approvedBy = msg.sender;
         request.status = RequestStatus.Approved;
 
         emit RefundRequestStatusUpdated(
             paymentInfo, RequestStatus.Pending, RequestStatus.Approved, msg.sender, nonce, amount
+        );
+    }
+
+    /// @notice Revoke a previously approved refund request. Only the original approver can call.
+    ///         Sets the request back to Pending and decrements `approvedRefundAmounts`,
+    ///         allowing re-evaluation (approve, deny, refuse, or cancel).
+    /// @param paymentInfo PaymentInfo struct
+    /// @param nonce Record index identifying which refund request
+    function revoke(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce)
+        external
+        nonReentrant
+        operatorNotZero(paymentInfo)
+    {
+        PaymentOperator operator = PaymentOperator(paymentInfo.operator);
+        bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
+        bytes32 compositeKey = keccak256(abi.encodePacked(paymentInfoHash, nonce));
+
+        RefundRequestData storage request = refundRequests[compositeKey];
+        if (request.paymentInfoHash == bytes32(0)) revert RequestDoesNotExist();
+        if (request.status != RequestStatus.Approved) revert RequestNotApproved();
+        if (msg.sender != request.approvedBy) revert NotApprover();
+
+        // ============ EFFECTS ============
+        approvedRefundAmounts[paymentInfoHash] -= request.approvedAmount;
+        request.status = RequestStatus.Pending;
+        uint120 revokedAmount = request.approvedAmount;
+        request.approvedAmount = 0;
+        request.approvedBy = address(0);
+
+        emit RefundRequestStatusUpdated(
+            paymentInfo, RequestStatus.Approved, RequestStatus.Pending, msg.sender, nonce, revokedAmount
         );
     }
 
