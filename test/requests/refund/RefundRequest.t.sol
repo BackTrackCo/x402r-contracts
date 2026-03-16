@@ -9,7 +9,7 @@ import {PaymentOperator} from "../../../src/operator/payment/PaymentOperator.sol
 import {PaymentOperatorFactory} from "../../../src/operator/PaymentOperatorFactory.sol";
 import {ProtocolFeeConfig} from "../../../src/plugins/fees/ProtocolFeeConfig.sol";
 import {RequestStatus} from "../../../src/requests/types/Types.sol";
-import {RequestNotPending, ApproveAmountExceedsRequest} from "../../../src/requests/types/Errors.sol";
+import {RequestNotApprovable, ApproveAmountExceedsRequest} from "../../../src/requests/types/Errors.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
@@ -260,7 +260,7 @@ contract RefundRequestTest is Test {
 
         // Cannot approve a denied request
         vm.prank(arbiter);
-        vm.expectRevert(RequestNotPending.selector);
+        vm.expectRevert(RequestNotApprovable.selector);
         refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
     }
 

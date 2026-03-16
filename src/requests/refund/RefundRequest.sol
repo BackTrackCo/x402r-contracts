@@ -10,6 +10,7 @@ import {
     RequestAlreadyExists,
     RequestDoesNotExist,
     RequestNotPending,
+    RequestNotApprovable,
     ZeroRefundAmount,
     ApproveAmountExceedsRequest
 } from "../types/Errors.sol";
@@ -216,7 +217,7 @@ contract RefundRequest is ReentrancyGuardTransient {
         RefundRequestData storage request = refundRequests[compositeKey];
         if (request.paymentInfoHash == bytes32(0)) revert RequestDoesNotExist();
         if (request.status != RequestStatus.Pending && request.status != RequestStatus.Approved) {
-            revert RequestNotPending();
+            revert RequestNotApprovable();
         }
         if (amount == 0) revert ZeroRefundAmount();
         if (request.approvedAmount + amount > request.amount) revert ApproveAmountExceedsRequest();

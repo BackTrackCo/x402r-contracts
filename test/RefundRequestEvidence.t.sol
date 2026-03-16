@@ -24,11 +24,7 @@ contract RefundRequestEvidenceTest is Test {
     AuthCaptureEscrow public escrow;
     PreApprovalPaymentCollector public collector;
     MockERC20 public token;
-    StaticAddressCondition public designatedAddressCondition;
     StaticAddressCondition public refundCondition;
-
-    // Operator with no arbiter condition (address(0))
-    PaymentOperator public operatorNoArbiter;
 
     address public owner;
     address public protocolFeeRecipient;
@@ -56,10 +52,7 @@ contract RefundRequestEvidenceTest is Test {
         // Deploy RefundRequest with designatedAddress as arbiter
         refundRequest = new RefundRequest(designatedAddress);
 
-        // Deploy designated address condition for arbiter evidence access
-        designatedAddressCondition = new StaticAddressCondition(designatedAddress);
-
-        // Deploy refund condition (gates refundInEscrow to RefundRequest)
+        // Deploy refund condition (gates refundInEscrow to RefundRequest) — production config
         refundCondition = new StaticAddressCondition(address(refundRequest));
 
         // Deploy protocol fee config (no fees)
@@ -68,7 +61,7 @@ contract RefundRequestEvidenceTest is Test {
         // Deploy operator factory
         operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
-        // Deploy operator WITH arbiter condition
+        // Deploy operator with production config: StaticAddressCondition(refundRequest)
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeRecipient: protocolFeeRecipient,
             feeCalculator: address(0),
@@ -78,29 +71,12 @@ contract RefundRequestEvidenceTest is Test {
             chargeRecorder: address(0),
             releaseCondition: address(0),
             releaseRecorder: address(0),
-            refundInEscrowCondition: address(designatedAddressCondition),
+            refundInEscrowCondition: address(refundCondition),
             refundInEscrowRecorder: address(0),
             refundPostEscrowCondition: address(0),
             refundPostEscrowRecorder: address(0)
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
-
-        // Deploy operator WITHOUT arbiter condition (address(0))
-        PaymentOperatorFactory.OperatorConfig memory configNoArbiter = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: protocolFeeRecipient,
-            feeCalculator: address(0),
-            authorizeCondition: address(0),
-            authorizeRecorder: address(0),
-            chargeCondition: address(0),
-            chargeRecorder: address(0),
-            releaseCondition: address(0),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(0),
-            refundInEscrowRecorder: address(0),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
-        });
-        operatorNoArbiter = PaymentOperator(operatorFactory.deployOperator(configNoArbiter));
 
         // Deploy evidence contract
         refundRequestEvidence = new RefundRequestEvidence(address(refundRequest));
@@ -133,23 +109,6 @@ contract RefundRequestEvidenceTest is Test {
         });
     }
 
-    function _createPaymentInfoNoArbiter() internal view returns (AuthCaptureEscrow.PaymentInfo memory) {
-        return AuthCaptureEscrow.PaymentInfo({
-            operator: address(operatorNoArbiter),
-            payer: payer,
-            receiver: receiver,
-            token: address(token),
-            maxAmount: uint120(PAYMENT_AMOUNT),
-            preApprovalExpiry: uint48(block.timestamp + 1 days),
-            authorizationExpiry: uint48(block.timestamp + 7 days),
-            refundExpiry: uint48(block.timestamp + 30 days),
-            minFeeBps: uint16(0),
-            maxFeeBps: uint16(0),
-            feeReceiver: address(operatorNoArbiter),
-            salt: 99999
-        });
-    }
-
     function _authorizeAndRequestRefund() internal returns (AuthCaptureEscrow.PaymentInfo memory paymentInfo) {
         paymentInfo = _createPaymentInfo();
 
@@ -157,19 +116,6 @@ contract RefundRequestEvidenceTest is Test {
         vm.prank(payer);
         collector.preApprove(paymentInfo);
         operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
-
-        // Create refund request
-        vm.prank(payer);
-        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
-    }
-
-    function _authorizeAndRequestRefundNoArbiter() internal returns (AuthCaptureEscrow.PaymentInfo memory paymentInfo) {
-        paymentInfo = _createPaymentInfoNoArbiter();
-
-        // Pre-approve and authorize
-        vm.prank(payer);
-        collector.preApprove(paymentInfo);
-        operatorNoArbiter.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
         // Create refund request
         vm.prank(payer);
@@ -354,26 +300,6 @@ contract RefundRequestEvidenceTest is Test {
 
         vm.prank(receiver);
         refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmTwo");
-        assertEq(refundRequestEvidence.getEvidenceCount(paymentInfo, 0), 2);
-    }
-
-    // ============ Arbiter Edge Cases ============
-
-    function test_arbiter_noCondition() public {
-        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizeAndRequestRefundNoArbiter();
-
-        // Payer and receiver should still work
-        vm.prank(payer);
-        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmPayerOk");
-
-        vm.prank(receiver);
-        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmReceiverOk");
-
-        // Designated address is NOT arbiter here (no condition configured)
-        vm.prank(designatedAddress);
-        vm.expectRevert(NotPayerReceiverOrArbiter.selector);
-        refundRequestEvidence.submitEvidence(paymentInfo, 0, "QmShouldFail");
-
         assertEq(refundRequestEvidence.getEvidenceCount(paymentInfo, 0), 2);
     }
 

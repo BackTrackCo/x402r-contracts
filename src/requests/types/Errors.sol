@@ -7,4 +7,5 @@ error ZeroRefundAmount();
 error RequestAlreadyExists();
 error RequestDoesNotExist();
 error RequestNotPending();
+error RequestNotApprovable();
 error ApproveAmountExceedsRequest();

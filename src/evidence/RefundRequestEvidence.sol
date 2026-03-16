@@ -52,6 +52,10 @@ contract RefundRequestEvidence is RefundRequestEvidenceAccess {
         REFUND_REQUEST = RefundRequest(refundRequest);
     }
 
+    function _getRefundRequest() internal view override returns (RefundRequest) {
+        return REFUND_REQUEST;
+    }
+
     // ============ Write Functions ============
 
     /// @notice Submit evidence for a refund request
