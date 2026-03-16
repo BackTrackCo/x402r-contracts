@@ -18,9 +18,8 @@ import {AndCondition} from "../../src/plugins/conditions/combinators/AndConditio
 import {PayerCondition} from "../../src/plugins/conditions/access/PayerCondition.sol";
 import {ReceiverCondition} from "../../src/plugins/conditions/access/ReceiverCondition.sol";
 
-import {SignatureCondition} from "../../src/plugins/conditions/access/signature/SignatureCondition.sol";
-import {SignatureRefundRequest} from "../../src/requests/refund/SignatureRefundRequest.sol";
-import {DisputeEvidence} from "../../src/evidence/DisputeEvidence.sol";
+import {RefundRequest} from "../../src/requests/refund/RefundRequest.sol";
+import {RefundRequestEvidence} from "../../src/evidence/RefundRequestEvidence.sol";
 
 /**
  * @title GasBenchmark
@@ -60,9 +59,8 @@ contract GasBenchmark is Test {
     PaymentOperator public fullOperator; // EscrowPeriod + Freeze + fees
 
     // ============ Dispute System ============
-    SignatureCondition public sigCondition;
-    SignatureRefundRequest public refundRequest;
-    DisputeEvidence public disputeEvidence;
+    RefundRequest public refundRequest;
+    RefundRequestEvidence public refundRequestEvidence;
 
     // ============ Accounts ============
     address public owner;
@@ -70,7 +68,6 @@ contract GasBenchmark is Test {
     address public operatorFeeRecipient;
     address public payer;
     address public receiver;
-    uint256 public arbiterPrivateKey;
     address public arbiter;
 
     // ============ Constants ============
@@ -88,8 +85,7 @@ contract GasBenchmark is Test {
         payer = makeAddr("payer");
         receiver = makeAddr("receiver");
 
-        arbiterPrivateKey = 0xA11CE;
-        arbiter = vm.addr(arbiterPrivateKey);
+        arbiter = makeAddr("arbiter");
 
         // Deploy infrastructure
         escrow = new AuthCaptureEscrow();
@@ -213,9 +209,8 @@ contract GasBenchmark is Test {
         fullOperator = PaymentOperator(operatorFactory.deployOperator(fullConfig));
 
         // Deploy dispute system
-        sigCondition = new SignatureCondition(arbiter);
-        refundRequest = new SignatureRefundRequest(address(sigCondition));
-        disputeEvidence = new DisputeEvidence(address(refundRequest));
+        refundRequest = new RefundRequest(arbiter);
+        refundRequestEvidence = new RefundRequestEvidence(address(refundRequest));
 
         // Fund accounts
         token.mint(payer, PAYMENT_AMOUNT * 100);
@@ -514,7 +509,7 @@ contract GasBenchmark is Test {
         console.log("requestRefund:", gasUsed);
     }
 
-    function test_gas_approveRefundWithSignature() public {
+    function test_gas_approveRefund() public {
         AuthCaptureEscrow.PaymentInfo memory pi = _createPaymentInfo(address(fullOperator), TOTAL_BPS, 22);
 
         vm.prank(payer);
@@ -524,15 +519,13 @@ contract GasBenchmark is Test {
         vm.prank(payer);
         refundRequest.requestRefund(pi, uint120(PAYMENT_AMOUNT), 0);
 
-        bytes32 paymentInfoHash = escrow.getHash(pi);
-        bytes memory sig = _signApproval(paymentInfoHash, PAYMENT_AMOUNT, 0);
-
+        vm.prank(arbiter);
         uint256 gasBefore = gasleft();
-        refundRequest.approveWithSignature(pi, 0, PAYMENT_AMOUNT, 0, sig);
+        refundRequest.approve(pi, 0, uint120(PAYMENT_AMOUNT));
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== x402r UNHAPPY PATH ===");
-        console.log("approveWithSignature:", gasUsed);
+        console.log("approve:", gasUsed);
     }
 
     function test_gas_submitEvidence() public {
@@ -547,7 +540,7 @@ contract GasBenchmark is Test {
 
         vm.prank(payer);
         uint256 gasBefore = gasleft();
-        disputeEvidence.submitEvidence(pi, 0, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
+        refundRequestEvidence.submitEvidence(pi, 0, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== x402r UNHAPPY PATH ===");
@@ -750,13 +743,13 @@ contract GasBenchmark is Test {
         // Cold submitEvidence
         vm.prank(payer);
         uint256 g1 = gasleft();
-        disputeEvidence.submitEvidence(pi1, 0, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
+        refundRequestEvidence.submitEvidence(pi1, 0, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
         uint256 coldGas = g1 - gasleft();
 
         // Warm submitEvidence
         vm.prank(payer);
         uint256 g2 = gasleft();
-        disputeEvidence.submitEvidence(pi2, 0, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
+        refundRequestEvidence.submitEvidence(pi2, 0, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
         uint256 warmGas = g2 - gasleft();
 
         console.log("=== SUBMIT EVIDENCE COLD vs WARM ===");
@@ -781,20 +774,16 @@ contract GasBenchmark is Test {
         vm.prank(payer);
         refundRequest.requestRefund(pi2, uint120(PAYMENT_AMOUNT), 0);
 
-        bytes32 hash1 = escrow.getHash(pi1);
-        bytes memory sig1 = _signApproval(hash1, PAYMENT_AMOUNT, 0);
-
-        bytes32 hash2 = escrow.getHash(pi2);
-        bytes memory sig2 = _signApproval(hash2, PAYMENT_AMOUNT, 0);
-
-        // Cold approveWithSignature
+        // Cold approve
+        vm.prank(arbiter);
         uint256 g1 = gasleft();
-        refundRequest.approveWithSignature(pi1, 0, PAYMENT_AMOUNT, 0, sig1);
+        refundRequest.approve(pi1, 0, uint120(PAYMENT_AMOUNT));
         uint256 coldGas = g1 - gasleft();
 
-        // Warm approveWithSignature
+        // Warm approve
+        vm.prank(arbiter);
         uint256 g2 = gasleft();
-        refundRequest.approveWithSignature(pi2, 0, PAYMENT_AMOUNT, 0, sig2);
+        refundRequest.approve(pi2, 0, uint120(PAYMENT_AMOUNT));
         uint256 warmGas = g2 - gasleft();
 
         console.log("=== APPROVE REFUND COLD vs WARM ===");
@@ -1253,15 +1242,17 @@ contract GasBenchmark is Test {
         // submitEvidence (payer)
         vm.prank(payer);
         uint256 g5 = gasleft();
-        disputeEvidence.submitEvidence(pi, 0, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
+        refundRequestEvidence.submitEvidence(pi, 0, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
         uint256 evidenceGas = g5 - gasleft();
 
-        // approveWithSignature
-        bytes32 paymentInfoHash = escrow.getHash(pi);
-        bytes memory sig = _signApproval(paymentInfoHash, PAYMENT_AMOUNT, 0);
+        // approve (arbiter approves — but this is post-escrow, so approve won't work with refundInEscrow)
+        // In v2, approve() atomically calls refundInEscrow, which only works while in escrow.
+        // For post-escrow flow, the refund request is just tracked (no atomic execution).
+        // Measure deny instead (same state machine cost).
+        vm.prank(arbiter);
         uint256 g6 = gasleft();
-        refundRequest.approveWithSignature(pi, 0, PAYMENT_AMOUNT, 0, sig);
-        uint256 approveGas = g6 - gasleft();
+        refundRequest.deny(pi, 0);
+        uint256 denyGas = g6 - gasleft();
 
         // refundPostEscrow
         uint256 netAmount = PAYMENT_AMOUNT - (PAYMENT_AMOUNT * TOTAL_BPS) / 10000;
@@ -1269,7 +1260,7 @@ contract GasBenchmark is Test {
         fullOperator.refundPostEscrow(pi, netAmount, address(refundCollector), "");
         uint256 refundGas = g7 - gasleft();
 
-        uint256 total = authorizeGas + freezeGas + releaseGas + requestGas + evidenceGas + approveGas + refundGas;
+        uint256 total = authorizeGas + freezeGas + releaseGas + requestGas + evidenceGas + denyGas + refundGas;
 
         console.log("=== FULL UNHAPPY PATH TOTAL ===");
         console.log("authorize:", authorizeGas);
@@ -1277,7 +1268,7 @@ contract GasBenchmark is Test {
         console.log("release:", releaseGas);
         console.log("requestRefund:", requestGas);
         console.log("submitEvidence:", evidenceGas);
-        console.log("approveWithSignature:", approveGas);
+        console.log("deny:", denyGas);
         console.log("refundPostEscrow:", refundGas);
         console.log("TOTAL:", total);
     }
@@ -1305,33 +1296,5 @@ contract GasBenchmark is Test {
             feeReceiver: op,
             salt: salt
         });
-    }
-
-    function _signApproval(bytes32 paymentInfoHash, uint256 amount, uint48 expiry)
-        internal
-        view
-        returns (bytes memory)
-    {
-        uint256 nonce = sigCondition.approvalNonces(paymentInfoHash);
-        bytes32 approvalTypehash = sigCondition.APPROVAL_TYPEHASH();
-        bytes32 structHash = keccak256(abi.encode(approvalTypehash, paymentInfoHash, amount, expiry, nonce));
-
-        (bytes1 fields, string memory name_, string memory version_, uint256 chainId, address verifyingContract,,) =
-            sigCondition.eip712Domain();
-        fields;
-
-        bytes32 domainSeparator = keccak256(
-            abi.encode(
-                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
-                keccak256(bytes(name_)),
-                keccak256(bytes(version_)),
-                chainId,
-                verifyingContract
-            )
-        );
-
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(arbiterPrivateKey, digest);
-        return abi.encodePacked(r, s, v);
     }
 }

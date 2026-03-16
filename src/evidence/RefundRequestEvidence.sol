@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PaymentOperator} from "../operator/payment/PaymentOperator.sol";
-import {SignatureRefundRequest} from "../requests/refund/SignatureRefundRequest.sol";
+import {RefundRequest} from "../requests/refund/RefundRequest.sol";
 import {RefundRequestEvidenceAccess} from "./RefundRequestEvidenceAccess.sol";
 import {SubmitterRole} from "./types/Types.sol";
 import {EmptyCid, RefundRequestRequired} from "./types/Errors.sol";
@@ -34,8 +34,8 @@ contract RefundRequestEvidence is RefundRequestEvidenceAccess {
 
     // ============ Immutables ============
 
-    /// @notice The SignatureRefundRequest contract used to validate prerequisite
-    SignatureRefundRequest public immutable REFUND_REQUEST;
+    /// @notice The RefundRequest contract used to validate prerequisite
+    RefundRequest public immutable REFUND_REQUEST;
 
     // ============ Storage ============
 
@@ -49,7 +49,7 @@ contract RefundRequestEvidence is RefundRequestEvidenceAccess {
     // ============ Constructor ============
 
     constructor(address refundRequest) {
-        REFUND_REQUEST = SignatureRefundRequest(refundRequest);
+        REFUND_REQUEST = RefundRequest(refundRequest);
     }
 
     // ============ Write Functions ============

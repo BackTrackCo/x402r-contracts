@@ -2,38 +2,38 @@
 pragma solidity ^0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
-import {SignatureRefundRequest} from "../src/requests/refund/SignatureRefundRequest.sol";
+import {RefundRequest} from "../src/requests/refund/RefundRequest.sol";
 
 /**
- * @title DeploySignatureRefundRequest
- * @notice Deploy SignatureRefundRequest with a reference to a specific SignatureCondition
+ * @title DeployRefundRequest
+ * @notice Deploy RefundRequest with a reference to a specific arbiter address
  *
- *      Requires SIGNATURE_CONDITION_ADDRESS env var.
+ *      Requires ARBITER_ADDRESS env var.
  *
  *      Usage:
- *      SIGNATURE_CONDITION_ADDRESS=0x... forge script \
- *        script/DeploySignatureRefundRequest.s.sol:DeploySignatureRefundRequest \
+ *      ARBITER_ADDRESS=0x... forge script \
+ *        script/DeploySignatureRefundRequest.s.sol:DeployRefundRequest \
  *        --rpc-url $RPC_URL \
  *        --broadcast \
  *        --verify \
  *        --private-key $PRIVATE_KEY
  */
-contract DeploySignatureRefundRequest is Script {
+contract DeployRefundRequest is Script {
     function run() public {
-        address signatureCondition = vm.envAddress("SIGNATURE_CONDITION_ADDRESS");
+        address arbiter = vm.envAddress("ARBITER_ADDRESS");
 
         vm.startBroadcast();
 
-        console.log("=== Deploying SignatureRefundRequest ===");
-        console.log("SignatureCondition:", signatureCondition);
+        console.log("=== Deploying RefundRequest ===");
+        console.log("Arbiter:", arbiter);
 
-        SignatureRefundRequest refundRequest = new SignatureRefundRequest(signatureCondition);
-        console.log("SignatureRefundRequest:", address(refundRequest));
+        RefundRequest refundRequest = new RefundRequest(arbiter);
+        console.log("RefundRequest:", address(refundRequest));
 
         vm.stopBroadcast();
 
         console.log("\n=== Deployment Summary ===");
-        console.log("SignatureCondition:", signatureCondition);
-        console.log("SignatureRefundRequest:", address(refundRequest));
+        console.log("Arbiter:", arbiter);
+        console.log("RefundRequest:", address(refundRequest));
     }
 }

@@ -3,8 +3,7 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {RefundRequestEvidence} from "../src/evidence/RefundRequestEvidence.sol";
-import {SignatureRefundRequest} from "../src/requests/refund/SignatureRefundRequest.sol";
-import {SignatureCondition} from "../src/plugins/conditions/access/signature/SignatureCondition.sol";
+import {RefundRequest} from "../src/requests/refund/RefundRequest.sol";
 import {PaymentOperator} from "../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
 import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
@@ -18,8 +17,7 @@ import {MockERC20} from "./mocks/MockERC20.sol";
 
 contract RefundRequestEvidenceTest is Test {
     RefundRequestEvidence public refundRequestEvidence;
-    SignatureRefundRequest public refundRequest;
-    SignatureCondition public sigCondition;
+    RefundRequest public refundRequest;
     PaymentOperator public operator;
     PaymentOperatorFactory public operatorFactory;
     ProtocolFeeConfig public protocolFeeConfig;
@@ -27,6 +25,7 @@ contract RefundRequestEvidenceTest is Test {
     PreApprovalPaymentCollector public collector;
     MockERC20 public token;
     StaticAddressCondition public designatedAddressCondition;
+    StaticAddressCondition public refundCondition;
 
     // Operator with no arbiter condition (address(0))
     PaymentOperator public operatorNoArbiter;
@@ -54,8 +53,14 @@ contract RefundRequestEvidenceTest is Test {
         // Deploy PreApprovalPaymentCollector
         collector = new PreApprovalPaymentCollector(address(escrow));
 
-        // Deploy designated address condition for arbiter
+        // Deploy RefundRequest with designatedAddress as arbiter
+        refundRequest = new RefundRequest(designatedAddress);
+
+        // Deploy designated address condition for arbiter evidence access
         designatedAddressCondition = new StaticAddressCondition(designatedAddress);
+
+        // Deploy refund condition (gates refundInEscrow to RefundRequest)
+        refundCondition = new StaticAddressCondition(address(refundRequest));
 
         // Deploy protocol fee config (no fees)
         protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
@@ -97,9 +102,7 @@ contract RefundRequestEvidenceTest is Test {
         });
         operatorNoArbiter = PaymentOperator(operatorFactory.deployOperator(configNoArbiter));
 
-        // Deploy SignatureCondition + SignatureRefundRequest + evidence
-        sigCondition = new SignatureCondition(designatedAddress);
-        refundRequest = new SignatureRefundRequest(address(sigCondition));
+        // Deploy evidence contract
         refundRequestEvidence = new RefundRequestEvidence(address(refundRequest));
 
         // Setup balances
