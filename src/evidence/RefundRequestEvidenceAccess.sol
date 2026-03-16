@@ -3,8 +3,7 @@
 pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {PaymentOperator} from "../operator/payment/PaymentOperator.sol";
-import {ICondition} from "../plugins/conditions/ICondition.sol";
+import {RefundRequest} from "../requests/refund/RefundRequest.sol";
 import {InvalidOperator} from "../types/Errors.sol";
 import {NotPayerReceiverOrArbiter} from "./types/Errors.sol";
 import {SubmitterRole} from "./types/Types.sol";
@@ -12,10 +11,8 @@ import {SubmitterRole} from "./types/Types.sol";
 /**
  * @title RefundRequestEvidenceAccess
  * @notice Access control modifiers for RefundRequestEvidence contract
- * @dev Payer, receiver, and arbiter (via REFUND_IN_ESCROW_CONDITION) can submit evidence.
- *      Unlike RefundRequestAccess, evidence submission does not distinguish in-escrow vs post-escrow.
- *      If the caller passes the operator's REFUND_IN_ESCROW_CONDITION, they are treated as arbiter
- *      regardless of escrow state (evidence is informational, not financial).
+ * @dev Payer, receiver, and arbiter can submit evidence.
+ *      Arbiter identity is read from REFUND_REQUEST.ARBITER().
  */
 abstract contract RefundRequestEvidenceAccess {
     // ============ Access Control ============
@@ -38,21 +35,16 @@ abstract contract RefundRequestEvidenceAccess {
             return SubmitterRole.Receiver;
         }
 
-        // Check arbiter access via operator's REFUND_IN_ESCROW_CONDITION
-        PaymentOperator operator = PaymentOperator(paymentInfo.operator);
-        ICondition condition = operator.REFUND_IN_ESCROW_CONDITION();
-
-        // address(0) condition means no arbiter configured — deny
-        if (address(condition) == address(0)) {
-            revert NotPayerReceiverOrArbiter();
+        // Check arbiter access via RefundRequest's immutable ARBITER
+        if (msg.sender == _getRefundRequest().ARBITER()) {
+            return SubmitterRole.Arbiter;
         }
 
-        if (!condition.check(paymentInfo, 0, msg.sender)) {
-            revert NotPayerReceiverOrArbiter();
-        }
-
-        return SubmitterRole.Arbiter;
+        revert NotPayerReceiverOrArbiter();
     }
+
+    /// @dev Subclass must provide the RefundRequest reference
+    function _getRefundRequest() internal view virtual returns (RefundRequest);
 
     // ============ Operator Validation ============
 

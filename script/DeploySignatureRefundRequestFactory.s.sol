@@ -2,31 +2,31 @@
 pragma solidity ^0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
-import {SignatureRefundRequestFactory} from "../src/requests/refund/SignatureRefundRequestFactory.sol";
+import {RefundRequestFactory} from "../src/requests/refund/RefundRequestFactory.sol";
 
 /**
- * @title DeploySignatureRefundRequestFactory
- * @notice Deploy SignatureRefundRequestFactory for deterministic SignatureRefundRequest deployment
+ * @title DeployRefundRequestFactory
+ * @notice Deploy RefundRequestFactory for deterministic RefundRequest deployment
  *
  *      Usage:
- *      forge script script/DeploySignatureRefundRequestFactory.s.sol:DeploySignatureRefundRequestFactory \
+ *      forge script script/DeploySignatureRefundRequestFactory.s.sol:DeployRefundRequestFactory \
  *        --rpc-url $RPC_URL \
  *        --broadcast \
  *        --verify \
  *        --private-key $PRIVATE_KEY
  */
-contract DeploySignatureRefundRequestFactory is Script {
+contract DeployRefundRequestFactory is Script {
     function run() public {
         vm.startBroadcast();
 
-        console.log("=== Deploying SignatureRefundRequestFactory ===");
+        console.log("=== Deploying RefundRequestFactory ===");
 
-        SignatureRefundRequestFactory factory = new SignatureRefundRequestFactory();
-        console.log("SignatureRefundRequestFactory:", address(factory));
+        RefundRequestFactory factory = new RefundRequestFactory();
+        console.log("RefundRequestFactory:", address(factory));
 
         vm.stopBroadcast();
 
         console.log("\n=== Deployment Summary ===");
-        console.log("SignatureRefundRequestFactory:", address(factory));
+        console.log("RefundRequestFactory:", address(factory));
     }
 }

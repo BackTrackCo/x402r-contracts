@@ -15,8 +15,8 @@ import {Freeze} from "../../src/plugins/freeze/Freeze.sol";
 import {ICondition} from "../../src/plugins/conditions/ICondition.sol";
 import {AndCondition} from "../../src/plugins/conditions/combinators/AndCondition.sol";
 import {PayerCondition} from "../../src/plugins/conditions/access/PayerCondition.sol";
-import {SignatureCondition} from "../../src/plugins/conditions/access/signature/SignatureCondition.sol";
-import {SignatureRefundRequest} from "../../src/requests/refund/SignatureRefundRequest.sol";
+import {StaticAddressCondition} from "../../src/plugins/conditions/access/static-address/StaticAddressCondition.sol";
+import {RefundRequest} from "../../src/requests/refund/RefundRequest.sol";
 import {RequestStatus} from "../../src/requests/types/Types.sol";
 
 /**
@@ -46,8 +46,8 @@ contract FullLifecycleTest is Test {
     PaymentOperator public operator;
 
     // Refund request
-    SignatureCondition public sigCondition;
-    SignatureRefundRequest public refundRequest;
+    RefundRequest public refundRequest;
+    StaticAddressCondition public refundCondition;
 
     // Addresses
     address public owner;
@@ -55,9 +55,6 @@ contract FullLifecycleTest is Test {
     address public operatorFeeRecipient;
     address public payer;
     address public receiver;
-
-    // Arbiter signing key
-    uint256 public arbiterPrivateKey;
     address public arbiter;
 
     // Constants
@@ -74,9 +71,7 @@ contract FullLifecycleTest is Test {
         operatorFeeRecipient = makeAddr("operatorFeeRecipient");
         payer = makeAddr("payer");
         receiver = makeAddr("receiver");
-
-        arbiterPrivateKey = 0xA11CE;
-        arbiter = vm.addr(arbiterPrivateKey);
+        arbiter = makeAddr("arbiter");
 
         // Deploy infrastructure
         escrow = new AuthCaptureEscrow();
@@ -105,8 +100,14 @@ contract FullLifecycleTest is Test {
         conditions[1] = ICondition(address(freeze));
         releaseCondition = new AndCondition(conditions);
 
+        // Deploy RefundRequest
+        refundRequest = new RefundRequest(arbiter);
+
         // Deploy operator with full configuration
         operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
+
+        // Deploy StaticAddressCondition pointing to RefundRequest for refundInEscrow gating
+        refundCondition = new StaticAddressCondition(address(refundRequest));
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeRecipient: operatorFeeRecipient,
@@ -117,16 +118,12 @@ contract FullLifecycleTest is Test {
             chargeRecorder: address(0),
             releaseCondition: address(releaseCondition),
             releaseRecorder: address(0),
-            refundInEscrowCondition: address(0),
+            refundInEscrowCondition: address(refundCondition),
             refundInEscrowRecorder: address(0),
             refundPostEscrowCondition: address(0),
             refundPostEscrowRecorder: address(0)
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
-
-        // Deploy SignatureCondition + SignatureRefundRequest
-        sigCondition = new SignatureCondition(arbiter);
-        refundRequest = new SignatureRefundRequest(address(sigCondition));
 
         // Fund accounts
         token.mint(payer, PAYMENT_AMOUNT * 10);
@@ -195,21 +192,13 @@ contract FullLifecycleTest is Test {
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo, uint120(expectedNetAmount), 0);
 
-        SignatureRefundRequest.RefundRequestData memory reqData = refundRequest.getRefundRequest(paymentInfo, 0);
+        RefundRequest.RefundRequestData memory reqData = refundRequest.getRefundRequest(paymentInfo, 0);
         assertEq(uint256(reqData.status), uint256(RequestStatus.Pending), "Step 8: Request pending");
 
-        // --- Step 9: APPROVE REFUND (arbiter signs off-chain, anyone relays) ---
-        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
-        bytes memory sig = _signApproval(paymentInfoHash, expectedNetAmount, 0);
-        refundRequest.approveWithSignature(paymentInfo, 0, expectedNetAmount, 0, sig);
-
-        reqData = refundRequest.getRefundRequest(paymentInfo, 0);
-        assertEq(uint256(reqData.status), uint256(RequestStatus.Approved), "Step 9: Request approved");
-
-        // --- Step 10: Verify refund request state is tracked correctly ---
-        assertEq(refundRequest.payerRefundRequestCount(payer), 1, "Step 10: Payer has 1 refund request");
-        assertEq(refundRequest.receiverRefundRequestCount(receiver), 1, "Step 10: Receiver has 1 refund request");
-        assertTrue(refundRequest.hasRefundRequest(paymentInfo, 0), "Step 10: Refund request exists");
+        // --- Step 9: Verify refund request state is tracked correctly ---
+        assertEq(refundRequest.payerRefundRequestCount(payer), 1, "Step 9: Payer has 1 refund request");
+        assertEq(refundRequest.receiverRefundRequestCount(receiver), 1, "Step 9: Receiver has 1 refund request");
+        assertTrue(refundRequest.hasRefundRequest(paymentInfo, 0), "Step 9: Refund request exists");
     }
 
     // ============ Charge Direct Payment Lifecycle ============
@@ -249,9 +238,14 @@ contract FullLifecycleTest is Test {
         vm.stopPrank();
         operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
-        // Partial refund (50%)
+        // Payer requests partial refund (50%)
         uint120 refundAmount = uint120(PAYMENT_AMOUNT / 2);
-        operator.refundInEscrow(paymentInfo, refundAmount);
+        vm.prank(payer);
+        refundRequest.requestRefund(paymentInfo, refundAmount, 0);
+
+        // Arbiter approves (atomically refunds)
+        vm.prank(arbiter);
+        refundRequest.approve(paymentInfo, 0, refundAmount);
 
         bytes32 hash = escrow.getHash(paymentInfo);
         (, uint120 capturable,) = escrow.paymentState(hash);
@@ -291,33 +285,5 @@ contract FullLifecycleTest is Test {
             feeReceiver: address(operator),
             salt: salt
         });
-    }
-
-    function _signApproval(bytes32 paymentInfoHash, uint256 amount, uint48 expiry)
-        internal
-        view
-        returns (bytes memory)
-    {
-        uint256 nonce = sigCondition.approvalNonces(paymentInfoHash);
-        bytes32 approvalTypehash = sigCondition.APPROVAL_TYPEHASH();
-        bytes32 structHash = keccak256(abi.encode(approvalTypehash, paymentInfoHash, amount, expiry, nonce));
-
-        (bytes1 fields, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
-            sigCondition.eip712Domain();
-        fields;
-
-        bytes32 domainSeparator = keccak256(
-            abi.encode(
-                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
-                keccak256(bytes(name)),
-                keccak256(bytes(version)),
-                chainId,
-                verifyingContract
-            )
-        );
-
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(arbiterPrivateKey, digest);
-        return abi.encodePacked(r, s, v);
     }
 }
