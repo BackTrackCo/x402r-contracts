@@ -3,43 +3,42 @@
 pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
+import {IRecorder} from "../../plugins/recorders/IRecorder.sol";
+import {ICondition} from "../../plugins/conditions/ICondition.sol";
 import {PaymentOperator} from "../../operator/payment/PaymentOperator.sol";
+import {InvalidOperator, NotPayer} from "../../types/Errors.sol";
+import {ConditionNotMet} from "../../operator/types/Errors.sol";
 import {RequestStatus} from "../types/Types.sol";
-import {
-    RequestAlreadyExists,
-    RequestDoesNotExist,
-    RequestNotPending,
-    RequestNotApprovable,
-    ZeroRefundAmount,
-    ApproveAmountExceedsRequest
-} from "../types/Errors.sol";
+import {RequestAlreadyExists, RequestDoesNotExist, RequestNotPending, ZeroRefundAmount} from "../types/Errors.sol";
 import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} from "../types/Events.sol";
 
 /**
  * @title RefundRequest
- * @notice Refund request lifecycle with arbiter/receiver-gated approval and atomic refund execution.
- * @dev Approval atomically calls PaymentOperator.refundInEscrow() — one tx, no signatures,
- *      no separate condition contract. The operator's condition tree should use
- *      StaticAddressCondition(address(this)) to gate refundInEscrow access.
+ * @notice Refund request lifecycle as an IRecorder plugin for PaymentOperator.
+ * @dev True singleton (no constructor args). All access control is delegated to the
+ *      operator's condition tree. Approval happens via operator.refundInEscrow() which
+ *      triggers record() on this contract as the REFUND_IN_ESCROW_RECORDER.
  *
  *      State machine:
- *        Pending  -> Approved  (onlyArbiterOrReceiver, approve + refundInEscrow atomic)
- *        Approved -> Approved  (onlyArbiterOrReceiver, cumulative top-up)
- *        Pending  -> Denied    (onlyArbiter)
- *        Pending  -> Refused   (onlyArbiter)
- *        Pending  -> Cancelled (onlyPayer)
+ *        Pending  -> Approved  (operator calls record() after refundInEscrow)
+ *        Approved -> Approved  (cumulative top-up via subsequent record() calls)
+ *        Pending  -> Denied    (arbiter, gated by both REFUND_IN_ESCROW_CONDITION and RELEASE_CONDITION)
+ *        Pending  -> Refused   (arbiter, gated by both REFUND_IN_ESCROW_CONDITION and RELEASE_CONDITION)
+ *        Pending  -> Cancelled (payer only)
  *
- * SECURITY: ReentrancyGuardTransient protects approve() which makes an external call
- *           to operator.refundInEscrow() after updating state (CEI pattern with defense-in-depth).
+ *      Keying: paymentInfoHash only (no nonce). One active request per payment.
+ *
+ *      record() behavior: Called by operator after refund. No-op if no request exists
+ *      or not approvable. Caps approved amount at requested amount. Never reverts on
+ *      state mismatches.
+ *
+ *      Arbiter identification: The arbiter is the intersection of the refund and release
+ *      permission sets. If both refund conditions are address(0), anyone passes. Same for
+ *      release condition. isArbiter() checks both condition trees.
  */
-contract RefundRequest is ReentrancyGuardTransient {
-    /// @notice The arbiter address that can approve, deny, and refuse refund requests
-    address public immutable ARBITER;
-
+contract RefundRequest is IRecorder {
     struct RefundRequestData {
         bytes32 paymentInfoHash;
-        uint256 nonce;
         uint120 amount;
         uint120 approvedAmount;
         RequestStatus status;
@@ -48,16 +47,10 @@ contract RefundRequest is ReentrancyGuardTransient {
     // ============ Errors ============
 
     error IndexOutOfBounds();
-    error NotArbiter();
-    error NotArbiterOrReceiver();
-    error NotPayer();
-    error InvalidOperator();
-    error ZeroArbiter();
 
     // ============ Storage ============
 
-    // compositeKey => refund request
-    // compositeKey = keccak256(abi.encodePacked(paymentInfoHash, nonce))
+    // paymentInfoHash => refund request
     mapping(bytes32 => RefundRequestData) private refundRequests;
 
     // Mapping+counter pattern for gas-efficient indexing (no unbounded arrays)
@@ -82,18 +75,8 @@ contract RefundRequest is ReentrancyGuardTransient {
 
     // ============ Modifiers ============
 
-    modifier onlyArbiter() {
-        _checkOnlyArbiter();
-        _;
-    }
-
     modifier onlyPayer(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
         _checkOnlyPayer(paymentInfo);
-        _;
-    }
-
-    modifier onlyArbiterOrReceiver(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
-        _checkOnlyArbiterOrReceiver(paymentInfo);
         _;
     }
 
@@ -102,25 +85,53 @@ contract RefundRequest is ReentrancyGuardTransient {
         _;
     }
 
-    function _checkOnlyArbiter() internal view {
-        if (msg.sender != ARBITER) revert NotArbiter();
-    }
-
     function _checkOnlyPayer(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) internal view {
         if (msg.sender != paymentInfo.payer) revert NotPayer();
-    }
-
-    function _checkOnlyArbiterOrReceiver(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) internal view {
-        if (msg.sender != ARBITER && msg.sender != paymentInfo.receiver) revert NotArbiterOrReceiver();
     }
 
     function _checkOperatorNotZero(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) internal pure {
         if (paymentInfo.operator == address(0)) revert InvalidOperator();
     }
 
-    constructor(address _arbiter) {
-        if (_arbiter == address(0)) revert ZeroArbiter();
-        ARBITER = _arbiter;
+    // ============ IRecorder Implementation ============
+
+    /// @notice Called by PaymentOperator after refundInEscrow succeeds.
+    ///         No-op if no request exists or request is not approvable.
+    ///         Caps approved amount at requested amount. Never reverts on state mismatches.
+    /// @param paymentInfo PaymentInfo struct
+    /// @param amount Amount that was refunded
+    /// @param caller The address that called operator.refundInEscrow()
+    function record(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount, address caller) external {
+        // Only the operator in the paymentInfo can call record()
+        if (msg.sender != paymentInfo.operator) return;
+
+        PaymentOperator op = PaymentOperator(paymentInfo.operator);
+        bytes32 paymentInfoHash = op.ESCROW().getHash(paymentInfo);
+
+        RefundRequestData storage request = refundRequests[paymentInfoHash];
+
+        // No-op if no request exists
+        if (request.paymentInfoHash == bytes32(0)) return;
+
+        // No-op if not approvable
+        if (request.status != RequestStatus.Pending && request.status != RequestStatus.Approved) return;
+
+        // Cap amount at remaining requestable amount
+        uint120 cappedAmount = uint120(amount);
+        uint120 remaining = request.amount - request.approvedAmount;
+        if (cappedAmount > remaining) {
+            cappedAmount = remaining;
+        }
+        if (cappedAmount == 0) return;
+
+        // Update state
+        RequestStatus previousStatus = request.status;
+        request.approvedAmount += cappedAmount;
+        request.status = RequestStatus.Approved;
+
+        emit RefundRequestStatusUpdated(
+            paymentInfo, previousStatus, RequestStatus.Approved, caller, request.approvedAmount
+        );
     }
 
     // ============ Payer Actions ============
@@ -128,156 +139,112 @@ contract RefundRequest is ReentrancyGuardTransient {
     /// @notice Request a refund. Only payer can call.
     /// @param paymentInfo PaymentInfo struct
     /// @param amount Amount being requested for refund
-    /// @param nonce Record index (from PaymentIndexRecorder) identifying which charge
-    function requestRefund(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint120 amount, uint256 nonce)
+    function requestRefund(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint120 amount)
         external
         operatorNotZero(paymentInfo)
         onlyPayer(paymentInfo)
     {
         if (amount == 0) revert ZeroRefundAmount();
 
-        PaymentOperator operator = PaymentOperator(paymentInfo.operator);
-        bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
-        bytes32 compositeKey = keccak256(abi.encodePacked(paymentInfoHash, nonce));
+        PaymentOperator op = PaymentOperator(paymentInfo.operator);
+        bytes32 paymentInfoHash = op.ESCROW().getHash(paymentInfo);
 
         // Check if request already exists (allow re-requesting if cancelled)
-        RefundRequestData storage existingRequest = refundRequests[compositeKey];
+        RefundRequestData storage existingRequest = refundRequests[paymentInfoHash];
         if (existingRequest.paymentInfoHash != bytes32(0) && existingRequest.status != RequestStatus.Cancelled) {
             revert RequestAlreadyExists();
         }
 
-        // Store paymentInfo by hash (idempotent — same hash always maps to same data)
+        // Store paymentInfo by hash (idempotent -- same hash always maps to same data)
         if (paymentInfoStore[paymentInfoHash].operator == address(0)) {
             paymentInfoStore[paymentInfoHash] = paymentInfo;
         }
 
         // Create or update refund request
-        refundRequests[compositeKey] = RefundRequestData({
-            paymentInfoHash: paymentInfoHash,
-            nonce: nonce,
-            amount: amount,
-            approvedAmount: 0,
-            status: RequestStatus.Pending
+        refundRequests[paymentInfoHash] = RefundRequestData({
+            paymentInfoHash: paymentInfoHash, amount: amount, approvedAmount: 0, status: RequestStatus.Pending
         });
 
         // Update indexing mappings (only add if not already indexed)
-        _addPayerRequest(paymentInfo.payer, compositeKey);
-        _addReceiverRequest(paymentInfo.receiver, compositeKey);
-        _addOperatorRequest(paymentInfo.operator, compositeKey);
+        _addPayerRequest(paymentInfo.payer, paymentInfoHash);
+        _addReceiverRequest(paymentInfo.receiver, paymentInfoHash);
+        _addOperatorRequest(paymentInfo.operator, paymentInfoHash);
 
-        emit RefundRequested(paymentInfo, paymentInfo.payer, paymentInfo.receiver, amount, nonce);
+        emit RefundRequested(paymentInfo, paymentInfo.payer, paymentInfo.receiver, amount);
     }
 
     /// @notice Cancel a pending refund request. Only payer can call.
     /// @param paymentInfo PaymentInfo struct
-    /// @param nonce Record index identifying which refund request
-    function cancelRefundRequest(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce)
+    function cancelRefundRequest(AuthCaptureEscrow.PaymentInfo calldata paymentInfo)
         external
         operatorNotZero(paymentInfo)
         onlyPayer(paymentInfo)
     {
-        PaymentOperator operator = PaymentOperator(paymentInfo.operator);
-        bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
-        bytes32 compositeKey = keccak256(abi.encodePacked(paymentInfoHash, nonce));
+        PaymentOperator op = PaymentOperator(paymentInfo.operator);
+        bytes32 paymentInfoHash = op.ESCROW().getHash(paymentInfo);
 
-        RefundRequestData storage request = refundRequests[compositeKey];
+        RefundRequestData storage request = refundRequests[paymentInfoHash];
         if (request.paymentInfoHash == bytes32(0)) revert RequestDoesNotExist();
         if (request.status != RequestStatus.Pending) revert RequestNotPending();
 
         // Record cancel history before updating status
-        uint256 index = cancelCount[compositeKey];
-        cancelledAmounts[compositeKey][index] = request.amount;
-        cancelCount[compositeKey] = index + 1;
+        uint256 index = cancelCount[paymentInfoHash];
+        cancelledAmounts[paymentInfoHash][index] = request.amount;
+        cancelCount[paymentInfoHash] = index + 1;
 
         request.status = RequestStatus.Cancelled;
 
-        emit RefundRequestCancelled(paymentInfo, msg.sender, nonce);
+        emit RefundRequestCancelled(paymentInfo, msg.sender);
     }
 
-    // ============ Arbiter/Receiver Actions ============
+    // ============ Arbiter Actions ============
 
-    /// @notice Approve a refund and atomically execute refundInEscrow.
-    ///         Both arbiter and receiver can call. Approvals are cumulative — each call
-    ///         adds `amount` to the running `approvedAmount`. The total cannot exceed
-    ///         the requested amount. Reverts if funds are no longer in escrow.
+    /// @notice Deny a refund request. Caller must pass both REFUND_IN_ESCROW_CONDITION
+    ///         and RELEASE_CONDITION on the operator (i.e., must be arbiter).
     /// @param paymentInfo PaymentInfo struct
-    /// @param nonce Record index identifying which refund request
-    /// @param amount Additional refund amount to approve (added to previous approvals)
-    function approve(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce, uint120 amount)
-        external
-        nonReentrant
-        operatorNotZero(paymentInfo)
-        onlyArbiterOrReceiver(paymentInfo)
-    {
-        PaymentOperator operator = PaymentOperator(paymentInfo.operator);
-        bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
-        bytes32 compositeKey = keccak256(abi.encodePacked(paymentInfoHash, nonce));
-
-        // CHECKS
-        RefundRequestData storage request = refundRequests[compositeKey];
-        if (request.paymentInfoHash == bytes32(0)) revert RequestDoesNotExist();
-        if (request.status != RequestStatus.Pending && request.status != RequestStatus.Approved) {
-            revert RequestNotApprovable();
-        }
-        if (amount == 0) revert ZeroRefundAmount();
-        if (request.approvedAmount + amount > request.amount) revert ApproveAmountExceedsRequest();
-
-        // EFFECTS
-        RequestStatus previousStatus = request.status;
-        request.approvedAmount += amount;
-        request.status = RequestStatus.Approved;
-
-        emit RefundRequestStatusUpdated(
-            paymentInfo, previousStatus, RequestStatus.Approved, msg.sender, nonce, request.approvedAmount
-        );
-
-        // INTERACTIONS — atomic refund execution
-        operator.refundInEscrow(paymentInfo, amount);
+    function deny(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external operatorNotZero(paymentInfo) {
+        _checkArbiter(paymentInfo);
+        _setStatus(paymentInfo, RequestStatus.Denied);
     }
 
-    // ============ Arbiter Actions (msg.sender) ============
-
-    /// @notice Deny a refund request. Only arbiter can call.
-    ///         Arbiter reviewed evidence and rejects the refund claim.
+    /// @notice Refuse a refund request. Caller must pass both REFUND_IN_ESCROW_CONDITION
+    ///         and RELEASE_CONDITION on the operator (i.e., must be arbiter).
     /// @param paymentInfo PaymentInfo struct
-    /// @param nonce Record index identifying which refund request
-    function deny(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce)
-        external
-        operatorNotZero(paymentInfo)
-        onlyArbiter
-    {
-        _setStatus(paymentInfo, nonce, RequestStatus.Denied);
-    }
-
-    /// @notice Refuse a refund request. Only arbiter can call.
-    ///         Arbiter won't consider the request (spam, out of jurisdiction, invalid).
-    /// @param paymentInfo PaymentInfo struct
-    /// @param nonce Record index identifying which refund request
-    function refuse(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce)
-        external
-        operatorNotZero(paymentInfo)
-        onlyArbiter
-    {
-        _setStatus(paymentInfo, nonce, RequestStatus.Refused);
+    function refuse(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external operatorNotZero(paymentInfo) {
+        _checkArbiter(paymentInfo);
+        _setStatus(paymentInfo, RequestStatus.Refused);
     }
 
     // ============ Internal ============
 
-    function _setStatus(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce, RequestStatus newStatus)
-        internal
-    {
-        PaymentOperator operator = PaymentOperator(paymentInfo.operator);
-        bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
-        bytes32 compositeKey = keccak256(abi.encodePacked(paymentInfoHash, nonce));
+    /// @dev Checks that msg.sender passes both REFUND_IN_ESCROW_CONDITION and RELEASE_CONDITION.
+    ///      If a condition is address(0), it is treated as "anyone passes" (operator convention).
+    function _checkArbiter(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) internal view {
+        PaymentOperator op = PaymentOperator(paymentInfo.operator);
 
-        RefundRequestData storage request = refundRequests[compositeKey];
+        ICondition refundCond = op.REFUND_IN_ESCROW_CONDITION();
+        if (address(refundCond) != address(0)) {
+            if (!refundCond.check(paymentInfo, 0, msg.sender)) revert ConditionNotMet();
+        }
+
+        ICondition releaseCond = op.RELEASE_CONDITION();
+        if (address(releaseCond) != address(0)) {
+            if (!releaseCond.check(paymentInfo, 0, msg.sender)) revert ConditionNotMet();
+        }
+    }
+
+    function _setStatus(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, RequestStatus newStatus) internal {
+        PaymentOperator op = PaymentOperator(paymentInfo.operator);
+        bytes32 paymentInfoHash = op.ESCROW().getHash(paymentInfo);
+
+        RefundRequestData storage request = refundRequests[paymentInfoHash];
         if (request.paymentInfoHash == bytes32(0)) revert RequestDoesNotExist();
         if (request.status != RequestStatus.Pending) revert RequestNotPending();
 
         RequestStatus oldStatus = request.status;
         request.status = newStatus;
 
-        emit RefundRequestStatusUpdated(paymentInfo, oldStatus, newStatus, msg.sender, nonce, 0);
+        emit RefundRequestStatusUpdated(paymentInfo, oldStatus, newStatus, msg.sender, 0);
     }
 
     function _addPayerRequest(address payer, bytes32 key) internal {
@@ -303,43 +270,61 @@ contract RefundRequest is ReentrancyGuardTransient {
 
     // ============ View Functions ============
 
-    function getRefundRequest(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce)
-        external
-        view
-        returns (RefundRequestData memory)
-    {
-        PaymentOperator operator = PaymentOperator(paymentInfo.operator);
-        bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
-        bytes32 compositeKey = keccak256(abi.encodePacked(paymentInfoHash, nonce));
-        RefundRequestData memory request = refundRequests[compositeKey];
-        if (request.paymentInfoHash == bytes32(0)) revert RequestDoesNotExist();
-        return request;
-    }
-
-    function hasRefundRequest(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce)
+    /// @notice Check if a caller is an arbiter for a given payment.
+    ///         An arbiter passes both REFUND_IN_ESCROW_CONDITION and RELEASE_CONDITION.
+    /// @param paymentInfo The PaymentInfo struct
+    /// @param caller The address to check
+    /// @return True if caller passes both condition checks
+    function isArbiter(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, address caller)
         external
         view
         returns (bool)
     {
-        PaymentOperator operator = PaymentOperator(paymentInfo.operator);
-        bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
-        bytes32 compositeKey = keccak256(abi.encodePacked(paymentInfoHash, nonce));
-        return refundRequests[compositeKey].paymentInfoHash != bytes32(0);
+        PaymentOperator op = PaymentOperator(paymentInfo.operator);
+
+        ICondition refundCond = op.REFUND_IN_ESCROW_CONDITION();
+        if (address(refundCond) != address(0)) {
+            if (!refundCond.check(paymentInfo, 0, caller)) return false;
+        }
+
+        ICondition releaseCond = op.RELEASE_CONDITION();
+        if (address(releaseCond) != address(0)) {
+            if (!releaseCond.check(paymentInfo, 0, caller)) return false;
+        }
+
+        return true;
     }
 
-    function getRefundRequestStatus(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce)
+    function getRefundRequest(AuthCaptureEscrow.PaymentInfo calldata paymentInfo)
+        external
+        view
+        returns (RefundRequestData memory)
+    {
+        PaymentOperator op = PaymentOperator(paymentInfo.operator);
+        bytes32 paymentInfoHash = op.ESCROW().getHash(paymentInfo);
+        RefundRequestData memory request = refundRequests[paymentInfoHash];
+        if (request.paymentInfoHash == bytes32(0)) revert RequestDoesNotExist();
+        return request;
+    }
+
+    function hasRefundRequest(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external view returns (bool) {
+        PaymentOperator op = PaymentOperator(paymentInfo.operator);
+        bytes32 paymentInfoHash = op.ESCROW().getHash(paymentInfo);
+        return refundRequests[paymentInfoHash].paymentInfoHash != bytes32(0);
+    }
+
+    function getRefundRequestStatus(AuthCaptureEscrow.PaymentInfo calldata paymentInfo)
         external
         view
         returns (RequestStatus)
     {
-        PaymentOperator operator = PaymentOperator(paymentInfo.operator);
-        bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
-        bytes32 compositeKey = keccak256(abi.encodePacked(paymentInfoHash, nonce));
-        return refundRequests[compositeKey].status;
+        PaymentOperator op = PaymentOperator(paymentInfo.operator);
+        bytes32 paymentInfoHash = op.ESCROW().getHash(paymentInfo);
+        return refundRequests[paymentInfoHash].status;
     }
 
-    function getRefundRequestByKey(bytes32 compositeKey) external view returns (RefundRequestData memory) {
-        RefundRequestData memory request = refundRequests[compositeKey];
+    function getRefundRequestByKey(bytes32 paymentInfoHash) external view returns (RefundRequestData memory) {
+        RefundRequestData memory request = refundRequests[paymentInfoHash];
         if (request.paymentInfoHash == bytes32(0)) revert RequestDoesNotExist();
         return request;
     }
@@ -416,26 +401,20 @@ contract RefundRequest is ReentrancyGuardTransient {
 
     // ============ Cancel History View Functions ============
 
-    function getCancelCount(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce)
-        external
-        view
-        returns (uint256)
-    {
-        PaymentOperator operator = PaymentOperator(paymentInfo.operator);
-        bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
-        bytes32 compositeKey = keccak256(abi.encodePacked(paymentInfoHash, nonce));
-        return cancelCount[compositeKey];
+    function getCancelCount(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external view returns (uint256) {
+        PaymentOperator op = PaymentOperator(paymentInfo.operator);
+        bytes32 paymentInfoHash = op.ESCROW().getHash(paymentInfo);
+        return cancelCount[paymentInfoHash];
     }
 
-    function getCancelledAmount(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce, uint256 cancelIndex)
+    function getCancelledAmount(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 cancelIndex)
         external
         view
         returns (uint120)
     {
-        PaymentOperator operator = PaymentOperator(paymentInfo.operator);
-        bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
-        bytes32 compositeKey = keccak256(abi.encodePacked(paymentInfoHash, nonce));
-        if (cancelIndex >= cancelCount[compositeKey]) revert IndexOutOfBounds();
-        return cancelledAmounts[compositeKey][cancelIndex];
+        PaymentOperator op = PaymentOperator(paymentInfo.operator);
+        bytes32 paymentInfoHash = op.ESCROW().getHash(paymentInfo);
+        if (cancelIndex >= cancelCount[paymentInfoHash]) revert IndexOutOfBounds();
+        return cancelledAmounts[paymentInfoHash][cancelIndex];
     }
 }

@@ -6,12 +6,10 @@ import {RefundRequest} from "../src/requests/refund/RefundRequest.sol";
 
 /**
  * @title DeployRefundRequest
- * @notice Deploy RefundRequest with a reference to a specific arbiter address
- *
- *      Requires ARBITER_ADDRESS env var.
+ * @notice Deploy RefundRequest singleton (no constructor args)
  *
  *      Usage:
- *      ARBITER_ADDRESS=0x... forge script \
+ *      forge script \
  *        script/DeploySignatureRefundRequest.s.sol:DeployRefundRequest \
  *        --rpc-url $RPC_URL \
  *        --broadcast \
@@ -20,20 +18,16 @@ import {RefundRequest} from "../src/requests/refund/RefundRequest.sol";
  */
 contract DeployRefundRequest is Script {
     function run() public {
-        address arbiter = vm.envAddress("ARBITER_ADDRESS");
-
         vm.startBroadcast();
 
         console.log("=== Deploying RefundRequest ===");
-        console.log("Arbiter:", arbiter);
 
-        RefundRequest refundRequest = new RefundRequest(arbiter);
+        RefundRequest refundRequest = new RefundRequest();
         console.log("RefundRequest:", address(refundRequest));
 
         vm.stopBroadcast();
 
         console.log("\n=== Deployment Summary ===");
-        console.log("Arbiter:", arbiter);
         console.log("RefundRequest:", address(refundRequest));
     }
 }
