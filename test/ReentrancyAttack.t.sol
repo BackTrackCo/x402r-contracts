@@ -94,7 +94,7 @@ contract ReentrancyAttackTest is Test {
         vm.prank(payer);
         collector.preApprove(paymentInfo);
 
-        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
 
         bytes32 hash = escrow.getHash(paymentInfo);
         (bool hasCollected, uint256 capturableAmount, uint256 refundableAmount) = escrow.paymentState(hash);
@@ -115,11 +115,11 @@ contract ReentrancyAttackTest is Test {
         vm.prank(payer);
         collector.preApprove(paymentInfo);
 
-        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
 
         uint256 receiverBalanceBefore = token.balanceOf(receiver);
         vm.prank(receiver);
-        operator.release(paymentInfo, PAYMENT_AMOUNT);
+        operator.release(paymentInfo, PAYMENT_AMOUNT, "");
         uint256 receiverBalanceAfter = token.balanceOf(receiver);
 
         // No fee calculators configured (both address(0)), so fee is 0

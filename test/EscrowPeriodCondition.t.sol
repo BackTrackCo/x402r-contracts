@@ -90,11 +90,11 @@ contract EscrowPeriodConditionTest is Test {
         vm.prank(payer);
         collector.preApprove(paymentInfo);
 
-        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
 
         vm.prank(receiver);
         vm.expectRevert();
-        operator.release(paymentInfo, PAYMENT_AMOUNT);
+        operator.release(paymentInfo, PAYMENT_AMOUNT, "");
     }
 
     function test_ReleaseAllowedAfterEscrowPeriod() public {
@@ -103,12 +103,12 @@ contract EscrowPeriodConditionTest is Test {
         vm.prank(payer);
         collector.preApprove(paymentInfo);
 
-        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
 
         vm.warp(block.timestamp + ESCROW_PERIOD + 1);
 
         vm.prank(receiver);
-        operator.release(paymentInfo, PAYMENT_AMOUNT);
+        operator.release(paymentInfo, PAYMENT_AMOUNT, "");
 
         assertTrue(token.balanceOf(receiver) > 0);
     }
@@ -130,13 +130,13 @@ contract EscrowPeriodConditionTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizePayment();
 
         // Initially: cannot release (escrow period not passed)
-        assertFalse(escrowPeriod.check(paymentInfo, 0, address(0)));
+        assertFalse(escrowPeriod.check(paymentInfo, 0, address(0), ""));
 
         // Warp past escrow period
         vm.warp(block.timestamp + ESCROW_PERIOD + 1);
 
         // Now can release
-        assertTrue(escrowPeriod.check(paymentInfo, 0, address(0)));
+        assertTrue(escrowPeriod.check(paymentInfo, 0, address(0), ""));
     }
 
     // ============ Internal Helpers ============
@@ -147,7 +147,7 @@ contract EscrowPeriodConditionTest is Test {
         vm.prank(payer);
         collector.preApprove(paymentInfo);
 
-        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
 
         return paymentInfo;
     }

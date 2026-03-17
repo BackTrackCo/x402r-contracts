@@ -48,7 +48,11 @@ contract AuthorizationTimeRecorder is BaseRecorder {
      *      Amount and caller are ignored - timestamp is all we need.
      * @param paymentInfo PaymentInfo struct
      */
-    function record(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address) external virtual override {
+    function record(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address, bytes calldata)
+        external
+        virtual
+        override
+    {
         bytes32 paymentInfoHash = _verifyAndHash(paymentInfo);
 
         // Store authorization timestamp

@@ -109,13 +109,13 @@ contract FreezeEscrowBoundaryFuzzTest is Test {
         if (warpOffset < ESCROW_PERIOD_DURATION) {
             // Before boundary: freeze should succeed
             vm.prank(payer);
-            freeze.freeze(paymentInfo);
+            freeze.freeze(paymentInfo, "");
             assertTrue(freeze.isFrozen(paymentInfo), "Should be frozen before escrow period ends");
         } else {
             // At or after boundary: freeze should revert
             vm.prank(payer);
             vm.expectRevert(FreezeWindowExpired.selector);
-            freeze.freeze(paymentInfo);
+            freeze.freeze(paymentInfo, "");
         }
     }
 
@@ -130,7 +130,7 @@ contract FreezeEscrowBoundaryFuzzTest is Test {
         // Freeze during escrow period
         vm.warp(authTime + freezeOffset);
         vm.prank(payer);
-        freeze.freeze(paymentInfo);
+        freeze.freeze(paymentInfo, "");
 
         // Attempt release at releaseOffset after auth
         vm.warp(authTime + releaseOffset);
@@ -142,13 +142,13 @@ contract FreezeEscrowBoundaryFuzzTest is Test {
         if (escrowPeriodAllows && freezeAllows) {
             // Both conditions met: release should succeed
             vm.prank(receiver);
-            operator.release(paymentInfo, PAYMENT_AMOUNT);
+            operator.release(paymentInfo, PAYMENT_AMOUNT, "");
             assertTrue(token.balanceOf(receiver) > 0, "Receiver should have tokens after release");
         } else {
             // At least one condition not met: release should revert
             vm.prank(receiver);
             vm.expectRevert();
-            operator.release(paymentInfo, PAYMENT_AMOUNT);
+            operator.release(paymentInfo, PAYMENT_AMOUNT, "");
         }
     }
 
@@ -163,28 +163,28 @@ contract FreezeEscrowBoundaryFuzzTest is Test {
         vm.warp(authTime + ESCROW_PERIOD_DURATION - 1);
 
         vm.prank(payer);
-        freeze.freeze(paymentInfo);
+        freeze.freeze(paymentInfo, "");
         assertTrue(freeze.isFrozen(paymentInfo), "Should be frozen 1 second before boundary");
 
         // Release should fail (still in escrow period AND frozen)
         vm.prank(receiver);
         vm.expectRevert();
-        operator.release(paymentInfo, PAYMENT_AMOUNT);
+        operator.release(paymentInfo, PAYMENT_AMOUNT, "");
 
         // Unfreeze so we can test the boundary release
         vm.prank(payer);
-        freeze.unfreeze(paymentInfo);
+        freeze.unfreeze(paymentInfo, "");
 
         // At the exact boundary: freeze should revert
         vm.warp(authTime + ESCROW_PERIOD_DURATION);
 
         vm.prank(payer);
         vm.expectRevert(FreezeWindowExpired.selector);
-        freeze.freeze(paymentInfo);
+        freeze.freeze(paymentInfo, "");
 
         // Release should succeed (escrow period passed, not frozen)
         vm.prank(receiver);
-        operator.release(paymentInfo, PAYMENT_AMOUNT);
+        operator.release(paymentInfo, PAYMENT_AMOUNT, "");
         assertTrue(token.balanceOf(receiver) > 0, "Receiver should have tokens at boundary");
     }
 
@@ -250,11 +250,11 @@ contract FreezeEscrowBoundaryFuzzTest is Test {
 
         vm.prank(payer);
         collector.preApprove(pi);
-        op2.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
+        op2.authorize(pi, PAYMENT_AMOUNT, address(collector), "", "");
 
         // Permanently freeze
         vm.prank(payer);
-        permFreeze2.freeze(pi);
+        permFreeze2.freeze(pi, "");
         assertTrue(permFreeze2.isFrozen(pi), "Should be permanently frozen");
 
         // Warp far into the future
@@ -266,7 +266,7 @@ contract FreezeEscrowBoundaryFuzzTest is Test {
         // Release should always revert
         vm.prank(receiver);
         vm.expectRevert();
-        op2.release(pi, PAYMENT_AMOUNT);
+        op2.release(pi, PAYMENT_AMOUNT, "");
     }
 
     // ============ Helpers ============
@@ -294,7 +294,7 @@ contract FreezeEscrowBoundaryFuzzTest is Test {
         vm.prank(payer);
         collector.preApprove(paymentInfo);
 
-        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
 
         return paymentInfo;
     }

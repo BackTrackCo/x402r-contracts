@@ -110,7 +110,7 @@ contract FreezeConditionTest is Test {
         vm.prank(payer);
         collector.preApprove(paymentInfo);
 
-        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
 
         return paymentInfo;
     }
@@ -121,7 +121,7 @@ contract FreezeConditionTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizePayment();
 
         vm.prank(payer);
-        freeze.freeze(paymentInfo);
+        freeze.freeze(paymentInfo, "");
 
         assertTrue(freeze.isFrozen(paymentInfo));
     }
@@ -180,11 +180,11 @@ contract FreezeConditionTest is Test {
 
         vm.prank(payer);
         collector.preApprove(pi);
-        op2.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
+        op2.authorize(pi, PAYMENT_AMOUNT, address(collector), "", "");
 
         // Permanently freeze
         vm.prank(payer);
-        freeze2.freeze(pi);
+        freeze2.freeze(pi, "");
 
         // Warp past escrow period
         vm.warp(block.timestamp + ESCROW_PERIOD_DURATION + 1);
@@ -193,7 +193,7 @@ contract FreezeConditionTest is Test {
         assertTrue(freeze2.isFrozen(pi));
         vm.prank(receiver);
         vm.expectRevert();
-        op2.release(pi, PAYMENT_AMOUNT);
+        op2.release(pi, PAYMENT_AMOUNT, "");
     }
 
     // ============ Freeze Edge Cases ============
@@ -205,7 +205,7 @@ contract FreezeConditionTest is Test {
         vm.warp(block.timestamp + ESCROW_PERIOD_DURATION / 2);
 
         vm.prank(payer);
-        freeze.freeze(paymentInfo);
+        freeze.freeze(paymentInfo, "");
 
         assertTrue(freeze.isFrozen(paymentInfo));
     }
@@ -218,7 +218,7 @@ contract FreezeConditionTest is Test {
 
         vm.prank(payer);
         vm.expectRevert(FreezeWindowExpired.selector);
-        freeze.freeze(paymentInfo);
+        freeze.freeze(paymentInfo, "");
     }
 
     function test_FreezeAtExactBoundary_Reverts() public {
@@ -229,7 +229,7 @@ contract FreezeConditionTest is Test {
 
         vm.prank(payer);
         vm.expectRevert(FreezeWindowExpired.selector);
-        freeze.freeze(paymentInfo);
+        freeze.freeze(paymentInfo, "");
     }
 
     function test_FreezeOneSecondBeforeBoundary_Succeeds() public {
@@ -239,7 +239,7 @@ contract FreezeConditionTest is Test {
         vm.warp(block.timestamp + ESCROW_PERIOD_DURATION - 1);
 
         vm.prank(payer);
-        freeze.freeze(paymentInfo);
+        freeze.freeze(paymentInfo, "");
 
         assertTrue(freeze.isFrozen(paymentInfo));
     }
@@ -251,12 +251,12 @@ contract FreezeConditionTest is Test {
 
         // Freeze
         vm.prank(payer);
-        freeze.freeze(paymentInfo);
+        freeze.freeze(paymentInfo, "");
         assertTrue(freeze.isFrozen(paymentInfo));
 
         // Unfreeze
         vm.prank(payer);
-        freeze.unfreeze(paymentInfo);
+        freeze.unfreeze(paymentInfo, "");
         assertFalse(freeze.isFrozen(paymentInfo));
 
         // Warp past escrow period
@@ -264,7 +264,7 @@ contract FreezeConditionTest is Test {
 
         // Release should work
         vm.prank(receiver);
-        operator.release(paymentInfo, PAYMENT_AMOUNT);
+        operator.release(paymentInfo, PAYMENT_AMOUNT, "");
         assertTrue(token.balanceOf(receiver) > 0);
     }
 
@@ -273,19 +273,19 @@ contract FreezeConditionTest is Test {
 
         vm.prank(payer);
         vm.expectRevert(NotFrozen.selector);
-        freeze.unfreeze(paymentInfo);
+        freeze.unfreeze(paymentInfo, "");
     }
 
     function test_UnfreezeByUnauthorizedCaller_Reverts() public {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizePayment();
 
         vm.prank(payer);
-        freeze.freeze(paymentInfo);
+        freeze.freeze(paymentInfo, "");
 
         // Receiver cannot unfreeze (PayerCondition for unfreeze)
         vm.prank(receiver);
         vm.expectRevert(UnauthorizedFreeze.selector);
-        freeze.unfreeze(paymentInfo);
+        freeze.unfreeze(paymentInfo, "");
     }
 
     // ============ Freeze Expiry ============
@@ -294,7 +294,7 @@ contract FreezeConditionTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizePayment();
 
         vm.prank(payer);
-        freeze.freeze(paymentInfo);
+        freeze.freeze(paymentInfo, "");
         assertTrue(freeze.isFrozen(paymentInfo));
 
         // Warp past freeze duration
@@ -308,7 +308,7 @@ contract FreezeConditionTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizePayment();
 
         vm.prank(payer);
-        freeze.freeze(paymentInfo);
+        freeze.freeze(paymentInfo, "");
 
         // Warp to before freeze duration expires
         vm.warp(block.timestamp + FREEZE_DURATION - 1);
@@ -322,20 +322,20 @@ contract FreezeConditionTest is Test {
 
         // Cycle 1: freeze then unfreeze
         vm.prank(payer);
-        freeze.freeze(paymentInfo);
+        freeze.freeze(paymentInfo, "");
         assertTrue(freeze.isFrozen(paymentInfo));
 
         vm.prank(payer);
-        freeze.unfreeze(paymentInfo);
+        freeze.unfreeze(paymentInfo, "");
         assertFalse(freeze.isFrozen(paymentInfo));
 
         // Cycle 2: freeze again (still within escrow period)
         vm.prank(payer);
-        freeze.freeze(paymentInfo);
+        freeze.freeze(paymentInfo, "");
         assertTrue(freeze.isFrozen(paymentInfo));
 
         vm.prank(payer);
-        freeze.unfreeze(paymentInfo);
+        freeze.unfreeze(paymentInfo, "");
         assertFalse(freeze.isFrozen(paymentInfo));
     }
 
@@ -344,7 +344,7 @@ contract FreezeConditionTest is Test {
 
         // First freeze
         vm.prank(payer);
-        freeze.freeze(paymentInfo);
+        freeze.freeze(paymentInfo, "");
 
         // Wait for freeze to expire
         vm.warp(block.timestamp + FREEZE_DURATION + 1);
@@ -352,7 +352,7 @@ contract FreezeConditionTest is Test {
 
         // Refreeze (still within escrow period: ESCROW_PERIOD=7d > FREEZE_DURATION=3d)
         vm.prank(payer);
-        freeze.freeze(paymentInfo);
+        freeze.freeze(paymentInfo, "");
         assertTrue(freeze.isFrozen(paymentInfo));
     }
 
@@ -363,7 +363,7 @@ contract FreezeConditionTest is Test {
 
         vm.prank(receiver);
         vm.expectRevert(UnauthorizedFreeze.selector);
-        freeze.freeze(paymentInfo);
+        freeze.freeze(paymentInfo, "");
     }
 
     function test_ReleaseWhileFrozen_Reverts() public {
@@ -417,11 +417,11 @@ contract FreezeConditionTest is Test {
 
         vm.prank(payer);
         collector.preApprove(pi);
-        op2.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
+        op2.authorize(pi, PAYMENT_AMOUNT, address(collector), "", "");
 
         // Permanent freeze
         vm.prank(payer);
-        freeze2.freeze(pi);
+        freeze2.freeze(pi, "");
         assertTrue(freeze2.isFrozen(pi));
 
         // Warp past escrow period
@@ -433,7 +433,7 @@ contract FreezeConditionTest is Test {
         // Release should revert
         vm.prank(receiver);
         vm.expectRevert();
-        op2.release(pi, PAYMENT_AMOUNT);
+        op2.release(pi, PAYMENT_AMOUNT, "");
     }
 
     function test_CanReleaseAfterFreezeExpiresAndEscrowPeriodPasses() public {
@@ -441,7 +441,7 @@ contract FreezeConditionTest is Test {
 
         // Freeze
         vm.prank(payer);
-        freeze.freeze(paymentInfo);
+        freeze.freeze(paymentInfo, "");
 
         // Warp past both freeze duration AND escrow period
         vm.warp(block.timestamp + ESCROW_PERIOD_DURATION + 1);
@@ -451,7 +451,7 @@ contract FreezeConditionTest is Test {
 
         // Release should succeed
         vm.prank(receiver);
-        operator.release(paymentInfo, PAYMENT_AMOUNT);
+        operator.release(paymentInfo, PAYMENT_AMOUNT, "");
         assertTrue(token.balanceOf(receiver) > 0);
     }
 
@@ -469,7 +469,7 @@ contract FreezeConditionTest is Test {
         vm.warp(block.timestamp + ESCROW_PERIOD_DURATION + 1);
 
         vm.prank(payer);
-        unconstrainedFreeze.freeze(paymentInfo);
+        unconstrainedFreeze.freeze(paymentInfo, "");
         assertTrue(unconstrainedFreeze.isFrozen(paymentInfo));
     }
 
@@ -478,15 +478,15 @@ contract FreezeConditionTest is Test {
     function test_Check_ReturnsTrueWhenNotFrozen() public {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizePayment();
 
-        assertTrue(freeze.check(paymentInfo, 0, address(0)), "Should return true when not frozen");
+        assertTrue(freeze.check(paymentInfo, 0, address(0), ""), "Should return true when not frozen");
     }
 
     function test_Check_ReturnsFalseWhenFrozen() public {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizePayment();
 
         vm.prank(payer);
-        freeze.freeze(paymentInfo);
+        freeze.freeze(paymentInfo, "");
 
-        assertFalse(freeze.check(paymentInfo, 0, address(0)), "Should return false when frozen");
+        assertFalse(freeze.check(paymentInfo, 0, address(0), ""), "Should return false when frozen");
     }
 }

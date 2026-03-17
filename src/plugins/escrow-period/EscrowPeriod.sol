@@ -42,7 +42,7 @@ contract EscrowPeriod is AuthorizationTimeRecorder, ICondition {
      * @param paymentInfo PaymentInfo struct
      * @return allowed True if escrow period has passed (and payment is authorized)
      */
-    function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address)
+    function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address, bytes calldata)
         external
         view
         override(ICondition)

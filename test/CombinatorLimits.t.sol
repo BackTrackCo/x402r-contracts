@@ -122,7 +122,7 @@ contract CombinatorLimitsTest is Test {
 
         // And(10 AlwaysTrue) = true, Not(true) = false
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _dummyPaymentInfo();
-        bool result = notCond.check(paymentInfo, 0, address(this));
+        bool result = notCond.check(paymentInfo, 0, address(this), "");
         assertFalse(result, "Not(And(10 AlwaysTrue)) should be false");
     }
 
@@ -138,7 +138,7 @@ contract CombinatorLimitsTest is Test {
 
         // Or(10 AlwaysTrue) = true, Not(true) = false
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _dummyPaymentInfo();
-        bool result = notCond.check(paymentInfo, 0, address(this));
+        bool result = notCond.check(paymentInfo, 0, address(this), "");
         assertFalse(result, "Not(Or(10 AlwaysTrue)) should be false");
     }
 
@@ -153,7 +153,7 @@ contract CombinatorLimitsTest is Test {
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _dummyPaymentInfo();
         // And(AlwaysTrue, PayerCond) = false (caller != payer), Not(false) = true
-        bool result = notCond.check(paymentInfo, 0, address(this));
+        bool result = notCond.check(paymentInfo, 0, address(this), "");
         assertTrue(result, "Not(And(AlwaysTrue, PayerCond)) should be true when caller != payer");
     }
 
@@ -171,7 +171,7 @@ contract CombinatorLimitsTest is Test {
 
         // Measure gas - short-circuit should use less gas than evaluating all 10
         uint256 gasBefore = gasleft();
-        bool result = andCond.check(paymentInfo, 0, address(this));
+        bool result = andCond.check(paymentInfo, 0, address(this), "");
         uint256 gasUsed = gasBefore - gasleft();
 
         assertFalse(result, "Should return false on first condition");
@@ -193,7 +193,7 @@ contract CombinatorLimitsTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _dummyPaymentInfo();
 
         uint256 gasBefore = gasleft();
-        bool result = orCond.check(paymentInfo, 0, address(this));
+        bool result = orCond.check(paymentInfo, 0, address(this), "");
         uint256 gasUsed = gasBefore - gasleft();
 
         assertTrue(result, "Should return true on first condition");
@@ -213,7 +213,7 @@ contract CombinatorLimitsTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _dummyPaymentInfo();
 
         uint256 gasBefore = gasleft();
-        bool result = andCond.check(paymentInfo, 0, address(this));
+        bool result = andCond.check(paymentInfo, 0, address(this), "");
         uint256 gasUsed = gasBefore - gasleft();
 
         assertTrue(result, "And(10 AlwaysTrue) should be true");
@@ -231,7 +231,7 @@ contract CombinatorLimitsTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _dummyPaymentInfo();
 
         uint256 gasBefore = gasleft();
-        bool result = orCond.check(paymentInfo, 0, address(this));
+        bool result = orCond.check(paymentInfo, 0, address(this), "");
         uint256 gasUsed = gasBefore - gasleft();
 
         assertFalse(result, "Or(10 PayerCond) should be false for non-payer");
@@ -257,7 +257,7 @@ contract CombinatorLimitsTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _dummyPaymentInfo();
 
         uint256 gasBefore = gasleft();
-        bool result = notCond.check(paymentInfo, 0, address(this));
+        bool result = notCond.check(paymentInfo, 0, address(this), "");
         uint256 gasUsed = gasBefore - gasleft();
 
         // And(10 x Or(10 AlwaysTrue)) = true, Not(true) = false

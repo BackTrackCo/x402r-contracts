@@ -99,7 +99,7 @@ contract SignatureConditionTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
         vm.prank(payer);
         collector.preApprove(paymentInfo);
-        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
         return paymentInfo;
     }
 
@@ -242,7 +242,7 @@ contract SignatureConditionTest is Test {
         bytes memory sig = _signApproval(paymentInfoHash, PAYMENT_AMOUNT, 0);
         sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, 0, nonce, sig);
 
-        assertTrue(sigCondition.check(paymentInfo, PAYMENT_AMOUNT, address(0)));
+        assertTrue(sigCondition.check(paymentInfo, PAYMENT_AMOUNT, address(0), ""));
     }
 
     function test_check_partialAmount() public {
@@ -254,7 +254,7 @@ contract SignatureConditionTest is Test {
         sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, 0, nonce, sig);
 
         // Requesting less than approved amount should pass
-        assertTrue(sigCondition.check(paymentInfo, PAYMENT_AMOUNT / 2, address(0)));
+        assertTrue(sigCondition.check(paymentInfo, PAYMENT_AMOUNT / 2, address(0), ""));
     }
 
     function test_check_excessAmount() public {
@@ -266,14 +266,14 @@ contract SignatureConditionTest is Test {
         sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT / 2, 0, nonce, sig);
 
         // Requesting more than approved amount should fail
-        assertFalse(sigCondition.check(paymentInfo, PAYMENT_AMOUNT, address(0)));
+        assertFalse(sigCondition.check(paymentInfo, PAYMENT_AMOUNT, address(0), ""));
     }
 
     function test_check_noApproval() public {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
 
         // No approval submitted — should return false
-        assertFalse(sigCondition.check(paymentInfo, PAYMENT_AMOUNT, address(0)));
+        assertFalse(sigCondition.check(paymentInfo, PAYMENT_AMOUNT, address(0), ""));
     }
 
     function test_check_expired() public {
@@ -286,11 +286,11 @@ contract SignatureConditionTest is Test {
         sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, expiry, nonce, sig);
 
         // Should pass before expiry
-        assertTrue(sigCondition.check(paymentInfo, PAYMENT_AMOUNT, address(0)));
+        assertTrue(sigCondition.check(paymentInfo, PAYMENT_AMOUNT, address(0), ""));
 
         // Warp past expiry
         vm.warp(block.timestamp + 2 hours);
-        assertFalse(sigCondition.check(paymentInfo, PAYMENT_AMOUNT, address(0)));
+        assertFalse(sigCondition.check(paymentInfo, PAYMENT_AMOUNT, address(0), ""));
     }
 
     function test_check_noExpiry() public {
@@ -304,7 +304,7 @@ contract SignatureConditionTest is Test {
 
         // Should pass even far in the future
         vm.warp(block.timestamp + 365 days);
-        assertTrue(sigCondition.check(paymentInfo, PAYMENT_AMOUNT, address(0)));
+        assertTrue(sigCondition.check(paymentInfo, PAYMENT_AMOUNT, address(0), ""));
     }
 
     function test_constructor_zeroSigner() public {
@@ -331,7 +331,7 @@ contract SignatureConditionTest is Test {
         AndCondition andCond = new AndCondition(conds);
 
         // Should pass (both conditions are the same approved condition)
-        assertTrue(andCond.check(paymentInfo, PAYMENT_AMOUNT, address(0)));
+        assertTrue(andCond.check(paymentInfo, PAYMENT_AMOUNT, address(0), ""));
     }
 
     function test_composability_orCondition() public {
@@ -347,7 +347,7 @@ contract SignatureConditionTest is Test {
         OrCondition orCond = new OrCondition(conds);
 
         // Neither has approval, should fail
-        assertFalse(orCond.check(paymentInfo, PAYMENT_AMOUNT, address(0)));
+        assertFalse(orCond.check(paymentInfo, PAYMENT_AMOUNT, address(0), ""));
 
         // Submit approval on sigCondition
         bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
@@ -356,7 +356,7 @@ contract SignatureConditionTest is Test {
         sigCondition.submitApproval(paymentInfoHash, PAYMENT_AMOUNT, 0, nonce, sig);
 
         // Now Or should pass (first condition passes)
-        assertTrue(orCond.check(paymentInfo, PAYMENT_AMOUNT, address(0)));
+        assertTrue(orCond.check(paymentInfo, PAYMENT_AMOUNT, address(0), ""));
     }
 
     function test_signer_immutable() public view {
@@ -402,11 +402,11 @@ contract SignatureConditionTest is Test {
 
         // At exact expiry, should still pass (uses > not >=)
         vm.warp(expiry);
-        assertTrue(sigCondition.check(paymentInfo, PAYMENT_AMOUNT, address(0)), "Should pass at exact expiry");
+        assertTrue(sigCondition.check(paymentInfo, PAYMENT_AMOUNT, address(0), ""), "Should pass at exact expiry");
 
         // One second after expiry, should fail
         vm.warp(expiry + 1);
-        assertFalse(sigCondition.check(paymentInfo, PAYMENT_AMOUNT, address(0)), "Should fail 1s after expiry");
+        assertFalse(sigCondition.check(paymentInfo, PAYMENT_AMOUNT, address(0), ""), "Should fail 1s after expiry");
     }
 
     function test_signatureInvalidOnDifferentCondition() public {

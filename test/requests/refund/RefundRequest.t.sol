@@ -97,7 +97,7 @@ contract RefundRequestTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
         vm.prank(payer);
         collector.preApprove(paymentInfo);
-        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
         return paymentInfo;
     }
 
@@ -420,7 +420,7 @@ contract RefundRequestTest is Test {
         refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
 
         // Release all funds (moves them out of escrow)
-        operator.release(paymentInfo, PAYMENT_AMOUNT);
+        operator.release(paymentInfo, PAYMENT_AMOUNT, "");
 
         // Approve reverts — no capturable funds left
         vm.prank(arbiter);
@@ -437,7 +437,7 @@ contract RefundRequestTest is Test {
         refundRequest.requestRefund(paymentInfo, refundAmount, 0);
 
         // Release half — half remains in escrow
-        operator.release(paymentInfo, uint256(releaseAmount));
+        operator.release(paymentInfo, uint256(releaseAmount), "");
 
         uint256 payerBalanceBefore = token.balanceOf(payer);
 
@@ -570,17 +570,17 @@ contract RefundRequestTest is Test {
         // Calling operator.refundInEscrow directly (not through RefundRequest) should revert
         // because StaticAddressCondition only allows refundRequest as caller
         vm.expectRevert();
-        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
+        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT), "");
 
         // Arbiter calling directly also blocked
         vm.prank(arbiter);
         vm.expectRevert();
-        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
+        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT), "");
 
         // Receiver calling directly also blocked
         vm.prank(receiver);
         vm.expectRevert();
-        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
+        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT), "");
     }
 
     function test_e2e_approveAndRefund() public {

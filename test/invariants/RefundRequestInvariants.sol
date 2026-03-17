@@ -90,7 +90,7 @@ contract RefundRequestInvariants is Test {
         // Authorize payment first
         vm.prank(payer);
         collector.preApprove(paymentInfo);
-        try operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "") {}
+        try operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "") {}
         catch {
             return;
         }

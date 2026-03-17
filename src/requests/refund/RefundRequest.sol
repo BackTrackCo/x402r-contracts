@@ -232,7 +232,7 @@ contract RefundRequest is ReentrancyGuardTransient {
         );
 
         // INTERACTIONS — atomic refund execution
-        operator.refundInEscrow(paymentInfo, amount);
+        operator.refundInEscrow(paymentInfo, amount, "");
     }
 
     // ============ Arbiter Actions (msg.sender) ============
