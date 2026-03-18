@@ -49,13 +49,12 @@ contract RefundRequestEvidenceFactory {
         // Store address before deployment
         evidenceContracts[key] = evidence;
 
+        emit RefundRequestEvidenceDeployed(evidence, refundRequest);
+
         // ============ INTERACTIONS ============
         address deployed = address(new RefundRequestEvidence{salt: salt}(refundRequest));
 
         assert(deployed == evidence);
-
-        // Emit event AFTER deploy
-        emit RefundRequestEvidenceDeployed(evidence, refundRequest);
     }
 
     /**
