@@ -54,10 +54,10 @@ contract RefundRequestEvidenceTest is Test {
         // Deploy PreApprovalPaymentCollector
         collector = new PreApprovalPaymentCollector(address(escrow));
 
-        // Deploy RefundRequest singleton (no args)
-        refundRequest = new RefundRequest();
+        // Deploy RefundRequest with arbiter
+        refundRequest = new RefundRequest(designatedAddress);
 
-        // Build condition tree for arbiter identification:
+        // Build condition tree:
         // REFUND_IN_ESCROW_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)
         StaticAddressCondition arbiterCondition = new StaticAddressCondition(designatedAddress);
         ReceiverCondition receiverCondition = new ReceiverCondition();

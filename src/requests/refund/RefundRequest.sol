@@ -4,10 +4,8 @@ pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {IRecorder} from "../../plugins/recorders/IRecorder.sol";
-import {ICondition} from "../../plugins/conditions/ICondition.sol";
 import {PaymentOperator} from "../../operator/payment/PaymentOperator.sol";
 import {InvalidOperator, NotPayer} from "../../types/Errors.sol";
-import {ConditionNotMet} from "../../operator/types/Errors.sol";
 import {RequestStatus} from "../types/Types.sol";
 import {RequestAlreadyExists, RequestDoesNotExist, RequestNotPending, ZeroRefundAmount} from "../types/Errors.sol";
 import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} from "../types/Events.sol";
@@ -15,15 +13,15 @@ import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} fro
 /**
  * @title RefundRequest
  * @notice Refund request lifecycle as an IRecorder plugin for PaymentOperator.
- * @dev True singleton (no constructor args). All access control is delegated to the
- *      operator's condition tree. Approval happens via operator.refundInEscrow() which
- *      triggers record() on this contract as the REFUND_IN_ESCROW_RECORDER.
+ * @dev ARBITER is an immutable address for deny/refuse gating. Approval happens via
+ *      operator.refundInEscrow() which triggers record() on this contract as the
+ *      REFUND_IN_ESCROW_RECORDER.
  *
  *      State machine:
  *        Pending  -> Approved  (operator calls record() after refundInEscrow)
  *        Approved -> Approved  (cumulative top-up via subsequent record() calls)
- *        Pending  -> Denied    (arbiter, gated by both REFUND_IN_ESCROW_CONDITION and RELEASE_CONDITION)
- *        Pending  -> Refused   (arbiter, gated by both REFUND_IN_ESCROW_CONDITION and RELEASE_CONDITION)
+ *        Pending  -> Denied    (onlyArbiter)
+ *        Pending  -> Refused   (onlyArbiter)
  *        Pending  -> Cancelled (payer only)
  *
  *      Keying: paymentInfoHash only (no nonce). One active request per payment.
@@ -31,12 +29,11 @@ import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} fro
  *      record() behavior: Called by operator after refund. No-op if no request exists
  *      or not approvable. Caps approved amount at requested amount. Never reverts on
  *      state mismatches.
- *
- *      Arbiter identification: The arbiter is the intersection of the refund and release
- *      permission sets. If both refund conditions are address(0), anyone passes. Same for
- *      release condition. isArbiter() checks both condition trees.
  */
 contract RefundRequest is IRecorder {
+    /// @notice The arbiter address that can deny and refuse refund requests
+    address public immutable ARBITER;
+
     struct RefundRequestData {
         bytes32 paymentInfoHash;
         uint120 amount;
@@ -47,6 +44,8 @@ contract RefundRequest is IRecorder {
     // ============ Errors ============
 
     error IndexOutOfBounds();
+    error NotArbiter();
+    error ZeroArbiter();
 
     // ============ Storage ============
 
@@ -75,6 +74,11 @@ contract RefundRequest is IRecorder {
 
     // ============ Modifiers ============
 
+    modifier onlyArbiter() {
+        _checkOnlyArbiter();
+        _;
+    }
+
     modifier onlyPayer(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) {
         _checkOnlyPayer(paymentInfo);
         _;
@@ -85,12 +89,21 @@ contract RefundRequest is IRecorder {
         _;
     }
 
+    function _checkOnlyArbiter() internal view {
+        if (msg.sender != ARBITER) revert NotArbiter();
+    }
+
     function _checkOnlyPayer(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) internal view {
         if (msg.sender != paymentInfo.payer) revert NotPayer();
     }
 
     function _checkOperatorNotZero(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) internal pure {
         if (paymentInfo.operator == address(0)) revert InvalidOperator();
+    }
+
+    constructor(address _arbiter) {
+        if (_arbiter == address(0)) revert ZeroArbiter();
+        ARBITER = _arbiter;
     }
 
     // ============ IRecorder Implementation ============
@@ -199,39 +212,29 @@ contract RefundRequest is IRecorder {
 
     // ============ Arbiter Actions ============
 
-    /// @notice Deny a refund request. Caller must pass both REFUND_IN_ESCROW_CONDITION
-    ///         and RELEASE_CONDITION on the operator (i.e., must be arbiter).
+    /// @notice Deny a refund request. Only arbiter can call.
+    ///         Arbiter reviewed evidence and rejects the refund claim.
     /// @param paymentInfo PaymentInfo struct
-    function deny(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external operatorNotZero(paymentInfo) {
-        _checkArbiter(paymentInfo);
+    function deny(AuthCaptureEscrow.PaymentInfo calldata paymentInfo)
+        external
+        operatorNotZero(paymentInfo)
+        onlyArbiter
+    {
         _setStatus(paymentInfo, RequestStatus.Denied);
     }
 
-    /// @notice Refuse a refund request. Caller must pass both REFUND_IN_ESCROW_CONDITION
-    ///         and RELEASE_CONDITION on the operator (i.e., must be arbiter).
+    /// @notice Refuse a refund request. Only arbiter can call.
+    ///         Arbiter won't consider the request (spam, out of jurisdiction, invalid).
     /// @param paymentInfo PaymentInfo struct
-    function refuse(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external operatorNotZero(paymentInfo) {
-        _checkArbiter(paymentInfo);
+    function refuse(AuthCaptureEscrow.PaymentInfo calldata paymentInfo)
+        external
+        operatorNotZero(paymentInfo)
+        onlyArbiter
+    {
         _setStatus(paymentInfo, RequestStatus.Refused);
     }
 
     // ============ Internal ============
-
-    /// @dev Checks that msg.sender passes both REFUND_IN_ESCROW_CONDITION and RELEASE_CONDITION.
-    ///      If a condition is address(0), it is treated as "anyone passes" (operator convention).
-    function _checkArbiter(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) internal view {
-        PaymentOperator op = PaymentOperator(paymentInfo.operator);
-
-        ICondition refundCond = op.REFUND_IN_ESCROW_CONDITION();
-        if (address(refundCond) != address(0)) {
-            if (!refundCond.check(paymentInfo, 0, msg.sender)) revert ConditionNotMet();
-        }
-
-        ICondition releaseCond = op.RELEASE_CONDITION();
-        if (address(releaseCond) != address(0)) {
-            if (!releaseCond.check(paymentInfo, 0, msg.sender)) revert ConditionNotMet();
-        }
-    }
 
     function _setStatus(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, RequestStatus newStatus) internal {
         PaymentOperator op = PaymentOperator(paymentInfo.operator);
@@ -270,29 +273,11 @@ contract RefundRequest is IRecorder {
 
     // ============ View Functions ============
 
-    /// @notice Check if a caller is an arbiter for a given payment.
-    ///         An arbiter passes both REFUND_IN_ESCROW_CONDITION and RELEASE_CONDITION.
-    /// @param paymentInfo The PaymentInfo struct
+    /// @notice Check if a caller is the arbiter.
     /// @param caller The address to check
-    /// @return True if caller passes both condition checks
-    function isArbiter(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, address caller)
-        external
-        view
-        returns (bool)
-    {
-        PaymentOperator op = PaymentOperator(paymentInfo.operator);
-
-        ICondition refundCond = op.REFUND_IN_ESCROW_CONDITION();
-        if (address(refundCond) != address(0)) {
-            if (!refundCond.check(paymentInfo, 0, caller)) return false;
-        }
-
-        ICondition releaseCond = op.RELEASE_CONDITION();
-        if (address(releaseCond) != address(0)) {
-            if (!releaseCond.check(paymentInfo, 0, caller)) return false;
-        }
-
-        return true;
+    /// @return True if caller is the ARBITER
+    function isArbiter(AuthCaptureEscrow.PaymentInfo calldata, address caller) external view returns (bool) {
+        return caller == ARBITER;
     }
 
     function getRefundRequest(AuthCaptureEscrow.PaymentInfo calldata paymentInfo)

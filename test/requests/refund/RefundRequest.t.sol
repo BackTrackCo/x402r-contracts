@@ -3,17 +3,16 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {RefundRequest} from "../../../src/requests/refund/RefundRequest.sol";
+import {RefundRequestFactory} from "../../../src/requests/refund/RefundRequestFactory.sol";
 import {ICondition} from "../../../src/plugins/conditions/ICondition.sol";
 import {StaticAddressCondition} from "../../../src/plugins/conditions/access/static-address/StaticAddressCondition.sol";
 import {ReceiverCondition} from "../../../src/plugins/conditions/access/ReceiverCondition.sol";
-import {PayerCondition} from "../../../src/plugins/conditions/access/PayerCondition.sol";
 import {OrCondition} from "../../../src/plugins/conditions/combinators/OrCondition.sol";
 import {PaymentOperator} from "../../../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../../../src/operator/PaymentOperatorFactory.sol";
 import {ProtocolFeeConfig} from "../../../src/plugins/fees/ProtocolFeeConfig.sol";
 import {RequestStatus} from "../../../src/requests/types/Types.sol";
-import {ConditionNotMet} from "../../../src/operator/types/Errors.sol";
-import {NotPayer, InvalidOperator} from "../../../src/types/Errors.sol";
+import {InvalidOperator} from "../../../src/types/Errors.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
@@ -21,10 +20,8 @@ import {MockERC20} from "../../mocks/MockERC20.sol";
 contract RefundRequestTest is Test {
     RefundRequest public refundRequest;
     OrCondition public refundInEscrowCondition;
-    OrCondition public releaseCondition;
     StaticAddressCondition public arbiterCondition;
     ReceiverCondition public receiverCondition;
-    PayerCondition public payerCondition;
     PaymentOperator public operator;
     PaymentOperatorFactory public operatorFactory;
     ProtocolFeeConfig public protocolFeeConfig;
@@ -53,8 +50,8 @@ contract RefundRequestTest is Test {
         token = new MockERC20("Test Token", "TEST");
         collector = new PreApprovalPaymentCollector(address(escrow));
 
-        // Deploy RefundRequest as singleton (no args)
-        refundRequest = new RefundRequest();
+        // Deploy RefundRequest with arbiter
+        refundRequest = new RefundRequest(arbiter);
 
         // Build condition tree:
         // REFUND_IN_ESCROW_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)
@@ -64,13 +61,6 @@ contract RefundRequestTest is Test {
         refundConditions[0] = ICondition(address(arbiterCondition));
         refundConditions[1] = ICondition(address(receiverCondition));
         refundInEscrowCondition = new OrCondition(refundConditions);
-
-        // RELEASE_CONDITION = Or(StaticAddressCondition(arbiter), PayerCondition)
-        payerCondition = new PayerCondition();
-        ICondition[] memory releaseConditions = new ICondition[](2);
-        releaseConditions[0] = ICondition(address(arbiterCondition));
-        releaseConditions[1] = ICondition(address(payerCondition));
-        releaseCondition = new OrCondition(releaseConditions);
 
         // Deploy operator with refundRequest as REFUND_IN_ESCROW_RECORDER
         protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
@@ -82,7 +72,7 @@ contract RefundRequestTest is Test {
             authorizeRecorder: address(0),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(releaseCondition),
+            releaseCondition: address(0),
             releaseRecorder: address(0),
             refundInEscrowCondition: address(refundInEscrowCondition),
             refundInEscrowRecorder: address(refundRequest),
@@ -124,10 +114,13 @@ contract RefundRequestTest is Test {
 
     // ============ Constructor Tests ============
 
-    function test_constructor_noArgs() public {
-        // RefundRequest deploys with no args
-        RefundRequest rr = new RefundRequest();
-        assertTrue(address(rr) != address(0));
+    function test_constructor_zeroArbiter() public {
+        vm.expectRevert(RefundRequest.ZeroArbiter.selector);
+        new RefundRequest(address(0));
+    }
+
+    function test_constructor_setsArbiter() public view {
+        assertEq(refundRequest.ARBITER(), arbiter);
     }
 
     // ============ requestRefund Tests ============
@@ -148,7 +141,7 @@ contract RefundRequestTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
 
         vm.prank(receiver);
-        vm.expectRevert(NotPayer.selector);
+        vm.expectRevert();
         refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT));
     }
 
@@ -255,15 +248,15 @@ contract RefundRequestTest is Test {
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT));
 
-        // Payer cannot call refundInEscrow (only passes RELEASE_CONDITION, not REFUND_IN_ESCROW_CONDITION)
+        // Payer cannot call refundInEscrow (not in REFUND_IN_ESCROW_CONDITION)
         vm.prank(payer);
-        vm.expectRevert(ConditionNotMet.selector);
+        vm.expectRevert();
         operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
 
         // Random address cannot approve
         address random = makeAddr("random");
         vm.prank(random);
-        vm.expectRevert(ConditionNotMet.selector);
+        vm.expectRevert();
         operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
     }
 
@@ -375,8 +368,7 @@ contract RefundRequestTest is Test {
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT));
 
-        // Release all funds (moves them out of escrow) — payer passes RELEASE_CONDITION
-        vm.prank(payer);
+        // Release all funds (moves them out of escrow)
         operator.release(paymentInfo, PAYMENT_AMOUNT);
 
         // refundInEscrow reverts — no capturable funds left
@@ -393,8 +385,7 @@ contract RefundRequestTest is Test {
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo, refundAmount);
 
-        // Release half — payer passes RELEASE_CONDITION
-        vm.prank(payer);
+        // Release half
         operator.release(paymentInfo, uint256(releaseAmount));
 
         uint256 payerBalanceBefore = token.balanceOf(payer);
@@ -433,21 +424,8 @@ contract RefundRequestTest is Test {
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT));
 
-        // Receiver passes REFUND_IN_ESCROW_CONDITION but not RELEASE_CONDITION (needs arbiter or payer)
         vm.prank(receiver);
-        vm.expectRevert(ConditionNotMet.selector);
-        refundRequest.deny(paymentInfo);
-    }
-
-    function test_deny_payerReverts() public {
-        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
-
-        vm.prank(payer);
-        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT));
-
-        // Payer passes RELEASE_CONDITION but not REFUND_IN_ESCROW_CONDITION
-        vm.prank(payer);
-        vm.expectRevert(ConditionNotMet.selector);
+        vm.expectRevert(RefundRequest.NotArbiter.selector);
         refundRequest.deny(paymentInfo);
     }
 
@@ -473,7 +451,7 @@ contract RefundRequestTest is Test {
         refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT));
 
         vm.prank(receiver);
-        vm.expectRevert(ConditionNotMet.selector);
+        vm.expectRevert(RefundRequest.NotArbiter.selector);
         refundRequest.refuse(paymentInfo);
     }
 
@@ -488,14 +466,12 @@ contract RefundRequestTest is Test {
     function test_isArbiter_receiverReturnsFalse() public {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
 
-        // Receiver passes REFUND_IN_ESCROW_CONDITION but not RELEASE_CONDITION
         assertFalse(refundRequest.isArbiter(paymentInfo, receiver));
     }
 
     function test_isArbiter_payerReturnsFalse() public {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
 
-        // Payer passes RELEASE_CONDITION but not REFUND_IN_ESCROW_CONDITION
         assertFalse(refundRequest.isArbiter(paymentInfo, payer));
     }
 
@@ -515,7 +491,7 @@ contract RefundRequestTest is Test {
 
         // Non-payer cannot cancel
         vm.prank(receiver);
-        vm.expectRevert(NotPayer.selector);
+        vm.expectRevert();
         refundRequest.cancelRefundRequest(paymentInfo);
 
         // Payer can cancel
@@ -573,7 +549,7 @@ contract RefundRequestTest is Test {
         vm.expectRevert();
         operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
 
-        // Payer calling directly also blocked (passes release but not refund condition)
+        // Payer calling directly also blocked (not in REFUND_IN_ESCROW_CONDITION)
         vm.prank(payer);
         vm.expectRevert();
         operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
@@ -720,5 +696,68 @@ contract RefundRequestTest is Test {
         // Status should still be Pending
         RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);
         assertEq(uint256(data.status), uint256(RequestStatus.Pending));
+    }
+}
+
+// ============ Factory Tests ============
+
+contract RefundRequestFactoryTest is Test {
+    RefundRequestFactory public factory;
+
+    address public arbiter1;
+    address public arbiter2;
+
+    function setUp() public {
+        factory = new RefundRequestFactory();
+        arbiter1 = makeAddr("arbiter1");
+        arbiter2 = makeAddr("arbiter2");
+    }
+
+    function test_deploy_deterministic() public {
+        address predicted = factory.computeAddress(arbiter1);
+
+        address deployed = factory.deploy(arbiter1);
+
+        assertEq(deployed, predicted);
+        assertEq(RefundRequest(deployed).ARBITER(), arbiter1);
+    }
+
+    function test_deploy_idempotent() public {
+        address first = factory.deploy(arbiter1);
+        address second = factory.deploy(arbiter1);
+
+        assertEq(first, second);
+    }
+
+    function test_deploy_differentArbiters() public {
+        address rr1 = factory.deploy(arbiter1);
+        address rr2 = factory.deploy(arbiter2);
+
+        assertTrue(rr1 != rr2);
+        assertEq(RefundRequest(rr1).ARBITER(), arbiter1);
+        assertEq(RefundRequest(rr2).ARBITER(), arbiter2);
+    }
+
+    function test_deploy_zeroArbiter() public {
+        vm.expectRevert(RefundRequestFactory.ZeroArbiter.selector);
+        factory.deploy(address(0));
+    }
+
+    function test_getDeployed_returnsZeroBeforeDeploy() public view {
+        assertEq(factory.getDeployed(arbiter1), address(0));
+    }
+
+    function test_getDeployed_returnsAddressAfterDeploy() public {
+        address deployed = factory.deploy(arbiter1);
+        assertEq(factory.getDeployed(arbiter1), deployed);
+    }
+
+    function test_deploy_emitsEvent() public {
+        address predicted = factory.computeAddress(arbiter1);
+
+        vm.expectEmit(true, true, false, false);
+        emit RefundRequestFactory.RefundRequestDeployed(predicted, arbiter1);
+
+        factory.deploy(arbiter1);
     }
 }

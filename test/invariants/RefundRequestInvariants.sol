@@ -54,7 +54,7 @@ contract RefundRequestInvariants is Test {
 
         ProtocolFeeConfig protocolFeeConfig = new ProtocolFeeConfig(address(0), address(this), address(this));
 
-        refundRequest = new RefundRequest();
+        refundRequest = new RefundRequest(arbiter);
 
         // Build REFUND_IN_ESCROW_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)
         StaticAddressCondition arbiterCondition = new StaticAddressCondition(arbiter);

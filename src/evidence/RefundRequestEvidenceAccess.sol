@@ -12,7 +12,7 @@ import {SubmitterRole} from "./types/Types.sol";
  * @title RefundRequestEvidenceAccess
  * @notice Access control modifiers for RefundRequestEvidence contract
  * @dev Payer, receiver, and arbiter can submit evidence.
- *      Arbiter identity is checked via REFUND_REQUEST.isArbiter().
+ *      Arbiter identity is read from REFUND_REQUEST.ARBITER().
  */
 abstract contract RefundRequestEvidenceAccess {
     // ============ Access Control ============
@@ -35,8 +35,8 @@ abstract contract RefundRequestEvidenceAccess {
             return SubmitterRole.Receiver;
         }
 
-        // Check arbiter access via RefundRequest's isArbiter()
-        if (_getRefundRequest().isArbiter(paymentInfo, msg.sender)) {
+        // Check arbiter access via RefundRequest's immutable ARBITER
+        if (msg.sender == _getRefundRequest().ARBITER()) {
             return SubmitterRole.Arbiter;
         }
 
