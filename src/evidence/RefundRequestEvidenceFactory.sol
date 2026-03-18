@@ -19,7 +19,7 @@ contract RefundRequestEvidenceFactory {
 
     /// @notice Deployed evidence contract addresses
     /// @dev Key: keccak256(abi.encodePacked(refundRequest))
-    mapping(bytes32 => address) public evidenceContracts;
+    mapping(bytes32 => address) public refundRequestEvidences;
 
     /// @notice Emitted when a new evidence contract is deployed
     event RefundRequestEvidenceDeployed(address indexed evidence, address indexed refundRequest);
@@ -35,8 +35,8 @@ contract RefundRequestEvidenceFactory {
         bytes32 key = getKey(refundRequest);
 
         // Return existing deployment if already deployed
-        if (evidenceContracts[key] != address(0)) {
-            return evidenceContracts[key];
+        if (refundRequestEvidences[key] != address(0)) {
+            return refundRequestEvidences[key];
         }
 
         // ============ EFFECTS ============
@@ -47,7 +47,7 @@ contract RefundRequestEvidenceFactory {
         );
 
         // Store address before deployment
-        evidenceContracts[key] = evidence;
+        refundRequestEvidences[key] = evidence;
 
         emit RefundRequestEvidenceDeployed(evidence, refundRequest);
 
@@ -63,7 +63,7 @@ contract RefundRequestEvidenceFactory {
      * @return evidence Address (address(0) if not deployed)
      */
     function getDeployed(address refundRequest) external view returns (address evidence) {
-        return evidenceContracts[getKey(refundRequest)];
+        return refundRequestEvidences[getKey(refundRequest)];
     }
 
     /**
