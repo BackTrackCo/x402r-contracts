@@ -23,6 +23,9 @@ import {IRecorder} from "../src/plugins/recorders/IRecorder.sol";
 import {AuthorizationTimeRecorder} from "../src/plugins/recorders/AuthorizationTimeRecorder.sol";
 import {RecorderCombinator} from "../src/plugins/recorders/combinators/RecorderCombinator.sol";
 import {RecorderCombinatorFactory} from "../src/plugins/recorders/combinators/RecorderCombinatorFactory.sol";
+import {RefundRequestEvidenceFactory} from "../src/evidence/RefundRequestEvidenceFactory.sol";
+import {RefundRequestEvidence} from "../src/evidence/RefundRequestEvidence.sol";
+import {RefundRequest} from "../src/requests/refund/RefundRequest.sol";
 
 /**
  * @title FactoryCoverageTest
@@ -695,6 +698,68 @@ contract FactoryCoverageTest is Test {
         assertEq(factory.getDeployerOperator(alice, 0), aliceOp);
         assertEq(factory.getDeployerOperator(bob, 0), bobOp);
         assertTrue(aliceOp != bobOp);
+    }
+
+    // ============ RefundRequestEvidenceFactory ============
+
+    function test_RefundRequestEvidenceFactory_Deploy() public {
+        RefundRequestEvidenceFactory factory = new RefundRequestEvidenceFactory();
+        address refundRequest = address(new RefundRequest(makeAddr("arbiter")));
+
+        address evidence = factory.deploy(refundRequest);
+        assertTrue(evidence != address(0), "Evidence should be deployed");
+        assertEq(address(RefundRequestEvidence(evidence).REFUND_REQUEST()), refundRequest, "RefundRequest should match");
+    }
+
+    function test_RefundRequestEvidenceFactory_IdempotentDeploy() public {
+        RefundRequestEvidenceFactory factory = new RefundRequestEvidenceFactory();
+        address refundRequest = address(new RefundRequest(makeAddr("arbiter")));
+
+        address first = factory.deploy(refundRequest);
+        address second = factory.deploy(refundRequest);
+        assertEq(first, second, "Same refundRequest should return same address");
+    }
+
+    function test_RefundRequestEvidenceFactory_DifferentRefundRequests() public {
+        RefundRequestEvidenceFactory factory = new RefundRequestEvidenceFactory();
+        address rr1 = address(new RefundRequest(makeAddr("arbiter1")));
+        address rr2 = address(new RefundRequest(makeAddr("arbiter2")));
+
+        address ev1 = factory.deploy(rr1);
+        address ev2 = factory.deploy(rr2);
+        assertTrue(ev1 != ev2, "Different refundRequests should produce different addresses");
+    }
+
+    function test_RefundRequestEvidenceFactory_ComputeAddress() public {
+        RefundRequestEvidenceFactory factory = new RefundRequestEvidenceFactory();
+        address refundRequest = address(new RefundRequest(makeAddr("arbiter")));
+
+        address predicted = factory.computeAddress(refundRequest);
+        address actual = factory.deploy(refundRequest);
+        assertEq(predicted, actual, "Predicted address should match actual");
+    }
+
+    function test_RefundRequestEvidenceFactory_GetDeployed() public {
+        RefundRequestEvidenceFactory factory = new RefundRequestEvidenceFactory();
+        address refundRequest = address(new RefundRequest(makeAddr("arbiter")));
+
+        assertEq(factory.getDeployed(refundRequest), address(0), "Should be zero before deployment");
+        address evidence = factory.deploy(refundRequest);
+        assertEq(factory.getDeployed(refundRequest), evidence, "Should return deployed address");
+    }
+
+    function test_RefundRequestEvidenceFactory_ZeroRefundRequest_Reverts() public {
+        RefundRequestEvidenceFactory factory = new RefundRequestEvidenceFactory();
+        vm.expectRevert(RefundRequestEvidenceFactory.ZeroRefundRequest.selector);
+        factory.deploy(address(0));
+    }
+
+    function test_RefundRequestEvidenceFactory_GetKey() public {
+        RefundRequestEvidenceFactory factory = new RefundRequestEvidenceFactory();
+        bytes32 key1 = factory.getKey(address(1));
+        bytes32 key2 = factory.getKey(address(2));
+        assertTrue(key1 != key2, "Different addresses should produce different keys");
+        assertEq(key1, factory.getKey(address(1)), "Same address should produce same key");
     }
 
     // ============ Helpers ============
