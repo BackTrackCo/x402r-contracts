@@ -502,7 +502,7 @@ contract GasBenchmark is Test {
 
         vm.prank(payer);
         uint256 gasBefore = gasleft();
-        refundRequest.requestRefund(pi, uint120(PAYMENT_AMOUNT), 0);
+        refundRequest.requestRefund(pi, uint120(PAYMENT_AMOUNT));
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== x402r UNHAPPY PATH ===");
@@ -517,11 +517,11 @@ contract GasBenchmark is Test {
         fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
 
         vm.prank(payer);
-        refundRequest.requestRefund(pi, uint120(PAYMENT_AMOUNT), 0);
+        refundRequest.requestRefund(pi, uint120(PAYMENT_AMOUNT));
 
         vm.prank(arbiter);
         uint256 gasBefore = gasleft();
-        refundRequest.approve(pi, 0, uint120(PAYMENT_AMOUNT));
+        fullOperator.refundInEscrow(pi, uint120(PAYMENT_AMOUNT));
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== x402r UNHAPPY PATH ===");
@@ -536,11 +536,11 @@ contract GasBenchmark is Test {
         fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
 
         vm.prank(payer);
-        refundRequest.requestRefund(pi, uint120(PAYMENT_AMOUNT), 0);
+        refundRequest.requestRefund(pi, uint120(PAYMENT_AMOUNT));
 
         vm.prank(payer);
         uint256 gasBefore = gasleft();
-        refundRequestEvidence.submitEvidence(pi, 0, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
+        refundRequestEvidence.submitEvidence(pi, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== x402r UNHAPPY PATH ===");
@@ -709,13 +709,13 @@ contract GasBenchmark is Test {
         // Cold requestRefund
         vm.prank(payer);
         uint256 g1 = gasleft();
-        refundRequest.requestRefund(pi1, uint120(PAYMENT_AMOUNT), 0);
+        refundRequest.requestRefund(pi1, uint120(PAYMENT_AMOUNT));
         uint256 coldGas = g1 - gasleft();
 
         // Warm requestRefund
         vm.prank(payer);
         uint256 g2 = gasleft();
-        refundRequest.requestRefund(pi2, uint120(PAYMENT_AMOUNT), 0);
+        refundRequest.requestRefund(pi2, uint120(PAYMENT_AMOUNT));
         uint256 warmGas = g2 - gasleft();
 
         console.log("=== REQUEST REFUND COLD vs WARM ===");
@@ -732,24 +732,24 @@ contract GasBenchmark is Test {
         collector.preApprove(pi1);
         fullOperator.authorize(pi1, PAYMENT_AMOUNT, address(collector), "");
         vm.prank(payer);
-        refundRequest.requestRefund(pi1, uint120(PAYMENT_AMOUNT), 0);
+        refundRequest.requestRefund(pi1, uint120(PAYMENT_AMOUNT));
 
         vm.prank(payer);
         collector.preApprove(pi2);
         fullOperator.authorize(pi2, PAYMENT_AMOUNT, address(collector), "");
         vm.prank(payer);
-        refundRequest.requestRefund(pi2, uint120(PAYMENT_AMOUNT), 0);
+        refundRequest.requestRefund(pi2, uint120(PAYMENT_AMOUNT));
 
         // Cold submitEvidence
         vm.prank(payer);
         uint256 g1 = gasleft();
-        refundRequestEvidence.submitEvidence(pi1, 0, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
+        refundRequestEvidence.submitEvidence(pi1, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
         uint256 coldGas = g1 - gasleft();
 
         // Warm submitEvidence
         vm.prank(payer);
         uint256 g2 = gasleft();
-        refundRequestEvidence.submitEvidence(pi2, 0, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
+        refundRequestEvidence.submitEvidence(pi2, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
         uint256 warmGas = g2 - gasleft();
 
         console.log("=== SUBMIT EVIDENCE COLD vs WARM ===");
@@ -766,24 +766,24 @@ contract GasBenchmark is Test {
         collector.preApprove(pi1);
         fullOperator.authorize(pi1, PAYMENT_AMOUNT, address(collector), "");
         vm.prank(payer);
-        refundRequest.requestRefund(pi1, uint120(PAYMENT_AMOUNT), 0);
+        refundRequest.requestRefund(pi1, uint120(PAYMENT_AMOUNT));
 
         vm.prank(payer);
         collector.preApprove(pi2);
         fullOperator.authorize(pi2, PAYMENT_AMOUNT, address(collector), "");
         vm.prank(payer);
-        refundRequest.requestRefund(pi2, uint120(PAYMENT_AMOUNT), 0);
+        refundRequest.requestRefund(pi2, uint120(PAYMENT_AMOUNT));
 
         // Cold approve
         vm.prank(arbiter);
         uint256 g1 = gasleft();
-        refundRequest.approve(pi1, 0, uint120(PAYMENT_AMOUNT));
+        fullOperator.refundInEscrow(pi1, uint120(PAYMENT_AMOUNT));
         uint256 coldGas = g1 - gasleft();
 
         // Warm approve
         vm.prank(arbiter);
         uint256 g2 = gasleft();
-        refundRequest.approve(pi2, 0, uint120(PAYMENT_AMOUNT));
+        fullOperator.refundInEscrow(pi2, uint120(PAYMENT_AMOUNT));
         uint256 warmGas = g2 - gasleft();
 
         console.log("=== APPROVE REFUND COLD vs WARM ===");
@@ -1236,13 +1236,13 @@ contract GasBenchmark is Test {
         // requestRefund
         vm.prank(payer);
         uint256 g4 = gasleft();
-        refundRequest.requestRefund(pi, uint120(PAYMENT_AMOUNT), 0);
+        refundRequest.requestRefund(pi, uint120(PAYMENT_AMOUNT));
         uint256 requestGas = g4 - gasleft();
 
         // submitEvidence (payer)
         vm.prank(payer);
         uint256 g5 = gasleft();
-        refundRequestEvidence.submitEvidence(pi, 0, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
+        refundRequestEvidence.submitEvidence(pi, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
         uint256 evidenceGas = g5 - gasleft();
 
         // approve (arbiter approves — but this is post-escrow, so approve won't work with refundInEscrow)
@@ -1251,7 +1251,7 @@ contract GasBenchmark is Test {
         // Measure deny instead (same state machine cost).
         vm.prank(arbiter);
         uint256 g6 = gasleft();
-        refundRequest.deny(pi, 0);
+        refundRequest.deny(pi);
         uint256 denyGas = g6 - gasleft();
 
         // refundPostEscrow

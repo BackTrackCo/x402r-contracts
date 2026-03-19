@@ -7,11 +7,7 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
 // ============ Refund Request Events ============
 event RefundRequested(
-    AuthCaptureEscrow.PaymentInfo paymentInfo,
-    address indexed payer,
-    address indexed receiver,
-    uint120 amount,
-    uint256 nonce
+    AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed payer, address indexed receiver, uint120 amount
 );
 
 event RefundRequestStatusUpdated(
@@ -19,8 +15,7 @@ event RefundRequestStatusUpdated(
     RequestStatus oldStatus,
     RequestStatus newStatus,
     address indexed updatedBy,
-    uint256 nonce,
     uint120 approvedAmount
 );
 
-event RefundRequestCancelled(AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed payer, uint256 nonce);
+event RefundRequestCancelled(AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed payer);

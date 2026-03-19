@@ -8,7 +8,11 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {ProtocolFeeConfig} from "../../src/plugins/fees/ProtocolFeeConfig.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
+import {ICondition} from "../../src/plugins/conditions/ICondition.sol";
 import {StaticAddressCondition} from "../../src/plugins/conditions/access/static-address/StaticAddressCondition.sol";
+import {ReceiverCondition} from "../../src/plugins/conditions/access/ReceiverCondition.sol";
+import {PayerCondition} from "../../src/plugins/conditions/access/PayerCondition.sol";
+import {OrCondition} from "../../src/plugins/conditions/combinators/OrCondition.sol";
 import {RefundRequest} from "../../src/requests/refund/RefundRequest.sol";
 import {RequestStatus} from "../../src/requests/types/Types.sol";
 
@@ -37,11 +41,10 @@ contract RefundRequestInvariants is Test {
     uint256 public constant PAYMENT_AMOUNT = 1000 * 10 ** 18;
 
     // Ghost state for invariant checking
-    bytes32[] public trackedKeys; // compositeKeys
+    bytes32[] public trackedKeys; // paymentInfoHashes
     mapping(bytes32 => bool) public wasTerminallyResolved; // Approved, Denied, or Refused
     mapping(bytes32 => RequestStatus) public lastKnownStatus;
     mapping(bytes32 => AuthCaptureEscrow.PaymentInfo) private trackedPaymentInfos;
-    mapping(bytes32 => uint256) private trackedNonces;
     uint256 public nextSalt;
 
     constructor() {
@@ -52,7 +55,21 @@ contract RefundRequestInvariants is Test {
         ProtocolFeeConfig protocolFeeConfig = new ProtocolFeeConfig(address(0), address(this), address(this));
 
         refundRequest = new RefundRequest(arbiter);
-        StaticAddressCondition refundCondition = new StaticAddressCondition(address(refundRequest));
+
+        // Build REFUND_IN_ESCROW_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)
+        StaticAddressCondition arbiterCondition = new StaticAddressCondition(arbiter);
+        ReceiverCondition receiverCondition = new ReceiverCondition();
+        ICondition[] memory refundConditions = new ICondition[](2);
+        refundConditions[0] = ICondition(address(arbiterCondition));
+        refundConditions[1] = ICondition(address(receiverCondition));
+        OrCondition refundInEscrowCondition = new OrCondition(refundConditions);
+
+        // Build RELEASE_CONDITION = Or(StaticAddressCondition(arbiter), PayerCondition)
+        PayerCondition payerCondition = new PayerCondition();
+        ICondition[] memory releaseConditions = new ICondition[](2);
+        releaseConditions[0] = ICondition(address(arbiterCondition));
+        releaseConditions[1] = ICondition(address(payerCondition));
+        OrCondition releaseCondition = new OrCondition(releaseConditions);
 
         PaymentOperatorFactory operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
@@ -63,10 +80,10 @@ contract RefundRequestInvariants is Test {
             authorizeRecorder: address(0),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(0),
+            releaseCondition: address(releaseCondition),
             releaseRecorder: address(0),
-            refundInEscrowCondition: address(refundCondition),
-            refundInEscrowRecorder: address(0),
+            refundInEscrowCondition: address(refundInEscrowCondition),
+            refundInEscrowRecorder: address(refundRequest),
             refundPostEscrowCondition: address(0),
             refundPostEscrowRecorder: address(0)
         });
@@ -83,7 +100,6 @@ contract RefundRequestInvariants is Test {
         if (amount == 0 || amount > 10_000_000 * 10 ** 18) return;
 
         nextSalt++;
-        uint256 nonce = 0;
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(nextSalt);
 
@@ -97,75 +113,70 @@ contract RefundRequestInvariants is Test {
 
         // Request refund
         vm.prank(payer);
-        try refundRequest.requestRefund(paymentInfo, amount, nonce) {
+        try refundRequest.requestRefund(paymentInfo, amount) {
             bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
-            bytes32 compositeKey = keccak256(abi.encodePacked(paymentInfoHash, nonce));
 
-            trackedKeys.push(compositeKey);
-            lastKnownStatus[compositeKey] = RequestStatus.Pending;
-            trackedPaymentInfos[compositeKey] = paymentInfo;
-            trackedNonces[compositeKey] = nonce;
+            trackedKeys.push(paymentInfoHash);
+            lastKnownStatus[paymentInfoHash] = RequestStatus.Pending;
+            trackedPaymentInfos[paymentInfoHash] = paymentInfo;
         } catch {}
     }
 
     function approveRefund_fuzz(uint256 keyIndex) public {
         if (trackedKeys.length == 0) return;
         uint256 index = keyIndex % trackedKeys.length;
-        bytes32 compositeKey = trackedKeys[index];
+        bytes32 paymentInfoHash = trackedKeys[index];
 
-        AuthCaptureEscrow.PaymentInfo memory paymentInfo = trackedPaymentInfos[compositeKey];
-        uint256 nonce = trackedNonces[compositeKey];
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = trackedPaymentInfos[paymentInfoHash];
 
-        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequestByKey(compositeKey);
+        RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequestByKey(paymentInfoHash);
 
+        // Arbiter calls operator.refundInEscrow() which triggers record()
         vm.prank(arbiter);
-        try refundRequest.approve(paymentInfo, nonce, data.amount) {
-            lastKnownStatus[compositeKey] = RequestStatus.Approved;
-            wasTerminallyResolved[compositeKey] = true;
+        try operator.refundInEscrow(paymentInfo, data.amount) {
+            lastKnownStatus[paymentInfoHash] = RequestStatus.Approved;
+            wasTerminallyResolved[paymentInfoHash] = true;
         } catch {}
     }
 
     function denyRefund_fuzz(uint256 keyIndex) public {
         if (trackedKeys.length == 0) return;
         uint256 index = keyIndex % trackedKeys.length;
-        bytes32 compositeKey = trackedKeys[index];
+        bytes32 paymentInfoHash = trackedKeys[index];
 
-        AuthCaptureEscrow.PaymentInfo memory paymentInfo = trackedPaymentInfos[compositeKey];
-        uint256 nonce = trackedNonces[compositeKey];
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = trackedPaymentInfos[paymentInfoHash];
 
         vm.prank(arbiter);
-        try refundRequest.deny(paymentInfo, nonce) {
-            lastKnownStatus[compositeKey] = RequestStatus.Denied;
-            wasTerminallyResolved[compositeKey] = true;
+        try refundRequest.deny(paymentInfo) {
+            lastKnownStatus[paymentInfoHash] = RequestStatus.Denied;
+            wasTerminallyResolved[paymentInfoHash] = true;
         } catch {}
     }
 
     function refuseRefund_fuzz(uint256 keyIndex) public {
         if (trackedKeys.length == 0) return;
         uint256 index = keyIndex % trackedKeys.length;
-        bytes32 compositeKey = trackedKeys[index];
+        bytes32 paymentInfoHash = trackedKeys[index];
 
-        AuthCaptureEscrow.PaymentInfo memory paymentInfo = trackedPaymentInfos[compositeKey];
-        uint256 nonce = trackedNonces[compositeKey];
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = trackedPaymentInfos[paymentInfoHash];
 
         vm.prank(arbiter);
-        try refundRequest.refuse(paymentInfo, nonce) {
-            lastKnownStatus[compositeKey] = RequestStatus.Refused;
-            wasTerminallyResolved[compositeKey] = true;
+        try refundRequest.refuse(paymentInfo) {
+            lastKnownStatus[paymentInfoHash] = RequestStatus.Refused;
+            wasTerminallyResolved[paymentInfoHash] = true;
         } catch {}
     }
 
     function cancelRefund_fuzz(uint256 keyIndex) public {
         if (trackedKeys.length == 0) return;
         uint256 index = keyIndex % trackedKeys.length;
-        bytes32 compositeKey = trackedKeys[index];
+        bytes32 paymentInfoHash = trackedKeys[index];
 
-        AuthCaptureEscrow.PaymentInfo memory paymentInfo = trackedPaymentInfos[compositeKey];
-        uint256 nonce = trackedNonces[compositeKey];
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = trackedPaymentInfos[paymentInfoHash];
 
         vm.prank(payer);
-        try refundRequest.cancelRefundRequest(paymentInfo, nonce) {
-            lastKnownStatus[compositeKey] = RequestStatus.Cancelled;
+        try refundRequest.cancelRefundRequest(paymentInfo) {
+            lastKnownStatus[paymentInfoHash] = RequestStatus.Cancelled;
         } catch {}
     }
 
