@@ -62,7 +62,7 @@ contract ModularFeesTest is Test {
         // Authorize and release
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), totalBps);
         _authorizePayment(op, paymentInfo);
-        op.release(paymentInfo, PAYMENT_AMOUNT);
+        op.release(paymentInfo, PAYMENT_AMOUNT, "");
 
         // Calculate expected fees
         uint256 expectedTotalFee = (PAYMENT_AMOUNT * totalBps) / 10000; // 75
@@ -94,7 +94,7 @@ contract ModularFeesTest is Test {
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), protocolBps);
         _authorizePayment(op, paymentInfo);
-        op.release(paymentInfo, PAYMENT_AMOUNT);
+        op.release(paymentInfo, PAYMENT_AMOUNT, "");
 
         uint256 expectedProtocolFee = (PAYMENT_AMOUNT * protocolBps) / 10000; // 100
 
@@ -121,7 +121,7 @@ contract ModularFeesTest is Test {
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), operatorBps);
         _authorizePayment(op, paymentInfo);
-        op.release(paymentInfo, PAYMENT_AMOUNT);
+        op.release(paymentInfo, PAYMENT_AMOUNT, "");
 
         uint256 expectedOperatorFee = (PAYMENT_AMOUNT * operatorBps) / 10000;
 
@@ -139,7 +139,7 @@ contract ModularFeesTest is Test {
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), 0);
         _authorizePayment(op, paymentInfo);
-        op.release(paymentInfo, PAYMENT_AMOUNT);
+        op.release(paymentInfo, PAYMENT_AMOUNT, "");
 
         // No fees collected
         uint256 operatorBalance = token.balanceOf(address(op));
@@ -166,7 +166,7 @@ contract ModularFeesTest is Test {
         vm.prank(payer);
         collector.preApprove(paymentInfo);
 
-        op.charge(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+        op.charge(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
 
         uint256 expectedProtocolFee = (PAYMENT_AMOUNT * protocolBps) / 10000;
 
@@ -192,13 +192,13 @@ contract ModularFeesTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo1 = _createPaymentInfo(address(op), totalBps);
         paymentInfo1.salt = 1;
         _authorizePayment(op, paymentInfo1);
-        op.release(paymentInfo1, PAYMENT_AMOUNT);
+        op.release(paymentInfo1, PAYMENT_AMOUNT, "");
 
         // Second payment
         AuthCaptureEscrow.PaymentInfo memory paymentInfo2 = _createPaymentInfo(address(op), totalBps);
         paymentInfo2.salt = 2;
         _authorizePayment(op, paymentInfo2);
-        op.release(paymentInfo2, PAYMENT_AMOUNT);
+        op.release(paymentInfo2, PAYMENT_AMOUNT, "");
 
         uint256 expectedProtocolFee = 2 * ((PAYMENT_AMOUNT * protocolBps) / 10000);
         assertEq(op.accumulatedProtocolFees(address(token)), expectedProtocolFee, "Accumulated over 2 payments");
@@ -264,7 +264,7 @@ contract ModularFeesTest is Test {
 
         vm.expectRevert(abi.encodeWithSelector(FeeBoundsIncompatible.selector, totalBps, 0, 50));
         vm.prank(payer);
-        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
     }
 
     function test_Authorize_RevertsOnFeeBoundsIncompatible_MinTooHigh() public {
@@ -282,7 +282,7 @@ contract ModularFeesTest is Test {
 
         vm.expectRevert(abi.encodeWithSelector(FeeBoundsIncompatible.selector, totalBps, 100, 200));
         vm.prank(payer);
-        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
     }
 
     function test_Authorize_RevertsOnZeroMaxFee_WhenOperatorChargesFees() public {
@@ -300,7 +300,7 @@ contract ModularFeesTest is Test {
 
         vm.expectRevert(abi.encodeWithSelector(FeeBoundsIncompatible.selector, totalBps, 0, 0));
         vm.prank(payer);
-        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
     }
 
     function test_Authorize_SucceedsWhenFeeBoundsCompatible() public {
@@ -317,7 +317,7 @@ contract ModularFeesTest is Test {
         collector.preApprove(paymentInfo);
 
         vm.prank(payer);
-        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
 
         // Verify authorization succeeded by checking escrow state
         bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
@@ -336,7 +336,7 @@ contract ModularFeesTest is Test {
         collector.preApprove(paymentInfo);
 
         vm.prank(payer);
-        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
 
         // Verify authorization succeeded by checking escrow state
         bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
@@ -385,7 +385,7 @@ contract ModularFeesTest is Test {
         );
 
         // Release should succeed using stored fees (not recalculated fees which would fail)
-        op.release(paymentInfo, PAYMENT_AMOUNT);
+        op.release(paymentInfo, PAYMENT_AMOUNT, "");
 
         // Verify protocol fee tracking used stored rate
         uint256 expectedProtocolFee = (PAYMENT_AMOUNT * initialProtocolBps) / 10000;
@@ -506,7 +506,7 @@ contract ModularFeesTest is Test {
     function _authorizePayment(PaymentOperator op, AuthCaptureEscrow.PaymentInfo memory paymentInfo) internal {
         vm.startPrank(payer);
         collector.preApprove(paymentInfo);
-        op.authorize(paymentInfo, paymentInfo.maxAmount, address(collector), "");
+        op.authorize(paymentInfo, paymentInfo.maxAmount, address(collector), "", "");
         vm.stopPrank();
     }
 }

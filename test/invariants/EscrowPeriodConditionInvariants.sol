@@ -100,7 +100,7 @@ contract EscrowPeriodConditionInvariants is Test {
         vm.prank(payer);
         collector.preApprove(paymentInfo);
 
-        try operator.authorize(paymentInfo, amount, address(collector), "") {
+        try operator.authorize(paymentInfo, amount, address(collector), "", "") {
             bytes32 hash = escrow.getHash(paymentInfo);
             trackedHashes.push(hash);
             authTimes[hash] = block.timestamp;
@@ -115,7 +115,7 @@ contract EscrowPeriodConditionInvariants is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(uint120(PAYMENT_AMOUNT), uint256(hash));
 
         vm.prank(payer);
-        try freeze.freeze(paymentInfo) {
+        try freeze.freeze(paymentInfo, "") {
             frozenByUs[hash] = true;
         } catch {}
     }
@@ -128,7 +128,7 @@ contract EscrowPeriodConditionInvariants is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(uint120(PAYMENT_AMOUNT), uint256(hash));
 
         vm.prank(payer);
-        try freeze.unfreeze(paymentInfo) {
+        try freeze.unfreeze(paymentInfo, "") {
             frozenByUs[hash] = false;
         } catch {}
     }
@@ -142,7 +142,7 @@ contract EscrowPeriodConditionInvariants is Test {
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(uint120(PAYMENT_AMOUNT), uint256(hash));
 
-        try operator.release(paymentInfo, amount) {
+        try operator.release(paymentInfo, amount, "") {
             releasedByUs[hash] = true;
         } catch {}
     }

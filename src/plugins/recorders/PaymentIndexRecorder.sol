@@ -63,7 +63,10 @@ contract PaymentIndexRecorder is BaseRecorder {
      * @dev Amount and caller are ignored - only paymentInfo is used for indexing.
      * @param paymentInfo Payment information to index and store
      */
-    function record(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address) external override {
+    function record(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address, bytes calldata)
+        external
+        override
+    {
         bytes32 hash = _verifyAndHash(paymentInfo);
 
         // Store full PaymentInfo

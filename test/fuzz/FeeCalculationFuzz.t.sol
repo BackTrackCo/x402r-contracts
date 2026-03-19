@@ -107,7 +107,7 @@ contract FeeCalculationFuzzTest is Test {
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), totalBps, amount);
         _authorizePayment(op, paymentInfo, amount);
-        op.release(paymentInfo, amount);
+        op.release(paymentInfo, amount, "");
 
         uint256 opBalance = token.balanceOf(address(op));
         uint256 protocolBefore = token.balanceOf(protocolFeeRecipient);
@@ -141,7 +141,7 @@ contract FeeCalculationFuzzTest is Test {
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), protocolBps, amount);
         _authorizePayment(op, paymentInfo, amount);
-        op.release(paymentInfo, amount);
+        op.release(paymentInfo, amount, "");
 
         uint256 opBalance = token.balanceOf(address(op));
         uint256 accumulated = op.accumulatedProtocolFees(address(token));
@@ -204,7 +204,7 @@ contract FeeCalculationFuzzTest is Test {
     {
         vm.startPrank(payer);
         collector.preApprove(paymentInfo);
-        op.authorize(paymentInfo, amount, address(collector), "");
+        op.authorize(paymentInfo, amount, address(collector), "", "");
         vm.stopPrank();
     }
 }

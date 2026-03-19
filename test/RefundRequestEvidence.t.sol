@@ -115,7 +115,7 @@ contract RefundRequestEvidenceTest is Test {
         // Pre-approve and authorize
         vm.prank(payer);
         collector.preApprove(paymentInfo);
-        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
 
         // Create refund request
         vm.prank(payer);
@@ -184,7 +184,7 @@ contract RefundRequestEvidenceTest is Test {
         // Authorize but don't create refund request
         vm.prank(payer);
         collector.preApprove(paymentInfo);
-        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
 
         vm.prank(payer);
         vm.expectRevert(RefundRequestRequired.selector);

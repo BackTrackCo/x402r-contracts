@@ -101,7 +101,7 @@ contract ArithmeticEdgeCasesTest is Test {
         collector.preApprove(paymentInfo);
 
         // Should succeed without overflow
-        operator.authorize(paymentInfo, maxAmount, address(collector), "");
+        operator.authorize(paymentInfo, maxAmount, address(collector), "", "");
         vm.stopPrank();
 
         // Verify payment exists in escrow
@@ -127,11 +127,11 @@ contract ArithmeticEdgeCasesTest is Test {
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(maxAmount, 2);
         collector.preApprove(paymentInfo);
-        operator.authorize(paymentInfo, maxAmount, address(collector), "");
+        operator.authorize(paymentInfo, maxAmount, address(collector), "", "");
         vm.stopPrank();
 
         // Release and verify fee calculation doesn't overflow
-        operator.release(paymentInfo, maxAmount);
+        operator.release(paymentInfo, maxAmount, "");
 
         // Calculate expected fee (50 bps = 0.5%)
         uint256 expectedTotalFee = (uint256(maxAmount) * MAX_TOTAL_FEE_RATE) / 10000;
@@ -192,7 +192,7 @@ contract ArithmeticEdgeCasesTest is Test {
 
         // Authorize with zero amount - REVERTS with ZeroAmount error
         vm.expectRevert(); // Expecting ZeroAmount() error
-        operator.authorize(paymentInfo, zeroAmount, address(collector), "");
+        operator.authorize(paymentInfo, zeroAmount, address(collector), "", "");
         vm.stopPrank();
     }
 
@@ -211,7 +211,7 @@ contract ArithmeticEdgeCasesTest is Test {
 
         // Release zero amount - REVERTS with ZeroAmount error
         vm.expectRevert(); // Expecting ZeroAmount() error
-        operator.release(paymentInfo, releaseAmount);
+        operator.release(paymentInfo, releaseAmount, "");
     }
 
     /**
@@ -243,7 +243,7 @@ contract ArithmeticEdgeCasesTest is Test {
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(oneWei, 20);
         collector.preApprove(paymentInfo);
-        operator.authorize(paymentInfo, oneWei, address(collector), "");
+        operator.authorize(paymentInfo, oneWei, address(collector), "", "");
         vm.stopPrank();
 
         bytes32 hash = escrow.getHash(paymentInfo);
@@ -265,11 +265,11 @@ contract ArithmeticEdgeCasesTest is Test {
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(dustAmount, 21);
         collector.preApprove(paymentInfo);
-        operator.authorize(paymentInfo, dustAmount, address(collector), "");
+        operator.authorize(paymentInfo, dustAmount, address(collector), "", "");
         vm.stopPrank();
 
         // Release dust amount
-        operator.release(paymentInfo, dustAmount);
+        operator.release(paymentInfo, dustAmount, "");
 
         // Verify fee is zero (rounds down)
         // Fee = (1 * 50) / 10000 = 0.005 -> rounds to 0
@@ -295,10 +295,10 @@ contract ArithmeticEdgeCasesTest is Test {
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(minAmount, 22);
         collector.preApprove(paymentInfo);
-        operator.authorize(paymentInfo, minAmount, address(collector), "");
+        operator.authorize(paymentInfo, minAmount, address(collector), "", "");
         vm.stopPrank();
 
-        operator.release(paymentInfo, minAmount);
+        operator.release(paymentInfo, minAmount, "");
 
         // Fee = (200 * 50) / 10000 = 1 wei
         operator.distributeFees(address(token));
@@ -323,10 +323,10 @@ contract ArithmeticEdgeCasesTest is Test {
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(belowMin, 23);
         collector.preApprove(paymentInfo);
-        operator.authorize(paymentInfo, belowMin, address(collector), "");
+        operator.authorize(paymentInfo, belowMin, address(collector), "", "");
         vm.stopPrank();
 
-        operator.release(paymentInfo, belowMin);
+        operator.release(paymentInfo, belowMin, "");
 
         // Fee = (199 * 50) / 10000 = 0.995 -> rounds to 0
         operator.distributeFees(address(token));
@@ -355,10 +355,10 @@ contract ArithmeticEdgeCasesTest is Test {
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(amount, 30);
         collector.preApprove(paymentInfo);
-        operator.authorize(paymentInfo, amount, address(collector), "");
+        operator.authorize(paymentInfo, amount, address(collector), "", "");
         vm.stopPrank();
 
-        operator.release(paymentInfo, amount);
+        operator.release(paymentInfo, amount, "");
 
         // distributeFees() splits tracked protocol amount + remainder to operator
         operator.distributeFees(address(token));
@@ -507,7 +507,7 @@ contract ArithmeticEdgeCasesTest is Test {
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(amount, salt);
         collector.preApprove(paymentInfo);
-        operator.authorize(paymentInfo, amount, address(collector), "");
+        operator.authorize(paymentInfo, amount, address(collector), "", "");
         vm.stopPrank();
     }
 }

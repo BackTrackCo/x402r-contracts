@@ -94,7 +94,7 @@ contract Freeze is ICondition {
      * @param paymentInfo PaymentInfo struct
      * @return allowed True if payment is not frozen
      */
-    function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address)
+    function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address, bytes calldata)
         external
         view
         override(ICondition)
@@ -114,9 +114,9 @@ contract Freeze is ICondition {
      *         escrow period expires, rendering the freeze ineffective. Submit via private mempool
      *         (Flashbots Protect / MEV Blocker) when freezing near the deadline.
      */
-    function freeze(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external {
+    function freeze(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, bytes calldata data) external {
         // Check authorization via condition
-        if (!FREEZE_CONDITION.check(paymentInfo, 0, msg.sender)) revert UnauthorizedFreeze();
+        if (!FREEZE_CONDITION.check(paymentInfo, 0, msg.sender, data)) revert UnauthorizedFreeze();
 
         bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
 
@@ -148,9 +148,9 @@ contract Freeze is ICondition {
      *      Authorization checked via UNFREEZE_CONDITION.
      * @param paymentInfo PaymentInfo struct for the payment to unfreeze
      */
-    function unfreeze(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external {
+    function unfreeze(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, bytes calldata data) external {
         // Check authorization via condition
-        if (!UNFREEZE_CONDITION.check(paymentInfo, 0, msg.sender)) revert UnauthorizedFreeze();
+        if (!UNFREEZE_CONDITION.check(paymentInfo, 0, msg.sender, data)) revert UnauthorizedFreeze();
 
         bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
 

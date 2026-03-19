@@ -14,5 +14,11 @@ interface IRecorder {
     /// @param paymentInfo The payment information
     /// @param amount The amount involved in the action
     /// @param caller The address that executed the action (msg.sender on operator)
-    function record(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount, address caller) external;
+    /// @param data Arbitrary data forwarded from the caller (e.g. signatures, proofs, attestations)
+    function record(
+        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
+        uint256 amount,
+        address caller,
+        bytes calldata data
+    ) external;
 }

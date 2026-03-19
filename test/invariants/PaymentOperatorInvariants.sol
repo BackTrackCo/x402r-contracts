@@ -131,7 +131,7 @@ contract PaymentOperatorInvariants is Test {
             salt: 999
         });
         collector.preApprove(reentrancyPayment);
-        reentrancyTestOperator.authorize(reentrancyPayment, 1000, address(collector), "");
+        reentrancyTestOperator.authorize(reentrancyPayment, 1000, address(collector), "", "");
     }
 
     // ============ Helper Functions ============
@@ -180,14 +180,14 @@ contract PaymentOperatorInvariants is Test {
         collector.preApprove(paymentInfo);
 
         // Authorize
-        operator.authorize(paymentInfo, amount, address(collector), "");
+        operator.authorize(paymentInfo, amount, address(collector), "", "");
 
         // Track
         _trackPayment(paymentInfo, amount);
     }
 
     function _release(AuthCaptureEscrow.PaymentInfo memory paymentInfo, uint256 amount) internal {
-        operator.release(paymentInfo, amount);
+        operator.release(paymentInfo, amount, "");
 
         bytes32 hash = escrow.getHash(paymentInfo);
         if (payments[hash].exists) {
@@ -200,14 +200,14 @@ contract PaymentOperatorInvariants is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(payer, receiver, amount, salt);
 
         collector.preApprove(paymentInfo);
-        operator.charge(paymentInfo, amount, address(collector), "");
+        operator.charge(paymentInfo, amount, address(collector), "", "");
 
         _trackPayment(paymentInfo, amount);
         totalReleasedAmount += amount;
     }
 
     function _refund(AuthCaptureEscrow.PaymentInfo memory paymentInfo, uint120 amount) internal {
-        operator.refundInEscrow(paymentInfo, amount);
+        operator.refundInEscrow(paymentInfo, amount, "");
 
         bytes32 hash = escrow.getHash(paymentInfo);
         if (payments[hash].exists) {
