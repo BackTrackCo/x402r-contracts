@@ -23,6 +23,7 @@ ethereum = "${ETHEREUM_RPC_URL}"
 ethereum-sepolia = "${ETHEREUM_SEPOLIA_RPC_URL}"
 polygon = "${POLYGON_RPC_URL}"
 arbitrum = "${ARBITRUM_RPC_URL}"
+arbitrum-sepolia = "${ARBITRUM_SEPOLIA_RPC_URL}"
 celo = "${CELO_RPC_URL}"
 monad = "${MONAD_RPC_URL}"
 avalanche = "${AVALANCHE_RPC_URL}"
@@ -38,6 +39,7 @@ ethereum = { key = "${ETHERSCAN_API_KEY}", url = "https://api.etherscan.io/api" 
 ethereum-sepolia = { key = "${ETHERSCAN_API_KEY}", url = "https://api-sepolia.etherscan.io/api" }
 polygon = { key = "${POLYGONSCAN_API_KEY}", url = "https://api.polygonscan.com/api" }
 arbitrum = { key = "${ARBISCAN_API_KEY}", url = "https://api.arbiscan.io/api" }
+arbitrum-sepolia = { key = "${ARBISCAN_API_KEY}", url = "https://api-sepolia.arbiscan.io/api" }
 celo = { key = "${CELOSCAN_API_KEY}", url = "https://api.celoscan.io/api" }
 monad = { key = "${MONADSCAN_API_KEY}", url = "https://api.monadscan.com/api" }
 avalanche = { key = "${SNOWSCAN_API_KEY}", url = "https://api.snowscan.xyz/api" }
