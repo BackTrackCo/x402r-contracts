@@ -26,6 +26,9 @@ WITH raw_logs AS (
     UNION ALL
     SELECT 'avalanche_c', contract_address, topic1, data FROM avalanche_c.logs
     WHERE topic0 = 0x85da6ab72d2b48932522aea80adb8ca4fab6cdeb87bc2e7f6c03fd78d3b2100e
+    UNION ALL
+    SELECT 'linea', contract_address, topic1, data FROM linea.logs
+    WHERE topic0 = 0x85da6ab72d2b48932522aea80adb8ca4fab6cdeb87bc2e7f6c03fd78d3b2100e
 )
 
 SELECT

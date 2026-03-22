@@ -38,6 +38,10 @@ WITH events AS (
     SELECT 'avalanche_c', 'authorized',
            bytearray_to_uint256(bytearray_substring(data, 1, 32))
     FROM avalanche_c.logs WHERE topic0 = 0x25a881a7e96f8ce977da598bc17f91f1235aa59b7a2abad5f454f317c7ff2c9d
+    UNION ALL
+    SELECT 'linea', 'authorized',
+           bytearray_to_uint256(bytearray_substring(data, 1, 32))
+    FROM linea.logs WHERE topic0 = 0x25a881a7e96f8ce977da598bc17f91f1235aa59b7a2abad5f454f317c7ff2c9d
 
     UNION ALL
 
@@ -62,6 +66,9 @@ WITH events AS (
     UNION ALL
     SELECT 'avalanche_c', 'charged', bytearray_to_uint256(bytearray_substring(data, 1, 32))
     FROM avalanche_c.logs WHERE topic0 = 0xdb91bd6597cd642062d7480a3e7a9510af3cac44b224cf7ae9357a8e18af0d00
+    UNION ALL
+    SELECT 'linea', 'charged', bytearray_to_uint256(bytearray_substring(data, 1, 32))
+    FROM linea.logs WHERE topic0 = 0xdb91bd6597cd642062d7480a3e7a9510af3cac44b224cf7ae9357a8e18af0d00
 
     UNION ALL
 
@@ -86,6 +93,9 @@ WITH events AS (
     UNION ALL
     SELECT 'avalanche_c', 'released', bytearray_to_uint256(bytearray_substring(data, 385, 32))
     FROM avalanche_c.logs WHERE topic0 = 0xef37646753b7da2c4dc22b8f3e7ea02b5db09ea73db9f331c2dc86a796e36a57
+    UNION ALL
+    SELECT 'linea', 'released', bytearray_to_uint256(bytearray_substring(data, 385, 32))
+    FROM linea.logs WHERE topic0 = 0xef37646753b7da2c4dc22b8f3e7ea02b5db09ea73db9f331c2dc86a796e36a57
 
     UNION ALL
 
@@ -110,6 +120,9 @@ WITH events AS (
     UNION ALL
     SELECT 'avalanche_c', 'refund_escrow', bytearray_to_uint256(bytearray_substring(data, 385, 32))
     FROM avalanche_c.logs WHERE topic0 = 0x4636fb10066996aa522c42989c534e9c535fb8573b5ad9b84fc5d17512a825bd
+    UNION ALL
+    SELECT 'linea', 'refund_escrow', bytearray_to_uint256(bytearray_substring(data, 385, 32))
+    FROM linea.logs WHERE topic0 = 0x4636fb10066996aa522c42989c534e9c535fb8573b5ad9b84fc5d17512a825bd
 
     UNION ALL
 
@@ -134,6 +147,9 @@ WITH events AS (
     UNION ALL
     SELECT 'avalanche_c', 'refund_post', bytearray_to_uint256(bytearray_substring(data, 385, 32))
     FROM avalanche_c.logs WHERE topic0 = 0x1459169da64152ba94c628f131a9dec359224a3d1aab588ffb69a49ddf3faeae
+    UNION ALL
+    SELECT 'linea', 'refund_post', bytearray_to_uint256(bytearray_substring(data, 385, 32))
+    FROM linea.logs WHERE topic0 = 0x1459169da64152ba94c628f131a9dec359224a3d1aab588ffb69a49ddf3faeae
 )
 
 SELECT

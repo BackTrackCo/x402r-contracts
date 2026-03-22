@@ -14,7 +14,25 @@ Queries use per-chain tables (`base.logs`, `ethereum.logs`, etc.) with `UNION AL
 
 Source of truth: `x402r-sdk/packages/core/src/config/index.ts`
 
-The queries use parameterized addresses. Replace the placeholder values or use Dune parameters.
+### Unified CREATE3 Factory (all chains)
+
+| Contract | Address |
+|----------|---------|
+| PaymentOperatorFactory | `0xdc41F932dF2d22346F218E4f5650694c650ab863` |
+
+### Legacy Per-Chain Factories
+
+| Chain | Factory Address |
+|-------|-----------------|
+| Base | `0x3D0837fF8Ea36F417261577b9BA568400A840260` |
+| Ethereum | `0x1e52a74cE6b69F04a506eF815743E1052A1BD28F` |
+| Polygon | `0xb33D6502EdBbC47201cd1E53C49d703EC0a660b8` |
+| Arbitrum | `0x32d6AC59BCe8DFB3026F10BcaDB8D00AB218f5b6` |
+| Optimism | `0x32d6AC59BCe8DFB3026F10BcaDB8D00AB218f5b6` |
+| Celo | `0x32d6AC59BCe8DFB3026F10BcaDB8D00AB218f5b6` |
+| Avalanche | `0x32d6AC59BCe8DFB3026F10BcaDB8D00AB218f5b6` |
+
+Queries that filter by factory use `IN (legacy, unified)` to capture operators from both.
 
 ## Event Signatures (topic0)
 
@@ -41,14 +59,17 @@ The queries use parameterized addresses. Replace the placeholder values or use D
 | `users.sql` | Unique payers and receivers |
 | `volume_timeseries.sql` | Daily volume over time |
 
-## Supported Chains
+## Supported Chains (Dune)
 
-| Chain | Dune name | Factory Address |
-|-------|-----------|-----------------|
-| Base | `base` | `0x3D0837fF8Ea36F417261577b9BA568400A840260` |
-| Ethereum | `ethereum` | `0x1e52a74cE6b69F04a506eF815743E1052A1BD28F` |
-| Polygon | `polygon` | `0xb33D6502EdBbC47201cd1E53C49d703EC0a660b8` |
-| Arbitrum | `arbitrum` | `0x32d6AC59BCe8DFB3026F10BcaDB8D00AB218f5b6` |
-| Optimism | `optimism` | `0x32d6AC59BCe8DFB3026F10BcaDB8D00AB218f5b6` |
-| Celo | `celo` | `0x32d6AC59BCe8DFB3026F10BcaDB8D00AB218f5b6` |
-| Avalanche | `avalanche_c` | `0x32d6AC59BCe8DFB3026F10BcaDB8D00AB218f5b6` |
+| Chain | Dune table |
+|-------|------------|
+| Base | `base` |
+| Ethereum | `ethereum` |
+| Polygon | `polygon` |
+| Arbitrum | `arbitrum` |
+| Optimism | `optimism` |
+| Celo | `celo` |
+| Avalanche | `avalanche_c` |
+| Linea | `linea` |
+
+SKALE Base and Monad are deployed but not yet available on Dune.

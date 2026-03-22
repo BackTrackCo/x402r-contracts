@@ -30,6 +30,10 @@ WITH raw_logs AS (
     SELECT 'avalanche_c', topic2, topic3 FROM avalanche_c.logs
     WHERE topic0 IN (0x25a881a7e96f8ce977da598bc17f91f1235aa59b7a2abad5f454f317c7ff2c9d,
                      0xdb91bd6597cd642062d7480a3e7a9510af3cac44b224cf7ae9357a8e18af0d00)
+    UNION ALL
+    SELECT 'linea', topic2, topic3 FROM linea.logs
+    WHERE topic0 IN (0x25a881a7e96f8ce977da598bc17f91f1235aa59b7a2abad5f454f317c7ff2c9d,
+                     0xdb91bd6597cd642062d7480a3e7a9510af3cac44b224cf7ae9357a8e18af0d00)
 )
 
 SELECT
