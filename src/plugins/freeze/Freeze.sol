@@ -109,7 +109,15 @@ contract Freeze is ICondition {
      * @notice Freeze a payment to block release
      * @dev When ESCROW_PERIOD_CONTRACT is set, only callable during the escrow period.
      *      Authorization checked via FREEZE_CONDITION.
+     *
+     *      BREAKING CHANGE: Signature changed from `freeze(PaymentInfo)` to
+     *      `freeze(PaymentInfo, bytes)` to support forwarding arbitrary data to
+     *      FREEZE_CONDITION. SDK callers must update to pass the new `data` parameter
+     *      (use `""` / `"0x"` for no data).
+     *
      * @param paymentInfo PaymentInfo struct for the payment to freeze
+     * @param data Arbitrary data forwarded to FREEZE_CONDITION.check()
+     *        (e.g. signatures, proofs, attestations)
      * @custom:security MEV RISK: A block builder can censor this transaction until after the
      *         escrow period expires, rendering the freeze ineffective. Submit via private mempool
      *         (Flashbots Protect / MEV Blocker) when freezing near the deadline.
@@ -146,7 +154,15 @@ contract Freeze is ICondition {
      * @notice Unfreeze a payment to allow release
      * @dev No escrow period check — unfreezing should always be allowed.
      *      Authorization checked via UNFREEZE_CONDITION.
+     *
+     *      BREAKING CHANGE: Signature changed from `unfreeze(PaymentInfo)` to
+     *      `unfreeze(PaymentInfo, bytes)` to support forwarding arbitrary data to
+     *      UNFREEZE_CONDITION. SDK callers must update to pass the new `data` parameter
+     *      (use `""` / `"0x"` for no data).
+     *
      * @param paymentInfo PaymentInfo struct for the payment to unfreeze
+     * @param data Arbitrary data forwarded to UNFREEZE_CONDITION.check()
+     *        (e.g. signatures, proofs, attestations)
      */
     function unfreeze(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, bytes calldata data) external {
         // Check authorization via condition

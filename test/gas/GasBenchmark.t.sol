@@ -521,7 +521,7 @@ contract GasBenchmark is Test {
 
         vm.prank(arbiter);
         uint256 gasBefore = gasleft();
-        refundRequest.approve(pi, 0, uint120(PAYMENT_AMOUNT));
+        refundRequest.approve(pi, 0, uint120(PAYMENT_AMOUNT), "");
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== x402r UNHAPPY PATH ===");
@@ -777,13 +777,13 @@ contract GasBenchmark is Test {
         // Cold approve
         vm.prank(arbiter);
         uint256 g1 = gasleft();
-        refundRequest.approve(pi1, 0, uint120(PAYMENT_AMOUNT));
+        refundRequest.approve(pi1, 0, uint120(PAYMENT_AMOUNT), "");
         uint256 coldGas = g1 - gasleft();
 
         // Warm approve
         vm.prank(arbiter);
         uint256 g2 = gasleft();
-        refundRequest.approve(pi2, 0, uint120(PAYMENT_AMOUNT));
+        refundRequest.approve(pi2, 0, uint120(PAYMENT_AMOUNT), "");
         uint256 warmGas = g2 - gasleft();
 
         console.log("=== APPROVE REFUND COLD vs WARM ===");

@@ -176,7 +176,12 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
      *        authorizationExpiry can be set to any value (use type(uint48).max for no expiry)
      * @param amount Amount to authorize
      * @param tokenCollector Address of the token collector
-     * @param collectorData Data to pass to the token collector
+     * @param collectorData Data passed to both the token collector AND forwarded to
+     *        AUTHORIZE_CONDITION.check() and AUTHORIZE_RECORDER.record() as the `data` parameter.
+     *        NOTE: This means collectorData serves dual purpose — collector initialization data
+     *        (e.g. ERC-3009 authorization params) AND hook data for conditions/recorders.
+     *        A condition that decodes collectorData may conflict with collector-specific encoding.
+     *        Callers packing both should use a structured encoding (e.g. abi.encode(collectorPayload, hookPayload)).
      */
     function authorize(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
@@ -227,7 +232,9 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
      *        - feeReceiver == address(this)
      * @param amount Amount to charge
      * @param tokenCollector Address of the token collector
-     * @param collectorData Data to pass to the token collector
+     * @param collectorData Data passed to both the token collector AND forwarded to
+     *        CHARGE_CONDITION.check() and CHARGE_RECORDER.record() as the `data` parameter.
+     *        NOTE: Dual-purpose — see authorize() for collision considerations.
      */
     function charge(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
@@ -353,7 +360,9 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
      * @param paymentInfo PaymentInfo struct
      * @param amount Amount to refund to payer
      * @param tokenCollector Address of the token collector that will source the refund
-     * @param collectorData Data to pass to the token collector (e.g., signatures)
+     * @param collectorData Data passed to both the token collector AND forwarded to
+     *        REFUND_POST_ESCROW_CONDITION.check() and REFUND_POST_ESCROW_RECORDER.record()
+     *        as the `data` parameter. NOTE: Dual-purpose — see authorize() for collision considerations.
      */
     function refundPostEscrow(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,

@@ -245,7 +245,7 @@ contract FullLifecycleTest is Test {
 
         // Arbiter approves (atomically refunds)
         vm.prank(arbiter);
-        refundRequest.approve(paymentInfo, 0, refundAmount);
+        refundRequest.approve(paymentInfo, 0, refundAmount, "");
 
         bytes32 hash = escrow.getHash(paymentInfo);
         (, uint120 capturable,) = escrow.paymentState(hash);
