@@ -166,7 +166,7 @@ contract ModularFeesTest is Test {
         vm.prank(payer);
         collector.preApprove(paymentInfo);
 
-        op.charge(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
+        op.charge(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
         uint256 expectedProtocolFee = (PAYMENT_AMOUNT * protocolBps) / 10000;
 
@@ -264,7 +264,7 @@ contract ModularFeesTest is Test {
 
         vm.expectRevert(abi.encodeWithSelector(FeeBoundsIncompatible.selector, totalBps, 0, 50));
         vm.prank(payer);
-        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
+        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
     }
 
     function test_Authorize_RevertsOnFeeBoundsIncompatible_MinTooHigh() public {
@@ -282,7 +282,7 @@ contract ModularFeesTest is Test {
 
         vm.expectRevert(abi.encodeWithSelector(FeeBoundsIncompatible.selector, totalBps, 100, 200));
         vm.prank(payer);
-        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
+        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
     }
 
     function test_Authorize_RevertsOnZeroMaxFee_WhenOperatorChargesFees() public {
@@ -300,7 +300,7 @@ contract ModularFeesTest is Test {
 
         vm.expectRevert(abi.encodeWithSelector(FeeBoundsIncompatible.selector, totalBps, 0, 0));
         vm.prank(payer);
-        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
+        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
     }
 
     function test_Authorize_SucceedsWhenFeeBoundsCompatible() public {
@@ -317,7 +317,7 @@ contract ModularFeesTest is Test {
         collector.preApprove(paymentInfo);
 
         vm.prank(payer);
-        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
+        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
         // Verify authorization succeeded by checking escrow state
         bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
@@ -336,7 +336,7 @@ contract ModularFeesTest is Test {
         collector.preApprove(paymentInfo);
 
         vm.prank(payer);
-        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
+        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
         // Verify authorization succeeded by checking escrow state
         bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
@@ -506,7 +506,7 @@ contract ModularFeesTest is Test {
     function _authorizePayment(PaymentOperator op, AuthCaptureEscrow.PaymentInfo memory paymentInfo) internal {
         vm.startPrank(payer);
         collector.preApprove(paymentInfo);
-        op.authorize(paymentInfo, paymentInfo.maxAmount, address(collector), "", "");
+        op.authorize(paymentInfo, paymentInfo.maxAmount, address(collector), "");
         vm.stopPrank();
     }
 }

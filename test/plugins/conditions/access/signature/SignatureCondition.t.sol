@@ -99,7 +99,7 @@ contract SignatureConditionTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
         vm.prank(payer);
         collector.preApprove(paymentInfo);
-        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
         return paymentInfo;
     }
 

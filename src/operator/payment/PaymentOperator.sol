@@ -182,13 +182,12 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint256 amount,
         address tokenCollector,
-        bytes calldata collectorData,
-        bytes calldata data
+        bytes calldata collectorData
     ) external nonReentrant validFees(paymentInfo) {
         // ============ CHECKS ============
         // Check AUTHORIZE_CONDITION (address(0) = always allow)
         if (address(AUTHORIZE_CONDITION) != address(0)) {
-            if (!AUTHORIZE_CONDITION.check(paymentInfo, amount, msg.sender, data)) {
+            if (!AUTHORIZE_CONDITION.check(paymentInfo, amount, msg.sender, collectorData)) {
                 revert ConditionNotMet();
             }
         }
@@ -214,7 +213,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
 
         // Call AUTHORIZE_RECORDER (address(0) = no-op)
         if (address(AUTHORIZE_RECORDER) != address(0)) {
-            AUTHORIZE_RECORDER.record(paymentInfo, amount, msg.sender, data);
+            AUTHORIZE_RECORDER.record(paymentInfo, amount, msg.sender, collectorData);
         }
     }
 
@@ -234,13 +233,12 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint256 amount,
         address tokenCollector,
-        bytes calldata collectorData,
-        bytes calldata data
+        bytes calldata collectorData
     ) external nonReentrant validFees(paymentInfo) {
         // ============ CHECKS ============
         // Check CHARGE_CONDITION (address(0) = always allow)
         if (address(CHARGE_CONDITION) != address(0)) {
-            if (!CHARGE_CONDITION.check(paymentInfo, amount, msg.sender, data)) {
+            if (!CHARGE_CONDITION.check(paymentInfo, amount, msg.sender, collectorData)) {
                 revert ConditionNotMet();
             }
         }
@@ -266,7 +264,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
 
         // Call CHARGE_RECORDER (address(0) = no-op)
         if (address(CHARGE_RECORDER) != address(0)) {
-            CHARGE_RECORDER.record(paymentInfo, amount, msg.sender, data);
+            CHARGE_RECORDER.record(paymentInfo, amount, msg.sender, collectorData);
         }
     }
 
@@ -361,13 +359,12 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint256 amount,
         address tokenCollector,
-        bytes calldata collectorData,
-        bytes calldata data
+        bytes calldata collectorData
     ) external nonReentrant {
         // ============ CHECKS ============
         // Check REFUND_POST_ESCROW_CONDITION (address(0) = always allow)
         if (address(REFUND_POST_ESCROW_CONDITION) != address(0)) {
-            if (!REFUND_POST_ESCROW_CONDITION.check(paymentInfo, amount, msg.sender, data)) {
+            if (!REFUND_POST_ESCROW_CONDITION.check(paymentInfo, amount, msg.sender, collectorData)) {
                 revert ConditionNotMet();
             }
         }
@@ -384,7 +381,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
 
         // Call REFUND_POST_ESCROW_RECORDER (address(0) = no-op)
         if (address(REFUND_POST_ESCROW_RECORDER) != address(0)) {
-            REFUND_POST_ESCROW_RECORDER.record(paymentInfo, amount, msg.sender, data);
+            REFUND_POST_ESCROW_RECORDER.record(paymentInfo, amount, msg.sender, collectorData);
         }
     }
 

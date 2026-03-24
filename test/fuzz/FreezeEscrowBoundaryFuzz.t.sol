@@ -250,7 +250,7 @@ contract FreezeEscrowBoundaryFuzzTest is Test {
 
         vm.prank(payer);
         collector.preApprove(pi);
-        op2.authorize(pi, PAYMENT_AMOUNT, address(collector), "", "");
+        op2.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
 
         // Permanently freeze
         vm.prank(payer);
@@ -294,7 +294,7 @@ contract FreezeEscrowBoundaryFuzzTest is Test {
         vm.prank(payer);
         collector.preApprove(paymentInfo);
 
-        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
         return paymentInfo;
     }

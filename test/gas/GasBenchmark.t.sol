@@ -266,7 +266,7 @@ contract GasBenchmark is Test {
         collector.preApprove(pi);
 
         uint256 gasBefore = gasleft();
-        bareOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "", "");
+        bareOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== BARE COMMERCE PAYMENTS ===");
@@ -278,7 +278,7 @@ contract GasBenchmark is Test {
 
         vm.prank(payer);
         collector.preApprove(pi);
-        bareOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "", "");
+        bareOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
 
         vm.prank(receiver);
         uint256 gasBefore = gasleft();
@@ -296,7 +296,7 @@ contract GasBenchmark is Test {
         collector.preApprove(pi);
 
         uint256 gasBefore = gasleft();
-        bareOperator.charge(pi, PAYMENT_AMOUNT, address(collector), "", "");
+        bareOperator.charge(pi, PAYMENT_AMOUNT, address(collector), "");
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== BARE COMMERCE PAYMENTS ===");
@@ -314,7 +314,7 @@ contract GasBenchmark is Test {
         collector.preApprove(pi);
 
         uint256 gasBefore = gasleft();
-        feesOnlyOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "", "");
+        feesOnlyOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== FEES ONLY ===");
@@ -326,7 +326,7 @@ contract GasBenchmark is Test {
 
         vm.prank(payer);
         collector.preApprove(pi);
-        feesOnlyOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "", "");
+        feesOnlyOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
 
         vm.prank(receiver);
         uint256 gasBefore = gasleft();
@@ -348,7 +348,7 @@ contract GasBenchmark is Test {
         collector.preApprove(pi);
 
         uint256 gasBefore = gasleft();
-        simpleOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "", "");
+        simpleOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== SIMPLE CONDITIONS ===");
@@ -360,7 +360,7 @@ contract GasBenchmark is Test {
 
         vm.prank(payer);
         collector.preApprove(pi);
-        simpleOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "", "");
+        simpleOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
 
         vm.prank(receiver);
         uint256 gasBefore = gasleft();
@@ -383,7 +383,7 @@ contract GasBenchmark is Test {
         vm.prank(payer);
         collector.preApprove(pi1);
         uint256 g1 = gasleft();
-        fullOperator.authorize(pi1, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi1, PAYMENT_AMOUNT, address(collector), "");
         uint256 coldGas = g1 - gasleft();
 
         // Warm: second authorize on same operator in the same transaction.
@@ -394,7 +394,7 @@ contract GasBenchmark is Test {
         vm.prank(payer);
         collector.preApprove(pi2);
         uint256 g2 = gasleft();
-        fullOperator.authorize(pi2, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi2, PAYMENT_AMOUNT, address(collector), "");
         uint256 warmGas = g2 - gasleft();
 
         console.log("=== AUTHORIZE COLD vs WARM ===");
@@ -407,14 +407,14 @@ contract GasBenchmark is Test {
         vm.prank(payer);
         collector.preApprove(piBare1);
         uint256 g3 = gasleft();
-        bareOperator.authorize(piBare1, PAYMENT_AMOUNT, address(collector), "", "");
+        bareOperator.authorize(piBare1, PAYMENT_AMOUNT, address(collector), "");
         uint256 bareColdGas = g3 - gasleft();
 
         AuthCaptureEscrow.PaymentInfo memory piBare2 = _createPaymentInfo(address(bareOperator), 0, 81);
         vm.prank(payer);
         collector.preApprove(piBare2);
         uint256 g4 = gasleft();
-        bareOperator.authorize(piBare2, PAYMENT_AMOUNT, address(collector), "", "");
+        bareOperator.authorize(piBare2, PAYMENT_AMOUNT, address(collector), "");
         uint256 bareWarmGas = g4 - gasleft();
 
         console.log("bare cold:", bareColdGas);
@@ -429,7 +429,7 @@ contract GasBenchmark is Test {
         collector.preApprove(pi);
 
         uint256 gasBefore = gasleft();
-        fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== x402r HAPPY PATH ===");
@@ -441,7 +441,7 @@ contract GasBenchmark is Test {
 
         vm.prank(payer);
         collector.preApprove(pi);
-        fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
 
         // Warp past escrow period
         vm.warp(block.timestamp + ESCROW_PERIOD_DURATION + 1);
@@ -460,7 +460,7 @@ contract GasBenchmark is Test {
 
         vm.prank(payer);
         collector.preApprove(pi);
-        fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
         vm.warp(block.timestamp + ESCROW_PERIOD_DURATION + 1);
         vm.prank(receiver);
         fullOperator.release(pi, PAYMENT_AMOUNT, "");
@@ -482,7 +482,7 @@ contract GasBenchmark is Test {
 
         vm.prank(payer);
         collector.preApprove(pi);
-        fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
 
         vm.prank(payer);
         uint256 gasBefore = gasleft();
@@ -498,7 +498,7 @@ contract GasBenchmark is Test {
 
         vm.prank(payer);
         collector.preApprove(pi);
-        fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
 
         vm.prank(payer);
         uint256 gasBefore = gasleft();
@@ -514,7 +514,7 @@ contract GasBenchmark is Test {
 
         vm.prank(payer);
         collector.preApprove(pi);
-        fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
 
         vm.prank(payer);
         refundRequest.requestRefund(pi, uint120(PAYMENT_AMOUNT), 0);
@@ -533,7 +533,7 @@ contract GasBenchmark is Test {
 
         vm.prank(payer);
         collector.preApprove(pi);
-        fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
 
         vm.prank(payer);
         refundRequest.requestRefund(pi, uint120(PAYMENT_AMOUNT), 0);
@@ -552,7 +552,7 @@ contract GasBenchmark is Test {
 
         vm.prank(payer);
         collector.preApprove(pi);
-        fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
 
         uint256 gasBefore = gasleft();
         fullOperator.refundInEscrow(pi, uint120(PAYMENT_AMOUNT), "");
@@ -567,7 +567,7 @@ contract GasBenchmark is Test {
 
         vm.prank(payer);
         collector.preApprove(pi);
-        fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
 
         vm.warp(block.timestamp + ESCROW_PERIOD_DURATION + 1);
         vm.prank(receiver);
@@ -577,7 +577,7 @@ contract GasBenchmark is Test {
         uint256 netAmount = PAYMENT_AMOUNT - (PAYMENT_AMOUNT * TOTAL_BPS) / 10000;
 
         uint256 gasBefore = gasleft();
-        fullOperator.refundPostEscrow(pi, netAmount, address(refundCollector), "", "");
+        fullOperator.refundPostEscrow(pi, netAmount, address(refundCollector), "");
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== x402r UNHAPPY PATH ===");
@@ -595,11 +595,11 @@ contract GasBenchmark is Test {
 
         vm.prank(payer);
         collector.preApprove(pi1);
-        fullOperator.authorize(pi1, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi1, PAYMENT_AMOUNT, address(collector), "");
 
         vm.prank(payer);
         collector.preApprove(pi2);
-        fullOperator.authorize(pi2, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi2, PAYMENT_AMOUNT, address(collector), "");
 
         vm.warp(block.timestamp + ESCROW_PERIOD_DURATION + 1);
 
@@ -630,12 +630,12 @@ contract GasBenchmark is Test {
         AuthCaptureEscrow.PaymentInfo memory pi1 = _createPaymentInfo(address(fullOperator), TOTAL_BPS, 62);
         vm.prank(payer);
         collector.preApprove(pi1);
-        fullOperator.authorize(pi1, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi1, PAYMENT_AMOUNT, address(collector), "");
 
         AuthCaptureEscrow.PaymentInfo memory pi2 = _createPaymentInfo(address(escrowOnlyOperator), TOTAL_BPS, 63);
         vm.prank(payer);
         collector.preApprove(pi2);
-        escrowOnlyOperator.authorize(pi2, PAYMENT_AMOUNT, address(collector), "", "");
+        escrowOnlyOperator.authorize(pi2, PAYMENT_AMOUNT, address(collector), "");
 
         vm.warp(block.timestamp + ESCROW_PERIOD_DURATION + 1);
 
@@ -670,11 +670,11 @@ contract GasBenchmark is Test {
 
         vm.prank(payer);
         collector.preApprove(pi1);
-        fullOperator.authorize(pi1, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi1, PAYMENT_AMOUNT, address(collector), "");
 
         vm.prank(payer);
         collector.preApprove(pi2);
-        fullOperator.authorize(pi2, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi2, PAYMENT_AMOUNT, address(collector), "");
 
         // Cold freeze
         vm.prank(payer);
@@ -700,11 +700,11 @@ contract GasBenchmark is Test {
 
         vm.prank(payer);
         collector.preApprove(pi1);
-        fullOperator.authorize(pi1, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi1, PAYMENT_AMOUNT, address(collector), "");
 
         vm.prank(payer);
         collector.preApprove(pi2);
-        fullOperator.authorize(pi2, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi2, PAYMENT_AMOUNT, address(collector), "");
 
         // Cold requestRefund
         vm.prank(payer);
@@ -730,13 +730,13 @@ contract GasBenchmark is Test {
 
         vm.prank(payer);
         collector.preApprove(pi1);
-        fullOperator.authorize(pi1, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi1, PAYMENT_AMOUNT, address(collector), "");
         vm.prank(payer);
         refundRequest.requestRefund(pi1, uint120(PAYMENT_AMOUNT), 0);
 
         vm.prank(payer);
         collector.preApprove(pi2);
-        fullOperator.authorize(pi2, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi2, PAYMENT_AMOUNT, address(collector), "");
         vm.prank(payer);
         refundRequest.requestRefund(pi2, uint120(PAYMENT_AMOUNT), 0);
 
@@ -764,13 +764,13 @@ contract GasBenchmark is Test {
 
         vm.prank(payer);
         collector.preApprove(pi1);
-        fullOperator.authorize(pi1, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi1, PAYMENT_AMOUNT, address(collector), "");
         vm.prank(payer);
         refundRequest.requestRefund(pi1, uint120(PAYMENT_AMOUNT), 0);
 
         vm.prank(payer);
         collector.preApprove(pi2);
-        fullOperator.authorize(pi2, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi2, PAYMENT_AMOUNT, address(collector), "");
         vm.prank(payer);
         refundRequest.requestRefund(pi2, uint120(PAYMENT_AMOUNT), 0);
 
@@ -798,11 +798,11 @@ contract GasBenchmark is Test {
 
         vm.prank(payer);
         collector.preApprove(pi1);
-        fullOperator.authorize(pi1, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi1, PAYMENT_AMOUNT, address(collector), "");
 
         vm.prank(payer);
         collector.preApprove(pi2);
-        fullOperator.authorize(pi2, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi2, PAYMENT_AMOUNT, address(collector), "");
 
         // Cold refundInEscrow
         uint256 g1 = gasleft();
@@ -826,11 +826,11 @@ contract GasBenchmark is Test {
 
         vm.prank(payer);
         collector.preApprove(pi1);
-        fullOperator.authorize(pi1, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi1, PAYMENT_AMOUNT, address(collector), "");
 
         vm.prank(payer);
         collector.preApprove(pi2);
-        fullOperator.authorize(pi2, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi2, PAYMENT_AMOUNT, address(collector), "");
 
         vm.warp(block.timestamp + ESCROW_PERIOD_DURATION + 1);
 
@@ -843,12 +843,12 @@ contract GasBenchmark is Test {
 
         // Cold refundPostEscrow
         uint256 g1 = gasleft();
-        fullOperator.refundPostEscrow(pi1, netAmount, address(refundCollector), "", "");
+        fullOperator.refundPostEscrow(pi1, netAmount, address(refundCollector), "");
         uint256 coldGas = g1 - gasleft();
 
         // Warm refundPostEscrow
         uint256 g2 = gasleft();
-        fullOperator.refundPostEscrow(pi2, netAmount, address(refundCollector), "", "");
+        fullOperator.refundPostEscrow(pi2, netAmount, address(refundCollector), "");
         uint256 warmGas = g2 - gasleft();
 
         console.log("=== REFUND POST ESCROW COLD vs WARM ===");
@@ -867,28 +867,28 @@ contract GasBenchmark is Test {
         vm.prank(payer);
         collector.preApprove(piBare1);
         uint256 g1 = gasleft();
-        bareOperator.authorize(piBare1, PAYMENT_AMOUNT, address(collector), "", "");
+        bareOperator.authorize(piBare1, PAYMENT_AMOUNT, address(collector), "");
         uint256 bareCold = g1 - gasleft();
 
         AuthCaptureEscrow.PaymentInfo memory piFees1 = _createPaymentInfo(address(feesOnlyOperator), TOTAL_BPS, 91);
         vm.prank(payer);
         collector.preApprove(piFees1);
         uint256 g2 = gasleft();
-        feesOnlyOperator.authorize(piFees1, PAYMENT_AMOUNT, address(collector), "", "");
+        feesOnlyOperator.authorize(piFees1, PAYMENT_AMOUNT, address(collector), "");
         uint256 feesCold = g2 - gasleft();
 
         AuthCaptureEscrow.PaymentInfo memory piEscrow1 = _createPaymentInfo(address(escrowOnlyOperator), TOTAL_BPS, 92);
         vm.prank(payer);
         collector.preApprove(piEscrow1);
         uint256 g3 = gasleft();
-        escrowOnlyOperator.authorize(piEscrow1, PAYMENT_AMOUNT, address(collector), "", "");
+        escrowOnlyOperator.authorize(piEscrow1, PAYMENT_AMOUNT, address(collector), "");
         uint256 escrowCold = g3 - gasleft();
 
         AuthCaptureEscrow.PaymentInfo memory piFull1 = _createPaymentInfo(address(fullOperator), TOTAL_BPS, 93);
         vm.prank(payer);
         collector.preApprove(piFull1);
         uint256 g4 = gasleft();
-        fullOperator.authorize(piFull1, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(piFull1, PAYMENT_AMOUNT, address(collector), "");
         uint256 fullCold = g4 - gasleft();
 
         // --- WARM PASS (second call to each operator, contracts cached) ---
@@ -896,28 +896,28 @@ contract GasBenchmark is Test {
         vm.prank(payer);
         collector.preApprove(piBare2);
         uint256 g5 = gasleft();
-        bareOperator.authorize(piBare2, PAYMENT_AMOUNT, address(collector), "", "");
+        bareOperator.authorize(piBare2, PAYMENT_AMOUNT, address(collector), "");
         uint256 bareWarm = g5 - gasleft();
 
         AuthCaptureEscrow.PaymentInfo memory piFees2 = _createPaymentInfo(address(feesOnlyOperator), TOTAL_BPS, 95);
         vm.prank(payer);
         collector.preApprove(piFees2);
         uint256 g6 = gasleft();
-        feesOnlyOperator.authorize(piFees2, PAYMENT_AMOUNT, address(collector), "", "");
+        feesOnlyOperator.authorize(piFees2, PAYMENT_AMOUNT, address(collector), "");
         uint256 feesWarm = g6 - gasleft();
 
         AuthCaptureEscrow.PaymentInfo memory piEscrow2 = _createPaymentInfo(address(escrowOnlyOperator), TOTAL_BPS, 96);
         vm.prank(payer);
         collector.preApprove(piEscrow2);
         uint256 g7 = gasleft();
-        escrowOnlyOperator.authorize(piEscrow2, PAYMENT_AMOUNT, address(collector), "", "");
+        escrowOnlyOperator.authorize(piEscrow2, PAYMENT_AMOUNT, address(collector), "");
         uint256 escrowWarm = g7 - gasleft();
 
         AuthCaptureEscrow.PaymentInfo memory piFull2 = _createPaymentInfo(address(fullOperator), TOTAL_BPS, 97);
         vm.prank(payer);
         collector.preApprove(piFull2);
         uint256 g8 = gasleft();
-        fullOperator.authorize(piFull2, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(piFull2, PAYMENT_AMOUNT, address(collector), "");
         uint256 fullWarm = g8 - gasleft();
 
         console.log("=== AUTHORIZE OVERHEAD COLD vs WARM ===");
@@ -946,38 +946,38 @@ contract GasBenchmark is Test {
 
         vm.prank(payer);
         collector.preApprove(piBare1);
-        bareOperator.authorize(piBare1, PAYMENT_AMOUNT, address(collector), "", "");
+        bareOperator.authorize(piBare1, PAYMENT_AMOUNT, address(collector), "");
         vm.prank(payer);
         collector.preApprove(piBare2);
-        bareOperator.authorize(piBare2, PAYMENT_AMOUNT, address(collector), "", "");
+        bareOperator.authorize(piBare2, PAYMENT_AMOUNT, address(collector), "");
 
         vm.prank(payer);
         collector.preApprove(piFees1);
-        feesOnlyOperator.authorize(piFees1, PAYMENT_AMOUNT, address(collector), "", "");
+        feesOnlyOperator.authorize(piFees1, PAYMENT_AMOUNT, address(collector), "");
         vm.prank(payer);
         collector.preApprove(piFees2);
-        feesOnlyOperator.authorize(piFees2, PAYMENT_AMOUNT, address(collector), "", "");
+        feesOnlyOperator.authorize(piFees2, PAYMENT_AMOUNT, address(collector), "");
 
         vm.prank(payer);
         collector.preApprove(piSimple1);
-        simpleOperator.authorize(piSimple1, PAYMENT_AMOUNT, address(collector), "", "");
+        simpleOperator.authorize(piSimple1, PAYMENT_AMOUNT, address(collector), "");
         vm.prank(payer);
         collector.preApprove(piSimple2);
-        simpleOperator.authorize(piSimple2, PAYMENT_AMOUNT, address(collector), "", "");
+        simpleOperator.authorize(piSimple2, PAYMENT_AMOUNT, address(collector), "");
 
         vm.prank(payer);
         collector.preApprove(piEscrow1);
-        escrowOnlyOperator.authorize(piEscrow1, PAYMENT_AMOUNT, address(collector), "", "");
+        escrowOnlyOperator.authorize(piEscrow1, PAYMENT_AMOUNT, address(collector), "");
         vm.prank(payer);
         collector.preApprove(piEscrow2);
-        escrowOnlyOperator.authorize(piEscrow2, PAYMENT_AMOUNT, address(collector), "", "");
+        escrowOnlyOperator.authorize(piEscrow2, PAYMENT_AMOUNT, address(collector), "");
 
         vm.prank(payer);
         collector.preApprove(piFull1);
-        fullOperator.authorize(piFull1, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(piFull1, PAYMENT_AMOUNT, address(collector), "");
         vm.prank(payer);
         collector.preApprove(piFull2);
-        fullOperator.authorize(piFull2, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(piFull2, PAYMENT_AMOUNT, address(collector), "");
 
         vm.warp(block.timestamp + ESCROW_PERIOD_DURATION + 1);
 
@@ -1056,7 +1056,7 @@ contract GasBenchmark is Test {
         vm.prank(payer);
         collector.preApprove(piBare);
         uint256 g1 = gasleft();
-        bareOperator.authorize(piBare, PAYMENT_AMOUNT, address(collector), "", "");
+        bareOperator.authorize(piBare, PAYMENT_AMOUNT, address(collector), "");
         uint256 bareGas = g1 - gasleft();
 
         // Fees only (no conditions, no recorders)
@@ -1064,7 +1064,7 @@ contract GasBenchmark is Test {
         vm.prank(payer);
         collector.preApprove(piFees);
         uint256 g2 = gasleft();
-        feesOnlyOperator.authorize(piFees, PAYMENT_AMOUNT, address(collector), "", "");
+        feesOnlyOperator.authorize(piFees, PAYMENT_AMOUNT, address(collector), "");
         uint256 feesGas = g2 - gasleft();
 
         // Escrow-only (fees + EscrowPeriod recorder)
@@ -1072,7 +1072,7 @@ contract GasBenchmark is Test {
         vm.prank(payer);
         collector.preApprove(piEscrow);
         uint256 g3 = gasleft();
-        escrowOnlyOperator.authorize(piEscrow, PAYMENT_AMOUNT, address(collector), "", "");
+        escrowOnlyOperator.authorize(piEscrow, PAYMENT_AMOUNT, address(collector), "");
         uint256 escrowGas = g3 - gasleft();
 
         // Full (fees + EscrowPeriod recorder — same as escrow-only for authorize)
@@ -1080,7 +1080,7 @@ contract GasBenchmark is Test {
         vm.prank(payer);
         collector.preApprove(piFull);
         uint256 g4 = gasleft();
-        fullOperator.authorize(piFull, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(piFull, PAYMENT_AMOUNT, address(collector), "");
         uint256 fullGas = g4 - gasleft();
 
         console.log("=== AUTHORIZE OVERHEAD ===");
@@ -1101,31 +1101,31 @@ contract GasBenchmark is Test {
         AuthCaptureEscrow.PaymentInfo memory piBare = _createPaymentInfo(address(bareOperator), 0, 34);
         vm.prank(payer);
         collector.preApprove(piBare);
-        bareOperator.authorize(piBare, PAYMENT_AMOUNT, address(collector), "", "");
+        bareOperator.authorize(piBare, PAYMENT_AMOUNT, address(collector), "");
 
         // Fees only
         AuthCaptureEscrow.PaymentInfo memory piFees = _createPaymentInfo(address(feesOnlyOperator), TOTAL_BPS, 35);
         vm.prank(payer);
         collector.preApprove(piFees);
-        feesOnlyOperator.authorize(piFees, PAYMENT_AMOUNT, address(collector), "", "");
+        feesOnlyOperator.authorize(piFees, PAYMENT_AMOUNT, address(collector), "");
 
         // Simple (fees + ReceiverCondition)
         AuthCaptureEscrow.PaymentInfo memory piSimple = _createPaymentInfo(address(simpleOperator), TOTAL_BPS, 36);
         vm.prank(payer);
         collector.preApprove(piSimple);
-        simpleOperator.authorize(piSimple, PAYMENT_AMOUNT, address(collector), "", "");
+        simpleOperator.authorize(piSimple, PAYMENT_AMOUNT, address(collector), "");
 
         // Escrow-only (fees + EscrowPeriod condition, no Freeze)
         AuthCaptureEscrow.PaymentInfo memory piEscrow = _createPaymentInfo(address(escrowOnlyOperator), TOTAL_BPS, 37);
         vm.prank(payer);
         collector.preApprove(piEscrow);
-        escrowOnlyOperator.authorize(piEscrow, PAYMENT_AMOUNT, address(collector), "", "");
+        escrowOnlyOperator.authorize(piEscrow, PAYMENT_AMOUNT, address(collector), "");
 
         // Full (EscrowPeriod + Freeze via AndCondition + fees)
         AuthCaptureEscrow.PaymentInfo memory piFull = _createPaymentInfo(address(fullOperator), TOTAL_BPS, 38);
         vm.prank(payer);
         collector.preApprove(piFull);
-        fullOperator.authorize(piFull, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(piFull, PAYMENT_AMOUNT, address(collector), "");
 
         // Warp past escrow period (needed for escrow-only and full operators)
         vm.warp(block.timestamp + ESCROW_PERIOD_DURATION + 1);
@@ -1186,7 +1186,7 @@ contract GasBenchmark is Test {
 
         // authorize
         uint256 g1 = gasleft();
-        fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
         uint256 authorizeGas = g1 - gasleft();
 
         // warp + release
@@ -1217,7 +1217,7 @@ contract GasBenchmark is Test {
         vm.prank(payer);
         collector.preApprove(pi);
         uint256 g1 = gasleft();
-        fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "", "");
+        fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
         uint256 authorizeGas = g1 - gasleft();
 
         // freeze
@@ -1257,7 +1257,7 @@ contract GasBenchmark is Test {
         // refundPostEscrow
         uint256 netAmount = PAYMENT_AMOUNT - (PAYMENT_AMOUNT * TOTAL_BPS) / 10000;
         uint256 g7 = gasleft();
-        fullOperator.refundPostEscrow(pi, netAmount, address(refundCollector), "", "");
+        fullOperator.refundPostEscrow(pi, netAmount, address(refundCollector), "");
         uint256 refundGas = g7 - gasleft();
 
         uint256 total = authorizeGas + freezeGas + releaseGas + requestGas + evidenceGas + denyGas + refundGas;

@@ -100,7 +100,7 @@ contract WeirdTokensTest is Test {
         // Attempt authorization - should revert because balance check fails
         // Fee token takes 1% fee, so only 99% arrives but we expect 100%
         vm.expectRevert(AuthCaptureEscrow.TokenCollectionFailed.selector);
-        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
     }
 
     function test_FeeOnTransferToken_ChargeRejected() public {
@@ -117,7 +117,7 @@ contract WeirdTokensTest is Test {
 
         // Attempt charge - should revert for same reason
         vm.expectRevert(AuthCaptureEscrow.TokenCollectionFailed.selector);
-        operator.charge(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
+        operator.charge(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
     }
 
     function test_FeeOnTransferToken_VerifyFeeAmount() public view {
@@ -145,7 +145,7 @@ contract WeirdTokensTest is Test {
         collector.preApprove(paymentInfo);
 
         // Initial authorization should work (no rebase yet)
-        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
         // Verify authorization
         bytes32 hash = escrow.getHash(paymentInfo);
@@ -167,7 +167,7 @@ contract WeirdTokensTest is Test {
         vm.prank(payer);
         collector.preApprove(paymentInfo);
 
-        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
         // Get token store address
         address tokenStore = escrow.getTokenStore(address(operator));
@@ -205,7 +205,7 @@ contract WeirdTokensTest is Test {
         vm.prank(payer);
         collector.preApprove(paymentInfo);
 
-        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
         // Get token store address
         address tokenStore = escrow.getTokenStore(address(operator));
@@ -251,7 +251,7 @@ contract WeirdTokensTest is Test {
         collector.preApprove(paymentInfo);
 
         // 1. Authorize 1000 tokens
-        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
         // 2. Positive rebase to 1100 tokens in escrow
         rebaseToken.rebase(1.1e18);

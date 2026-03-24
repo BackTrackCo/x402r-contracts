@@ -58,7 +58,7 @@ contract RecorderCoverageTest is Test {
 
         vm.prank(payer);
         collector.preApprove(paymentInfo);
-        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
+        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
         uint256 authTime = timeRecorder.getAuthorizationTime(paymentInfo);
         assertEq(authTime, block.timestamp, "Auth time should be current timestamp");
@@ -79,7 +79,7 @@ contract RecorderCoverageTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), 2);
         vm.prank(payer);
         collector.preApprove(paymentInfo);
-        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
+        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
         assertEq(indexRecorder.payerPaymentCount(payer), 1, "Payer should have 1 payment");
         assertEq(indexRecorder.receiverPaymentCount(receiver), 1, "Receiver should have 1 payment");
@@ -94,7 +94,7 @@ contract RecorderCoverageTest is Test {
             AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), 100 + i);
             vm.prank(payer);
             collector.preApprove(paymentInfo);
-            op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
+            op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
         }
 
         // Get page 1 (offset 0, count 2)
@@ -121,7 +121,7 @@ contract RecorderCoverageTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), 3);
         vm.prank(payer);
         collector.preApprove(paymentInfo);
-        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
+        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
         (AuthCaptureEscrow.PaymentInfo[] memory records, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 0);
         assertEq(total, 1, "Total should be 1");
@@ -141,7 +141,7 @@ contract RecorderCoverageTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), 4);
         vm.prank(payer);
         collector.preApprove(paymentInfo);
-        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
+        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
         (AuthCaptureEscrow.PaymentInfo[] memory records, uint256 total) =
             indexRecorder.getReceiverPayments(receiver, 0, 10);

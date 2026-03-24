@@ -100,7 +100,7 @@ contract EscrowPeriodConditionInvariants is Test {
         vm.prank(payer);
         collector.preApprove(paymentInfo);
 
-        try operator.authorize(paymentInfo, amount, address(collector), "", "") {
+        try operator.authorize(paymentInfo, amount, address(collector), "") {
             bytes32 hash = escrow.getHash(paymentInfo);
             trackedHashes.push(hash);
             authTimes[hash] = block.timestamp;

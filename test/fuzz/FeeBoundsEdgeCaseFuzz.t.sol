@@ -64,7 +64,7 @@ contract FeeBoundsEdgeCaseFuzzTest is Test {
         vm.startPrank(payer);
         collector.preApprove(paymentInfo);
         vm.expectRevert(abi.encodeWithSelector(FeeBoundsIncompatible.selector, uint16(totalBps), minFeeBps, maxFeeBps));
-        op.authorize(paymentInfo, amount, address(collector), "", "");
+        op.authorize(paymentInfo, amount, address(collector), "");
         vm.stopPrank();
     }
 
@@ -86,7 +86,7 @@ contract FeeBoundsEdgeCaseFuzzTest is Test {
         vm.startPrank(payer);
         collector.preApprove(paymentInfo);
         vm.expectRevert(abi.encodeWithSelector(FeeBoundsIncompatible.selector, uint16(totalBps), minFeeBps, maxFeeBps));
-        op.authorize(paymentInfo, amount, address(collector), "", "");
+        op.authorize(paymentInfo, amount, address(collector), "");
         vm.stopPrank();
     }
 
@@ -107,7 +107,7 @@ contract FeeBoundsEdgeCaseFuzzTest is Test {
 
         vm.startPrank(payer);
         collector.preApprove(paymentInfo);
-        op.authorize(paymentInfo, amount, address(collector), "", "");
+        op.authorize(paymentInfo, amount, address(collector), "");
         vm.stopPrank();
 
         // Verify authorization succeeded by checking escrow state
@@ -136,7 +136,7 @@ contract FeeBoundsEdgeCaseFuzzTest is Test {
         vm.startPrank(payer);
         collector.preApprove(paymentInfo);
         vm.expectRevert(abi.encodeWithSelector(FeeBoundsIncompatible.selector, uint16(totalBps), minFeeBps, maxFeeBps));
-        op.charge(paymentInfo, amount, address(collector), "", "");
+        op.charge(paymentInfo, amount, address(collector), "");
         vm.stopPrank();
     }
 
@@ -153,7 +153,7 @@ contract FeeBoundsEdgeCaseFuzzTest is Test {
         vm.startPrank(payer);
         collector.preApprove(paymentInfo);
         vm.expectRevert(abi.encodeWithSelector(FeeBoundsIncompatible.selector, uint16(0), minFeeBps, minFeeBps));
-        op.authorize(paymentInfo, amount, address(collector), "", "");
+        op.authorize(paymentInfo, amount, address(collector), "");
         vm.stopPrank();
     }
 
@@ -194,7 +194,7 @@ contract FeeBoundsEdgeCaseFuzzTest is Test {
 
         vm.startPrank(payer);
         collector.preApprove(paymentInfo);
-        op.authorize(paymentInfo, amount, address(collector), "", "");
+        op.authorize(paymentInfo, amount, address(collector), "");
         vm.stopPrank();
 
         bytes32 hash = escrow.getHash(paymentInfo);

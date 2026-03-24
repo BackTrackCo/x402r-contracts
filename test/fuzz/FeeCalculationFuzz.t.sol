@@ -204,7 +204,7 @@ contract FeeCalculationFuzzTest is Test {
     {
         vm.startPrank(payer);
         collector.preApprove(paymentInfo);
-        op.authorize(paymentInfo, amount, address(collector), "", "");
+        op.authorize(paymentInfo, amount, address(collector), "");
         vm.stopPrank();
     }
 }

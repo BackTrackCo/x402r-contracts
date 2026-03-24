@@ -75,7 +75,7 @@ contract PaymentOperatorHandler is Test {
 
         vm.startPrank(payer);
         collector.preApprove(paymentInfo);
-        try operator.authorize(paymentInfo, amount, address(collector), "", "") {
+        try operator.authorize(paymentInfo, amount, address(collector), "") {
             bytes32 hash = escrow.getHash(paymentInfo);
             ghost_paymentHashes.push(hash);
             ghost_authorizedAmounts[hash] = amount;

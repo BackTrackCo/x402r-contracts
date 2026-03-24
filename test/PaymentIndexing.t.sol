@@ -455,14 +455,14 @@ contract PaymentIndexingTest is Test {
 
         vm.startPrank(_payer);
         collector.preApprove(paymentInfo);
-        operator.authorize(paymentInfo, amount, address(collector), "", "");
+        operator.authorize(paymentInfo, amount, address(collector), "");
         vm.stopPrank();
     }
 
     function _authorizePaymentWithInfo(AuthCaptureEscrow.PaymentInfo memory paymentInfo) internal {
         vm.startPrank(paymentInfo.payer);
         collector.preApprove(paymentInfo);
-        operator.authorize(paymentInfo, paymentInfo.maxAmount, address(collector), "", "");
+        operator.authorize(paymentInfo, paymentInfo.maxAmount, address(collector), "");
         vm.stopPrank();
     }
 }

@@ -65,7 +65,7 @@ contract MaliciousRecorder is IRecorder {
         } else if (attackType == AttackType.REENTER_DIFFERENT_FUNCTION && reentrancyCount <= maxReentrancy) {
             // Try to call a different function during callback
             // Create a new payment for refund attempt
-            try targetOperator.refundPostEscrow(paymentInfo, uint120(amount), address(0), "", "") {
+            try targetOperator.refundPostEscrow(paymentInfo, uint120(amount), address(0), "") {
             // If this succeeds when it shouldn't, it's a vulnerability
             }
                 catch {

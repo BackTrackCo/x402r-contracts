@@ -90,7 +90,7 @@ contract EscrowPeriodConditionTest is Test {
         vm.prank(payer);
         collector.preApprove(paymentInfo);
 
-        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
         vm.prank(receiver);
         vm.expectRevert();
@@ -103,7 +103,7 @@ contract EscrowPeriodConditionTest is Test {
         vm.prank(payer);
         collector.preApprove(paymentInfo);
 
-        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
         vm.warp(block.timestamp + ESCROW_PERIOD + 1);
 
@@ -147,7 +147,7 @@ contract EscrowPeriodConditionTest is Test {
         vm.prank(payer);
         collector.preApprove(paymentInfo);
 
-        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "", "");
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
         return paymentInfo;
     }
