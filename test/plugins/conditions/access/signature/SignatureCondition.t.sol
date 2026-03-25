@@ -55,7 +55,7 @@ contract SignatureConditionTest is Test {
         protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
 
         // Deploy operator factory and operator with sigCondition as refund condition
-        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
+        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), false);
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeRecipient: protocolFeeRecipient,
             feeCalculator: address(0),

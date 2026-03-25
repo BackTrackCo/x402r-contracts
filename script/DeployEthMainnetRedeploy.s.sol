@@ -49,7 +49,7 @@ contract DeployEthMainnetRedeploy is Script {
         vm.startBroadcast();
 
         // --- Singletons ---
-        PaymentOperatorFactory paymentOperatorFactory = new PaymentOperatorFactory(ESCROW, PROTOCOL_FEE_CONFIG);
+        PaymentOperatorFactory paymentOperatorFactory = new PaymentOperatorFactory(ESCROW, PROTOCOL_FEE_CONFIG, false);
         console.log("PaymentOperatorFactory:", address(paymentOperatorFactory));
 
         SignatureConditionFactory sigCondFactory = new SignatureConditionFactory();

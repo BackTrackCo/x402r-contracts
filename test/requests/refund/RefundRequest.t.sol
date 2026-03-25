@@ -46,14 +46,14 @@ contract RefundRequestTest is Test {
         collector = new PreApprovalPaymentCollector(address(escrow));
 
         // Deploy RefundRequest with arbiter
-        refundRequest = new RefundRequest(arbiter);
+        refundRequest = new RefundRequest(arbiter, false);
 
         // Deploy StaticAddressCondition pointing to refundRequest
         staticCondition = new StaticAddressCondition(address(refundRequest));
 
         // Deploy operator with staticCondition as refund condition
         protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
-        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
+        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), false);
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeRecipient: protocolFeeRecipient,
             feeCalculator: address(0),
@@ -105,7 +105,7 @@ contract RefundRequestTest is Test {
 
     function test_constructor_zeroArbiter() public {
         vm.expectRevert(RefundRequest.ZeroArbiter.selector);
-        new RefundRequest(address(0));
+        new RefundRequest(address(0), false);
     }
 
     function test_constructor_setsArbiter() public view {
@@ -755,7 +755,7 @@ contract RefundRequestFactoryTest is Test {
     address public arbiter2;
 
     function setUp() public {
-        factory = new RefundRequestFactory();
+        factory = new RefundRequestFactory(false);
         arbiter1 = makeAddr("arbiter1");
         arbiter2 = makeAddr("arbiter2");
     }

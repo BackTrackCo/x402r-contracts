@@ -37,7 +37,7 @@ contract ReentrancyAttackTest is Test {
         token = new MockERC20("Test Token", "TEST");
         collector = new PreApprovalPaymentCollector(address(escrow));
         protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
-        factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
+        factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), false);
 
         token.mint(payer, INITIAL_BALANCE);
         token.mint(receiver, INITIAL_BALANCE);

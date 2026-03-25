@@ -48,6 +48,4 @@ event RefundPostEscrowExecuted(
 event FeesDistributed(address indexed token, uint256 protocolAmount, uint256 arbiterAmount);
 
 // ============ Factory Events ============
-event OperatorDeployed(
-    address indexed operator, address indexed deployer, address indexed feeRecipient, uint256 deployerIndex
-);
+event OperatorDeployed(address indexed operator, address indexed deployer, address indexed feeRecipient);

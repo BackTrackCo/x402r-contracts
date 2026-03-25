@@ -21,7 +21,7 @@ contract DeployRefundRequestFactory is Script {
 
         console.log("=== Deploying RefundRequestFactory ===");
 
-        RefundRequestFactory factory = new RefundRequestFactory();
+        RefundRequestFactory factory = new RefundRequestFactory(false);
         console.log("RefundRequestFactory:", address(factory));
 
         vm.stopBroadcast();

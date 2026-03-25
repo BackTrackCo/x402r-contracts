@@ -101,10 +101,10 @@ contract FullLifecycleTest is Test {
         releaseCondition = new AndCondition(conditions);
 
         // Deploy RefundRequest
-        refundRequest = new RefundRequest(arbiter);
+        refundRequest = new RefundRequest(arbiter, false);
 
         // Deploy operator with full configuration
-        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
+        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), false);
 
         // Deploy StaticAddressCondition pointing to RefundRequest for refundInEscrow gating
         refundCondition = new StaticAddressCondition(address(refundRequest));

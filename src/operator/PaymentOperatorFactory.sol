@@ -10,7 +10,6 @@ import {OperatorDeployed} from "./types/Events.sol";
  * @title PaymentOperatorFactory
  * @notice Factory contract that deploys PaymentOperator instances with pluggable conditions.
  *         Each unique configuration gets its own operator contract.
- *         Indexes deployed operators by deployer address for on-chain discoverability.
  *
  * @dev Condition Combinator Architecture:
  *      - Operators have 10 slots: 5 conditions (before checks) + 5 recorders (after state updates)
@@ -43,24 +42,18 @@ contract PaymentOperatorFactory {
     // Immutable configuration shared by all deployed operators
     address public immutable ESCROW;
     address public immutable PROTOCOL_FEE_CONFIG;
+    bool public immutable NON_TRANSIENT_REENTRANCY_GUARD_MODE;
 
     // keccak256(config) => operator address
     mapping(bytes32 => address) public operators;
 
-    // ============ Deployer Indexing ============
-
-    /// @notice Deployer address => index => operator address
-    mapping(address => mapping(uint256 => address)) private deployerOperators;
-
-    /// @notice Deployer address => total operator count
-    mapping(address => uint256) public deployerOperatorCount;
-
-    constructor(address _escrow, address _protocolFeeConfig) {
+    constructor(address _escrow, address _protocolFeeConfig, bool nonTransientReentrancyGuardMode_) {
         if (_escrow == address(0)) revert ZeroAddress();
         if (_protocolFeeConfig == address(0)) revert ZeroAddress();
 
         ESCROW = _escrow;
         PROTOCOL_FEE_CONFIG = _protocolFeeConfig;
+        NON_TRANSIENT_REENTRANCY_GUARD_MODE = nonTransientReentrancyGuardMode_;
     }
 
     /**
@@ -89,7 +82,6 @@ contract PaymentOperatorFactory {
      * @notice Deploy an operator with full configuration
      * @dev Idempotent - returns existing operator if already deployed.
      *      Uses CREATE2 for deterministic addresses.
-     *      Indexes the operator under msg.sender for discoverability.
      * @param config The operator configuration
      * @return operator The operator address
      * @custom:security ARBITER LOCKOUT: If releaseCondition is address(0), the receiver can
@@ -118,12 +110,7 @@ contract PaymentOperatorFactory {
         // Store before external interaction
         operators[key] = operator;
 
-        // Index by deployer
-        uint256 deployerIndex = deployerOperatorCount[msg.sender];
-        deployerOperators[msg.sender][deployerIndex] = operator;
-        deployerOperatorCount[msg.sender]++;
-
-        emit OperatorDeployed(operator, msg.sender, config.feeRecipient, deployerIndex);
+        emit OperatorDeployed(operator, msg.sender, config.feeRecipient);
 
         // ============ INTERACTIONS ============
         // Deploy new operator - address is deterministic via CREATE2
@@ -141,7 +128,12 @@ contract PaymentOperatorFactory {
         });
         address deployed = address(
             new PaymentOperator{salt: key}(
-                ESCROW, PROTOCOL_FEE_CONFIG, config.feeRecipient, config.feeCalculator, conditions
+                ESCROW,
+                PROTOCOL_FEE_CONFIG,
+                config.feeRecipient,
+                config.feeCalculator,
+                conditions,
+                NON_TRANSIENT_REENTRANCY_GUARD_MODE
             )
         );
 
@@ -150,53 +142,6 @@ contract PaymentOperatorFactory {
 
         return operator;
     }
-
-    // ============ Deployer Query Functions ============
-
-    /**
-     * @notice Get paginated list of operators deployed by an address
-     * @param deployer Address of the deployer
-     * @param offset Starting index (0-based)
-     * @param count Number of operators to return
-     * @return ops Array of operator addresses
-     * @return total Total number of operators deployed by this address
-     */
-    function getDeployerOperators(address deployer, uint256 offset, uint256 count)
-        external
-        view
-        returns (address[] memory ops, uint256 total)
-    {
-        total = deployerOperatorCount[deployer];
-
-        if (offset >= total || count == 0) {
-            return (new address[](0), total);
-        }
-
-        uint256 remaining = total - offset;
-        uint256 actualCount = remaining < count ? remaining : count;
-
-        ops = new address[](actualCount);
-        for (uint256 i = 0; i < actualCount; i++) {
-            ops[i] = deployerOperators[deployer][offset + i];
-        }
-
-        return (ops, total);
-    }
-
-    /**
-     * @notice Get a single operator address by index for a deployer
-     * @param deployer Address of the deployer
-     * @param index Index of the operator (0-based)
-     * @return Operator address at the specified index
-     */
-    function getDeployerOperator(address deployer, uint256 index) external view returns (address) {
-        if (index >= deployerOperatorCount[deployer]) revert IndexOutOfBounds();
-        return deployerOperators[deployer][index];
-    }
-
-    // ============ Errors ============
-
-    error IndexOutOfBounds();
 
     // ============ Internal Helpers ============
 
@@ -236,7 +181,14 @@ contract PaymentOperatorFactory {
 
         return abi.encodePacked(
             type(PaymentOperator).creationCode,
-            abi.encode(ESCROW, PROTOCOL_FEE_CONFIG, config.feeRecipient, config.feeCalculator, conditions)
+            abi.encode(
+                ESCROW,
+                PROTOCOL_FEE_CONFIG,
+                config.feeRecipient,
+                config.feeCalculator,
+                conditions,
+                NON_TRANSIENT_REENTRANCY_GUARD_MODE
+            )
         );
     }
 }
