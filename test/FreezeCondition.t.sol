@@ -64,7 +64,7 @@ contract FreezeConditionTest is Test {
         releaseCondition = new AndCondition(conditions);
 
         protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
-        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
+        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), false);
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeRecipient: protocolFeeRecipient,
@@ -145,7 +145,7 @@ contract FreezeConditionTest is Test {
         AndCondition relCond = new AndCondition(conds);
 
         ProtocolFeeConfig pfc2 = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
-        PaymentOperatorFactory opFactory2 = new PaymentOperatorFactory(address(escrow), address(pfc2));
+        PaymentOperatorFactory opFactory2 = new PaymentOperatorFactory(address(escrow), address(pfc2), false);
 
         PaymentOperatorFactory.OperatorConfig memory config2 = PaymentOperatorFactory.OperatorConfig({
             feeRecipient: protocolFeeRecipient,
@@ -382,7 +382,7 @@ contract FreezeConditionTest is Test {
         AndCondition relCond = new AndCondition(conds);
 
         ProtocolFeeConfig pfc2 = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
-        PaymentOperatorFactory opFactory2 = new PaymentOperatorFactory(address(escrow), address(pfc2));
+        PaymentOperatorFactory opFactory2 = new PaymentOperatorFactory(address(escrow), address(pfc2), false);
 
         PaymentOperatorFactory.OperatorConfig memory config2 = PaymentOperatorFactory.OperatorConfig({
             feeRecipient: protocolFeeRecipient,

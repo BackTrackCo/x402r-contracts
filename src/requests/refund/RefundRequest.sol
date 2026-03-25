@@ -36,6 +36,7 @@ import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} fro
 contract RefundRequest is ReentrancyGuardTransient {
     /// @notice The arbiter address that can approve, deny, and refuse refund requests
     address public immutable ARBITER;
+    bool private immutable _nonTransientReentrancyGuardMode;
 
     struct RefundRequestData {
         bytes32 paymentInfoHash;
@@ -118,9 +119,16 @@ contract RefundRequest is ReentrancyGuardTransient {
         if (paymentInfo.operator == address(0)) revert InvalidOperator();
     }
 
-    constructor(address _arbiter) {
+    /// @dev When true and chainid != 1, solady falls back to sload/sstore (pre-Cancun compatibility).
+    ///      When false, transient storage (tload/tstore) is used on all chains.
+    function _useTransientReentrancyGuardOnlyOnMainnet() internal view override returns (bool) {
+        return _nonTransientReentrancyGuardMode;
+    }
+
+    constructor(address _arbiter, bool nonTransientReentrancyGuardMode_) {
         if (_arbiter == address(0)) revert ZeroArbiter();
         ARBITER = _arbiter;
+        _nonTransientReentrancyGuardMode = nonTransientReentrancyGuardMode_;
     }
 
     // ============ Payer Actions ============

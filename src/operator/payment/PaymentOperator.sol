@@ -74,6 +74,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
     // ============ Core State ============
     AuthCaptureEscrow public immutable ESCROW;
     address public immutable FEE_RECIPIENT;
+    bool private immutable _nonTransientReentrancyGuardMode;
 
     // ============ Fee Configuration (Modular) ============
     IFeeCalculator public immutable FEE_CALCULATOR;
@@ -110,7 +111,8 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         address _protocolFeeConfig,
         address _feeRecipient,
         address _feeCalculator,
-        ConditionConfig memory _conditions
+        ConditionConfig memory _conditions,
+        bool nonTransientReentrancyGuardMode_
     ) {
         if (_escrow == address(0)) revert ZeroEscrow();
         if (_feeRecipient == address(0)) revert ZeroAddress();
@@ -118,6 +120,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
 
         ESCROW = AuthCaptureEscrow(_escrow);
         FEE_RECIPIENT = _feeRecipient;
+        _nonTransientReentrancyGuardMode = nonTransientReentrancyGuardMode_;
         PROTOCOL_FEE_CONFIG = ProtocolFeeConfig(_protocolFeeConfig);
         FEE_CALCULATOR = IFeeCalculator(_feeCalculator);
 
@@ -134,6 +137,12 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         RELEASE_RECORDER = IRecorder(_conditions.releaseRecorder);
         REFUND_IN_ESCROW_RECORDER = IRecorder(_conditions.refundInEscrowRecorder);
         REFUND_POST_ESCROW_RECORDER = IRecorder(_conditions.refundPostEscrowRecorder);
+    }
+
+    /// @dev When true and chainid != 1, solady falls back to sload/sstore (pre-Cancun compatibility).
+    ///      When false, transient storage (tload/tstore) is used on all chains.
+    function _useTransientReentrancyGuardOnlyOnMainnet() internal view override returns (bool) {
+        return _nonTransientReentrancyGuardMode;
     }
 
     // ============ Internal Fee Calculation ============

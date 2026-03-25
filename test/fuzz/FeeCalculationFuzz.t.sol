@@ -159,7 +159,7 @@ contract FeeCalculationFuzzTest is Test {
         protocolFeeConfig = new ProtocolFeeConfig(protocolCalcAddr, protocolFeeRecipient, owner);
 
         address opCalcAddr = operatorBps > 0 ? address(new StaticFeeCalculator(operatorBps)) : address(0);
-        PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
+        PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), false);
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeRecipient: operatorFeeRecipient,
