@@ -200,6 +200,10 @@ contract RefundRequest is ReentrancyGuardTransient {
     ///         Both arbiter and receiver can call. Approvals are cumulative — each call
     ///         adds `amount` to the running `approvedAmount`. The total cannot exceed
     ///         the requested amount. Reverts if funds are no longer in escrow.
+    /// @dev BREAKING CHANGE: Signature changed from `approve(PaymentInfo, uint256, uint120)` to
+    ///      `approve(PaymentInfo, uint256, uint120, bytes)` to support forwarding arbitrary data to
+    ///      the operator's conditions and recorders. SDK callers must update to pass the new
+    ///      `data` parameter (use `""` / `"0x"` for no data).
     /// @param paymentInfo PaymentInfo struct
     /// @param nonce Record index identifying which refund request
     /// @param amount Additional refund amount to approve (added to previous approvals)

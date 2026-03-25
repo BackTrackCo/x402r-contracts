@@ -279,8 +279,16 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
      * @notice Release funds to receiver
      * @dev Checks RELEASE_CONDITION, performs capture, then calls RELEASE_RECORDER.
      *      Uses fees stored at authorization time to prevent protocol fee changes from breaking capture.
+     *
+     *      BREAKING CHANGE: Signature changed from `release(PaymentInfo, uint256)` to
+     *      `release(PaymentInfo, uint256, bytes)` to support forwarding arbitrary data to
+     *      RELEASE_CONDITION and RELEASE_RECORDER. SDK callers must update to pass the new
+     *      `data` parameter (use `""` / `"0x"` for no data).
+     *
      * @param paymentInfo PaymentInfo struct
      * @param amount Amount to release
+     * @param data Arbitrary data forwarded to RELEASE_CONDITION.check() and RELEASE_RECORDER.record()
+     *        (e.g. signatures, proofs, attestations)
      */
     function release(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount, bytes calldata data)
         external
@@ -320,8 +328,16 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
      * @notice Refund funds while still in escrow (before capture)
      * @dev Checks REFUND_IN_ESCROW_CONDITION, performs partialVoid, then calls REFUND_IN_ESCROW_RECORDER
      *      Typically receiver or arbiter can call (controlled via condition).
+     *
+     *      BREAKING CHANGE: Signature changed from `refundInEscrow(PaymentInfo, uint120)` to
+     *      `refundInEscrow(PaymentInfo, uint120, bytes)` to support forwarding arbitrary data to
+     *      REFUND_IN_ESCROW_CONDITION and REFUND_IN_ESCROW_RECORDER. SDK callers must update to
+     *      pass the new `data` parameter (use `""` / `"0x"` for no data).
+     *
      * @param paymentInfo PaymentInfo struct
      * @param amount Amount to return to payer
+     * @param data Arbitrary data forwarded to REFUND_IN_ESCROW_CONDITION.check() and
+     *        REFUND_IN_ESCROW_RECORDER.record() (e.g. signatures, proofs, attestations)
      */
     function refundInEscrow(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint120 amount, bytes calldata data)
         external

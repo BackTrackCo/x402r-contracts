@@ -188,6 +188,59 @@ contract HookDataForwardingTest is Test {
         assertEq(dataRecorder.lastReceivedData(), hookData, "Recorder should receive hook data from approve");
     }
 
+    // ============ authorize: dual-purpose collectorData reaches condition AND collector ============
+
+    function test_authorize_collectorData_reachesConditionAndRecorder() public {
+        // Deploy MockDataCondition on the AUTHORIZE_CONDITION slot
+        MockDataCondition dataCondition = new MockDataCondition(MAGIC);
+        MockDataRecorder dataRecorder = new MockDataRecorder();
+
+        PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
+            feeRecipient: protocolFeeRecipient,
+            feeCalculator: address(0),
+            authorizeCondition: address(dataCondition),
+            authorizeRecorder: address(dataRecorder),
+            chargeCondition: address(0),
+            chargeRecorder: address(0),
+            releaseCondition: address(0),
+            releaseRecorder: address(0),
+            refundInEscrowCondition: address(0),
+            refundInEscrowRecorder: address(0),
+            refundPostEscrowCondition: address(0),
+            refundPostEscrowRecorder: address(0)
+        });
+        PaymentOperator operator = PaymentOperator(operatorFactory.deployOperator(config));
+
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(operator), 444);
+
+        // Pre-approve so collector can pull funds
+        vm.prank(payer);
+        collector.preApprove(paymentInfo);
+
+        // authorize with empty collectorData should REVERT (condition requires magic)
+        vm.expectRevert();
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+
+        // authorize with wrong magic should REVERT
+        vm.expectRevert();
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), abi.encode(bytes32(uint256(999))));
+
+        // authorize with correct magic as collectorData — should SUCCEED
+        // This validates the dual-purpose design: the same bytes reach both
+        // the collector (PreApprovalPaymentCollector ignores collectorData) AND the condition
+        bytes memory hookData = abi.encode(MAGIC);
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), hookData);
+
+        // Verify authorization succeeded (funds moved to escrow)
+        bytes32 paymentInfoHash = escrow.getHash(paymentInfo);
+        (bool exists,,) = escrow.paymentState(paymentInfoHash);
+        assertTrue(exists, "Payment should be authorized");
+
+        // Verify recorder received the collectorData as hook data
+        assertEq(dataRecorder.recordCount(), 1, "Recorder should be called once");
+        assertEq(dataRecorder.lastReceivedData(), hookData, "Recorder should receive collectorData as hook data");
+    }
+
     // ============ release: data forwarded to condition and recorder ============
 
     function test_release_nonEmptyData_reachesConditionAndRecorder() public {
