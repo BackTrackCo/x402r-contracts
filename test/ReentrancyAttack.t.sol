@@ -122,7 +122,7 @@ contract ReentrancyAttackTest is Test {
 
         uint256 receiverBalanceBefore = token.balanceOf(receiver);
         vm.prank(receiver);
-        nonTransientOperator.release(paymentInfo, PAYMENT_AMOUNT);
+        nonTransientOperator.release(paymentInfo, PAYMENT_AMOUNT, "");
         assertEq(token.balanceOf(receiver) - receiverBalanceBefore, PAYMENT_AMOUNT);
     }
 

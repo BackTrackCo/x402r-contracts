@@ -10,7 +10,7 @@ import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreAppro
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockDataCondition} from "./mocks/MockDataCondition.sol";
 import {MockDataRecorder} from "./mocks/MockDataRecorder.sol";
-import {StaticAddressCondition} from "../src/plugins/conditions/access/static-address/StaticAddressCondition.sol";
+
 import {RefundRequest} from "../src/requests/refund/RefundRequest.sol";
 
 /**
@@ -45,7 +45,7 @@ contract HookDataForwardingTest is Test {
         token = new MockERC20("Test Token", "TEST");
         collector = new PreApprovalPaymentCollector(address(escrow));
         protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
-        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
+        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), false);
 
         token.mint(payer, PAYMENT_AMOUNT * 10);
         vm.prank(payer);
@@ -133,7 +133,7 @@ contract HookDataForwardingTest is Test {
         MockDataRecorder dataRecorder = new MockDataRecorder();
 
         // Deploy RefundRequest
-        RefundRequest refundRequest = new RefundRequest(arbiter);
+        RefundRequest refundRequest = new RefundRequest(arbiter, false);
 
         // Deploy StaticAddressCondition allowing BOTH RefundRequest AND any caller with correct data
         // We use an AndCondition-like approach: the condition just checks data, and we also need

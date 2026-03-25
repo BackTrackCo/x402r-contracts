@@ -15,7 +15,6 @@ import {ReceiverCondition} from "../src/plugins/conditions/access/ReceiverCondit
 import {ICondition} from "../src/plugins/conditions/ICondition.sol";
 import {AndCondition} from "../src/plugins/conditions/combinators/AndCondition.sol";
 import {AndConditionFactory} from "../src/plugins/conditions/combinators/AndConditionFactory.sol";
-import {NotCondition} from "../src/plugins/conditions/combinators/NotCondition.sol";
 import {NotConditionFactory} from "../src/plugins/conditions/combinators/NotConditionFactory.sol";
 import {OrCondition} from "../src/plugins/conditions/combinators/OrCondition.sol";
 import {OrConditionFactory} from "../src/plugins/conditions/combinators/OrConditionFactory.sol";
