@@ -39,7 +39,7 @@ import {RecorderCombinatorFactory} from "../src/plugins/recorders/combinators/Re
 // Additional
 import {RefundRequestFactory} from "../src/requests/refund/RefundRequestFactory.sol";
 import {ReceiverRefundCollector} from "../src/collectors/ReceiverRefundCollector.sol";
-import {RefundRequestEvidence} from "../src/evidence/RefundRequestEvidence.sol";
+import {RefundRequestEvidenceFactory} from "../src/evidence/RefundRequestEvidenceFactory.sol";
 
 /// @notice Minimal interface for CreateX's CREATE3 deployment
 interface ICreateX {
@@ -148,8 +148,7 @@ contract DeployCreate3 is Script {
 
         // NOTE: label kept as "sig-refund-request-factory" for salt compatibility
         // (contract was renamed SignatureRefundRequestFactory -> RefundRequestConditionFactory -> RefundRequestFactory)
-        address refundReqFactory =
-            _deploy3("sig-refund-request-factory", type(RefundRequestFactory).creationCode);
+        address refundReqFactory = _deploy3("sig-refund-request-factory", type(RefundRequestFactory).creationCode);
         console.log("RefundRequestFactory:", refundReqFactory);
 
         // =============================================
@@ -218,11 +217,9 @@ contract DeployCreate3 is Script {
         );
         console.log("ReceiverRefundCollector:", receiverRefundCollector);
 
-        address refundRequestEvidence = _deploy3(
-            "refund-request-evidence",
-            abi.encodePacked(type(RefundRequestEvidence).creationCode, abi.encode(refundReqFactory))
-        );
-        console.log("RefundRequestEvidence:", refundRequestEvidence);
+        address refundRequestEvidenceFactory =
+            _deploy3("refund-request-evidence-factory", type(RefundRequestEvidenceFactory).creationCode);
+        console.log("RefundRequestEvidenceFactory:", refundRequestEvidenceFactory);
 
         vm.stopBroadcast();
 
@@ -253,7 +250,7 @@ contract DeployCreate3 is Script {
         console.log("    notConditionFactory:", notFactory);
         console.log("    recorderCombinatorFactory:", recorderCombFactory);
         console.log("    receiverRefundCollector:", receiverRefundCollector);
-        console.log("    refundRequestEvidence:", refundRequestEvidence);
+        console.log("    refundRequestEvidenceFactory:", refundRequestEvidenceFactory);
         console.log("========================================");
     }
 

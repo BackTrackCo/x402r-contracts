@@ -12,8 +12,10 @@ interface ICreateX {
 
 /**
  * @title DeployViaCreateX
- * @notice Deploys contracts via CreateX for cross-chain deterministic addresses.
+ * @notice Deploys individual contracts via CreateX CREATE3 for cross-chain deterministic addresses.
  * @dev CreateX is at 0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed on all chains.
+ *      Addresses are deterministic per deployer key — a different deployer produces different addresses.
+ *      Uses the same label-based salts as DeployCreate3.s.sol for address consistency.
  *
  *      Set CONTRACT env var to choose which contract to deploy:
  *        CONTRACT=RefundRequestFactory
@@ -33,39 +35,41 @@ contract DeployViaCreateX is Script {
 
     function run() public {
         string memory contractName = vm.envString("CONTRACT");
-        address deployer = msg.sender;
 
         bytes memory initCode;
-        bytes11 customSalt;
+        string memory label;
 
         if (_eq(contractName, "RefundRequestFactory")) {
             initCode = type(RefundRequestFactory).creationCode;
-            customSalt = bytes11(keccak256("x402r.RefundRequestFactory.v1"));
+            label = "sig-refund-request-factory"; // legacy label kept for salt compatibility
         } else if (_eq(contractName, "RefundRequestEvidenceFactory")) {
             initCode = type(RefundRequestEvidenceFactory).creationCode;
-            customSalt = bytes11(keccak256("x402r.RefundRequestEvidenceFactory.v1"));
+            label = "refund-request-evidence-factory";
         } else if (_eq(contractName, "PaymentOperatorFactory")) {
-            initCode = abi.encodePacked(
-                type(PaymentOperatorFactory).creationCode, abi.encode(ESCROW, PROTOCOL_FEE_CONFIG)
-            );
-            customSalt = bytes11(keccak256("x402r.PaymentOperatorFactory.v2"));
+            initCode =
+                abi.encodePacked(type(PaymentOperatorFactory).creationCode, abi.encode(ESCROW, PROTOCOL_FEE_CONFIG));
+            label = "payment-operator-factory";
         } else {
             revert(string.concat("Unknown contract: ", contractName));
         }
 
-        bytes32 salt = bytes32(abi.encodePacked(deployer, bytes1(0x00), customSalt));
-
         console.log("=== DeployViaCreateX ===");
         console.log("Contract:", contractName);
+        console.log("Label:", label);
         console.log("Chain ID:", block.chainid);
-        console.log("Deployer:", deployer);
+        console.log("Deployer:", msg.sender);
 
         vm.startBroadcast();
 
-        address deployed = CREATEX.deployCreate3(salt, initCode);
+        address deployed = _deploy3(label, initCode);
         console.log("Deployed at:", deployed);
 
         vm.stopBroadcast();
+    }
+
+    function _deploy3(string memory _label, bytes memory initCode) internal returns (address) {
+        bytes32 salt = bytes32(abi.encodePacked(msg.sender, bytes1(0x00), bytes11(keccak256(bytes(_label)))));
+        return CREATEX.deployCreate3(salt, initCode);
     }
 
     function _eq(string memory a, string memory b) internal pure returns (bool) {
