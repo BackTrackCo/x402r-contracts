@@ -51,10 +51,11 @@ contract RefundRequestInvariants is Test {
 
         ProtocolFeeConfig protocolFeeConfig = new ProtocolFeeConfig(address(0), address(this), address(this));
 
-        refundRequest = new RefundRequest(arbiter);
+        refundRequest = new RefundRequest(arbiter, false);
         StaticAddressCondition refundCondition = new StaticAddressCondition(address(refundRequest));
 
-        PaymentOperatorFactory operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
+        PaymentOperatorFactory operatorFactory =
+            new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), false);
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeRecipient: address(this),

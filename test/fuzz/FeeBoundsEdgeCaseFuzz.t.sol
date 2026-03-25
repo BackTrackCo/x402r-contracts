@@ -172,7 +172,7 @@ contract FeeBoundsEdgeCaseFuzzTest is Test {
         assertEq(effectiveBps, 500, "Protocol fee must be capped at MAX_PROTOCOL_FEE_BPS (500)");
 
         // Deploy operator with this config and verify authorize works with capped fee
-        PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
+        PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), false);
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeRecipient: operatorFeeRecipient,
             feeCalculator: address(0),
@@ -212,7 +212,7 @@ contract FeeBoundsEdgeCaseFuzzTest is Test {
         protocolFeeConfig = new ProtocolFeeConfig(protocolCalcAddr, protocolFeeRecipient, owner);
 
         address opCalcAddr = operatorBps > 0 ? address(new StaticFeeCalculator(operatorBps)) : address(0);
-        PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
+        PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), false);
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeRecipient: operatorFeeRecipient,

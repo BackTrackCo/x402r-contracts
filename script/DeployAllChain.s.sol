@@ -100,7 +100,7 @@ contract DeployAllChain is Script {
         console.log("ProtocolFeeConfig:", address(protocolFeeConfig));
 
         PaymentOperatorFactory paymentOperatorFactory =
-            new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
+            new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), false);
         console.log("PaymentOperatorFactory:", address(paymentOperatorFactory));
 
         // =============================================

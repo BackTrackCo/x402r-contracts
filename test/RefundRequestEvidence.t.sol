@@ -50,7 +50,7 @@ contract RefundRequestEvidenceTest is Test {
         collector = new PreApprovalPaymentCollector(address(escrow));
 
         // Deploy RefundRequest with designatedAddress as arbiter
-        refundRequest = new RefundRequest(designatedAddress);
+        refundRequest = new RefundRequest(designatedAddress, false);
 
         // Deploy refund condition (gates refundInEscrow to RefundRequest) — production config
         refundCondition = new StaticAddressCondition(address(refundRequest));
@@ -59,7 +59,7 @@ contract RefundRequestEvidenceTest is Test {
         protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
 
         // Deploy operator factory
-        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
+        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), false);
 
         // Deploy operator with production config: StaticAddressCondition(refundRequest)
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
