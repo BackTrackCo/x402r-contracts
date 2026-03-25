@@ -87,6 +87,45 @@ contract ReentrancyAttackTest is Test {
         });
     }
 
+    function test_nonTransientMode_authorizeAndRelease() public {
+        // Deploy with nonTransientReentrancyGuardMode = true (SKALE / pre-Cancun path)
+        PaymentOperatorFactory nonTransientFactory =
+            new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), true);
+
+        PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
+            feeRecipient: protocolFeeRecipient,
+            feeCalculator: address(0),
+            authorizeCondition: address(0),
+            authorizeRecorder: address(0),
+            chargeCondition: address(0),
+            chargeRecorder: address(0),
+            releaseCondition: address(0),
+            releaseRecorder: address(0),
+            refundInEscrowCondition: address(0),
+            refundInEscrowRecorder: address(0),
+            refundPostEscrowCondition: address(0),
+            refundPostEscrowRecorder: address(0)
+        });
+        PaymentOperator nonTransientOperator = PaymentOperator(nonTransientFactory.deployOperator(config));
+
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(nonTransientOperator));
+
+        vm.prank(payer);
+        collector.preApprove(paymentInfo);
+
+        nonTransientOperator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+
+        bytes32 hash = escrow.getHash(paymentInfo);
+        (bool hasCollected, uint256 capturableAmount,) = escrow.paymentState(hash);
+        assertTrue(hasCollected);
+        assertEq(capturableAmount, PAYMENT_AMOUNT);
+
+        uint256 receiverBalanceBefore = token.balanceOf(receiver);
+        vm.prank(receiver);
+        nonTransientOperator.release(paymentInfo, PAYMENT_AMOUNT);
+        assertEq(token.balanceOf(receiver) - receiverBalanceBefore, PAYMENT_AMOUNT);
+    }
+
     function test_ReentrancyOnAuthorize_SameFunction() public {
         operator = _deployOperatorWithMaliciousRecorder(MaliciousRecorder.AttackType.REENTER_SAME_FUNCTION, 0);
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(operator));
