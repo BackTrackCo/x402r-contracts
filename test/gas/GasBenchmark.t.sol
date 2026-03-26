@@ -116,11 +116,11 @@ contract GasBenchmark is Test {
         releaseCondition = new AndCondition(conditions);
 
         // Deploy operator factories
-        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
+        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), false);
 
         // Bare factory: no protocol fee
         ProtocolFeeConfig bareProtocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
-        bareOperatorFactory = new PaymentOperatorFactory(address(escrow), address(bareProtocolFeeConfig));
+        bareOperatorFactory = new PaymentOperatorFactory(address(escrow), address(bareProtocolFeeConfig), false);
 
         // --- BARE OPERATOR (no conditions, no recorders, no fees) ---
         PaymentOperatorFactory.OperatorConfig memory bareConfig = PaymentOperatorFactory.OperatorConfig({

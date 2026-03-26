@@ -71,7 +71,8 @@ contract RefundRequestInvariants is Test {
         releaseConditions[1] = ICondition(address(payerCondition));
         OrCondition releaseCondition = new OrCondition(releaseConditions);
 
-        PaymentOperatorFactory operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
+        PaymentOperatorFactory operatorFactory =
+            new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), false);
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeRecipient: address(this),
