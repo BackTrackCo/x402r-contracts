@@ -7,10 +7,5 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
 // ============ Evidence Events ============
 event EvidenceSubmitted(
-    AuthCaptureEscrow.PaymentInfo paymentInfo,
-    uint256 nonce,
-    address indexed submitter,
-    SubmitterRole role,
-    string cid,
-    uint256 index
+    AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed submitter, SubmitterRole role, string cid, uint256 index
 );

@@ -52,10 +52,8 @@ contract DeploySkaleGaps is Script {
         console.log("PaymentOperatorFactory:", paymentOperatorFactory);
 
         // 2. RefundRequestFactory — label "sig-refund-request-factory" (matches DeployCreate3)
-        address refundReqFactory = _deploy3(
-            "sig-refund-request-factory",
-            abi.encodePacked(type(RefundRequestFactory).creationCode, abi.encode(NON_TRANSIENT))
-        );
+        address refundReqFactory =
+            _deploy3("sig-refund-request-factory", abi.encodePacked(type(RefundRequestFactory).creationCode));
         console.log("RefundRequestFactory:", refundReqFactory);
 
         vm.stopBroadcast();

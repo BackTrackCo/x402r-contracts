@@ -11,8 +11,6 @@ import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockDataCondition} from "./mocks/MockDataCondition.sol";
 import {MockDataRecorder} from "./mocks/MockDataRecorder.sol";
 
-import {RefundRequest} from "../src/requests/refund/RefundRequest.sol";
-
 /**
  * @title HookDataForwardingTest
  * @notice Verifies that non-empty `data` is forwarded end-to-end from callers
@@ -123,69 +121,6 @@ contract HookDataForwardingTest is Test {
         // Verify recorder received the data
         assertEq(dataRecorder.recordCount(), 1, "Recorder should be called once");
         assertEq(dataRecorder.lastReceivedData(), hookData, "Recorder should receive the hook data");
-    }
-
-    // ============ RefundRequest.approve: data forwarded to condition via operator ============
-
-    function test_refundRequest_approve_nonEmptyData_reachesCondition() public {
-        // Deploy MockDataCondition that requires MAGIC in data
-        MockDataCondition dataCondition = new MockDataCondition(MAGIC);
-        MockDataRecorder dataRecorder = new MockDataRecorder();
-
-        // Deploy RefundRequest
-        RefundRequest refundRequest = new RefundRequest(arbiter, false);
-
-        // Deploy StaticAddressCondition allowing BOTH RefundRequest AND any caller with correct data
-        // We use an AndCondition-like approach: the condition just checks data, and we also need
-        // StaticAddressCondition for access control. But for simplicity, let's just use the
-        // MockDataCondition directly (it validates the data, but anyone can call).
-        // In production you'd compose with StaticAddressCondition via AndCondition.
-
-        PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: protocolFeeRecipient,
-            feeCalculator: address(0),
-            authorizeCondition: address(0),
-            authorizeRecorder: address(0),
-            chargeCondition: address(0),
-            chargeRecorder: address(0),
-            releaseCondition: address(0),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(dataCondition),
-            refundInEscrowRecorder: address(dataRecorder),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
-        });
-        PaymentOperator operator = PaymentOperator(operatorFactory.deployOperator(config));
-
-        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(operator), 222);
-
-        // Authorize
-        vm.prank(payer);
-        collector.preApprove(paymentInfo);
-        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
-
-        // Request refund
-        vm.prank(payer);
-        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
-
-        // Approve with empty data — should REVERT because condition requires MAGIC
-        vm.prank(arbiter);
-        vm.expectRevert();
-        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT / 2), "");
-
-        // Approve with correct MAGIC data — should SUCCEED
-        bytes memory hookData = abi.encode(MAGIC);
-        uint256 payerBefore = token.balanceOf(payer);
-
-        vm.prank(arbiter);
-        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT / 2), hookData);
-
-        uint256 payerAfter = token.balanceOf(payer);
-        assertEq(payerAfter - payerBefore, PAYMENT_AMOUNT / 2, "Payer should receive refund via approve");
-
-        // Verify recorder received the data end-to-end through RefundRequest -> operator -> recorder
-        assertEq(dataRecorder.recordCount(), 1, "Recorder should be called once");
-        assertEq(dataRecorder.lastReceivedData(), hookData, "Recorder should receive hook data from approve");
     }
 
     // ============ authorize: dual-purpose collectorData reaches condition AND collector ============

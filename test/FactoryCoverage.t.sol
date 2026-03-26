@@ -564,7 +564,7 @@ contract FactoryCoverageTest is Test {
 
     function test_RefundRequestEvidenceFactory_Deploy() public {
         RefundRequestEvidenceFactory factory = new RefundRequestEvidenceFactory();
-        address refundRequest = address(new RefundRequest(makeAddr("arbiter"), false));
+        address refundRequest = address(new RefundRequest(makeAddr("arbiter")));
 
         address evidence = factory.deploy(refundRequest);
         assertTrue(evidence != address(0), "Evidence should be deployed");
@@ -573,7 +573,7 @@ contract FactoryCoverageTest is Test {
 
     function test_RefundRequestEvidenceFactory_IdempotentDeploy() public {
         RefundRequestEvidenceFactory factory = new RefundRequestEvidenceFactory();
-        address refundRequest = address(new RefundRequest(makeAddr("arbiter"), false));
+        address refundRequest = address(new RefundRequest(makeAddr("arbiter")));
 
         address first = factory.deploy(refundRequest);
         address second = factory.deploy(refundRequest);
@@ -582,8 +582,8 @@ contract FactoryCoverageTest is Test {
 
     function test_RefundRequestEvidenceFactory_DifferentRefundRequests() public {
         RefundRequestEvidenceFactory factory = new RefundRequestEvidenceFactory();
-        address rr1 = address(new RefundRequest(makeAddr("arbiter1"), false));
-        address rr2 = address(new RefundRequest(makeAddr("arbiter2"), false));
+        address rr1 = address(new RefundRequest(makeAddr("arbiter1")));
+        address rr2 = address(new RefundRequest(makeAddr("arbiter2")));
 
         address ev1 = factory.deploy(rr1);
         address ev2 = factory.deploy(rr2);
@@ -592,7 +592,7 @@ contract FactoryCoverageTest is Test {
 
     function test_RefundRequestEvidenceFactory_ComputeAddress() public {
         RefundRequestEvidenceFactory factory = new RefundRequestEvidenceFactory();
-        address refundRequest = address(new RefundRequest(makeAddr("arbiter"), false));
+        address refundRequest = address(new RefundRequest(makeAddr("arbiter")));
 
         address predicted = factory.computeAddress(refundRequest);
         address actual = factory.deploy(refundRequest);
@@ -601,7 +601,7 @@ contract FactoryCoverageTest is Test {
 
     function test_RefundRequestEvidenceFactory_GetDeployed() public {
         RefundRequestEvidenceFactory factory = new RefundRequestEvidenceFactory();
-        address refundRequest = address(new RefundRequest(makeAddr("arbiter"), false));
+        address refundRequest = address(new RefundRequest(makeAddr("arbiter")));
 
         assertEq(factory.getDeployed(refundRequest), address(0), "Should be zero before deployment");
         address evidence = factory.deploy(refundRequest);

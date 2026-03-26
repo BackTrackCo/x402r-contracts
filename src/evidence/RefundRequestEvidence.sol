@@ -18,7 +18,7 @@ import {EvidenceSubmitted} from "./types/Events.sol";
  *      creating a permanent, verifiable audit trail.
  *
  *      Requires a RefundRequest to exist before evidence can be submitted.
- *      Evidence is keyed by (paymentInfoHash, nonce) matching RefundRequest composite keys.
+ *      Evidence is keyed by paymentInfoHash matching RefundRequest keys.
  */
 contract RefundRequestEvidence is RefundRequestEvidenceAccess {
     struct Evidence {
@@ -39,11 +39,10 @@ contract RefundRequestEvidence is RefundRequestEvidenceAccess {
 
     // ============ Storage ============
 
-    /// @notice Evidence entries per composite key
-    /// compositeKey = keccak256(abi.encodePacked(paymentInfoHash, nonce))
+    /// @notice Evidence entries per paymentInfoHash
     mapping(bytes32 => mapping(uint256 => Evidence)) private evidence;
 
-    /// @notice Count of evidence entries per composite key
+    /// @notice Count of evidence entries per paymentInfoHash
     mapping(bytes32 => uint256) private evidenceCount;
 
     // ============ Constructor ============
@@ -60,10 +59,9 @@ contract RefundRequestEvidence is RefundRequestEvidenceAccess {
 
     /// @notice Submit evidence for a refund request
     /// @param paymentInfo PaymentInfo struct identifying the payment
-    /// @param nonce Record index identifying which refund request
     /// @param cid IPFS CID pointing to the evidence document
     /// @dev Follows CEI pattern. All external calls in Checks phase are view-only.
-    function submitEvidence(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce, string calldata cid)
+    function submitEvidence(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, string calldata cid)
         external
         operatorNotZero(paymentInfo)
     {
@@ -76,83 +74,71 @@ contract RefundRequestEvidence is RefundRequestEvidenceAccess {
         SubmitterRole role = _checkAccessAndGetRole(paymentInfo);
 
         // Validate RefundRequest exists
-        if (!REFUND_REQUEST.hasRefundRequest(paymentInfo, nonce)) {
+        if (!REFUND_REQUEST.hasRefundRequest(paymentInfo)) {
             revert RefundRequestRequired();
         }
 
         // === EFFECTS ===
 
-        // Compute composite key
+        // Compute key
         PaymentOperator operator = PaymentOperator(paymentInfo.operator);
         bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
-        bytes32 compositeKey = keccak256(abi.encodePacked(paymentInfoHash, nonce));
 
         // Store evidence
-        uint256 index = evidenceCount[compositeKey];
-        evidence[compositeKey][index] =
+        uint256 index = evidenceCount[paymentInfoHash];
+        evidence[paymentInfoHash][index] =
             Evidence({submitter: msg.sender, role: role, timestamp: uint48(block.timestamp), cid: cid});
-        evidenceCount[compositeKey] = index + 1;
+        evidenceCount[paymentInfoHash] = index + 1;
 
         // Emit event
-        emit EvidenceSubmitted(paymentInfo, nonce, msg.sender, role, cid, index);
+        emit EvidenceSubmitted(paymentInfo, msg.sender, role, cid, index);
 
         // === INTERACTIONS === (none)
     }
 
     // ============ View Functions ============
 
-    /// @notice Get a single evidence entry by PaymentInfo, nonce, and index
+    /// @notice Get a single evidence entry by PaymentInfo and index
     /// @param paymentInfo PaymentInfo struct
-    /// @param nonce Record index
     /// @param index Evidence index (0-based)
     /// @return The evidence entry
-    function getEvidence(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce, uint256 index)
+    function getEvidence(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 index)
         external
         view
         returns (Evidence memory)
     {
         PaymentOperator operator = PaymentOperator(paymentInfo.operator);
         bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
-        bytes32 compositeKey = keccak256(abi.encodePacked(paymentInfoHash, nonce));
 
-        if (index >= evidenceCount[compositeKey]) revert IndexOutOfBounds();
-        return evidence[compositeKey][index];
+        if (index >= evidenceCount[paymentInfoHash]) revert IndexOutOfBounds();
+        return evidence[paymentInfoHash][index];
     }
 
-    /// @notice Get the count of evidence entries for a payment+nonce
+    /// @notice Get the count of evidence entries for a payment
     /// @param paymentInfo PaymentInfo struct
-    /// @param nonce Record index
     /// @return The number of evidence entries
-    function getEvidenceCount(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce)
-        external
-        view
-        returns (uint256)
-    {
+    function getEvidenceCount(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external view returns (uint256) {
         PaymentOperator operator = PaymentOperator(paymentInfo.operator);
         bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
-        bytes32 compositeKey = keccak256(abi.encodePacked(paymentInfoHash, nonce));
 
-        return evidenceCount[compositeKey];
+        return evidenceCount[paymentInfoHash];
     }
 
     /// @notice Get a paginated batch of evidence entries
     /// @param paymentInfo PaymentInfo struct
-    /// @param nonce Record index
     /// @param offset Starting index (0-based)
     /// @param count Maximum number of entries to return
     /// @return entries Array of evidence entries
     /// @return total Total number of evidence entries for this key
-    function getEvidenceBatch(
-        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
-        uint256 nonce,
-        uint256 offset,
-        uint256 count
-    ) external view returns (Evidence[] memory entries, uint256 total) {
+    function getEvidenceBatch(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 offset, uint256 count)
+        external
+        view
+        returns (Evidence[] memory entries, uint256 total)
+    {
         PaymentOperator operator = PaymentOperator(paymentInfo.operator);
         bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
-        bytes32 compositeKey = keccak256(abi.encodePacked(paymentInfoHash, nonce));
 
-        total = evidenceCount[compositeKey];
+        total = evidenceCount[paymentInfoHash];
 
         if (offset >= total || count == 0) {
             return (new Evidence[](0), total);
@@ -163,7 +149,7 @@ contract RefundRequestEvidence is RefundRequestEvidenceAccess {
 
         entries = new Evidence[](actualCount);
         for (uint256 i = 0; i < actualCount; i++) {
-            entries[i] = evidence[compositeKey][offset + i];
+            entries[i] = evidence[paymentInfoHash][offset + i];
         }
 
         return (entries, total);

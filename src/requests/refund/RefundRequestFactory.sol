@@ -17,18 +17,12 @@ contract RefundRequestFactory {
     /// @notice Salt prefix for CREATE2
     bytes32 private constant SALT_PREFIX = "refundRequest";
 
-    bool public immutable NON_TRANSIENT_REENTRANCY_GUARD_MODE;
-
     /// @notice Deployed refund request addresses
     /// @dev Key: keccak256(abi.encodePacked(arbiter))
     mapping(bytes32 => address) public refundRequests;
 
     /// @notice Emitted when a new refund request is deployed
     event RefundRequestDeployed(address indexed refundRequest, address indexed arbiter);
-
-    constructor(bool nonTransientReentrancyGuardMode_) {
-        NON_TRANSIENT_REENTRANCY_GUARD_MODE = nonTransientReentrancyGuardMode_;
-    }
 
     /**
      * @notice Deploy a new RefundRequest for an arbiter
@@ -47,9 +41,7 @@ contract RefundRequestFactory {
 
         // ============ EFFECTS ============
         bytes32 salt = keccak256(abi.encodePacked(SALT_PREFIX, key));
-        bytes memory bytecode = abi.encodePacked(
-            type(RefundRequest).creationCode, abi.encode(arbiter, NON_TRANSIENT_REENTRANCY_GUARD_MODE)
-        );
+        bytes memory bytecode = abi.encodePacked(type(RefundRequest).creationCode, abi.encode(arbiter));
         refundRequest = address(
             uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)))))
         );
@@ -58,7 +50,7 @@ contract RefundRequestFactory {
         refundRequests[key] = refundRequest;
 
         // ============ INTERACTIONS ============
-        address deployed = address(new RefundRequest{salt: salt}(arbiter, NON_TRANSIENT_REENTRANCY_GUARD_MODE));
+        address deployed = address(new RefundRequest{salt: salt}(arbiter));
 
         assert(deployed == refundRequest);
 
@@ -83,9 +75,7 @@ contract RefundRequestFactory {
     function computeAddress(address arbiter) external view returns (address refundRequest) {
         bytes32 key = getKey(arbiter);
         bytes32 salt = keccak256(abi.encodePacked(SALT_PREFIX, key));
-        bytes memory bytecode = abi.encodePacked(
-            type(RefundRequest).creationCode, abi.encode(arbiter, NON_TRANSIENT_REENTRANCY_GUARD_MODE)
-        );
+        bytes memory bytecode = abi.encodePacked(type(RefundRequest).creationCode, abi.encode(arbiter));
         bytes32 hash = keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)));
         refundRequest = address(uint160(uint256(hash)));
     }

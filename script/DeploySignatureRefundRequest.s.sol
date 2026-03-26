@@ -27,7 +27,7 @@ contract DeployRefundRequest is Script {
         console.log("=== Deploying RefundRequest ===");
         console.log("Arbiter:", arbiter);
 
-        RefundRequest refundRequest = new RefundRequest(arbiter, false);
+        RefundRequest refundRequest = new RefundRequest(arbiter);
         console.log("RefundRequest:", address(refundRequest));
 
         vm.stopBroadcast();

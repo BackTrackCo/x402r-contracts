@@ -14,7 +14,9 @@ import {EscrowPeriodFactory} from "../../src/plugins/escrow-period/EscrowPeriodF
 import {Freeze} from "../../src/plugins/freeze/Freeze.sol";
 import {ICondition} from "../../src/plugins/conditions/ICondition.sol";
 import {AndCondition} from "../../src/plugins/conditions/combinators/AndCondition.sol";
+import {OrCondition} from "../../src/plugins/conditions/combinators/OrCondition.sol";
 import {PayerCondition} from "../../src/plugins/conditions/access/PayerCondition.sol";
+import {ReceiverCondition} from "../../src/plugins/conditions/access/ReceiverCondition.sol";
 import {StaticAddressCondition} from "../../src/plugins/conditions/access/static-address/StaticAddressCondition.sol";
 import {RefundRequest} from "../../src/requests/refund/RefundRequest.sol";
 import {RequestStatus} from "../../src/requests/types/Types.sol";
@@ -38,8 +40,9 @@ contract FullLifecycleTest is Test {
     // Escrow period system
     EscrowPeriod public escrowPeriod;
     Freeze public freeze;
-    AndCondition public releaseCondition;
+    AndCondition public escrowReleaseCondition;
     PayerCondition public payerCondition;
+    ReceiverCondition public receiverCondition;
 
     // Operator
     PaymentOperatorFactory public operatorFactory;
@@ -47,7 +50,7 @@ contract FullLifecycleTest is Test {
 
     // Refund request
     RefundRequest public refundRequest;
-    StaticAddressCondition public refundCondition;
+    OrCondition public refundInEscrowCondition;
 
     // Addresses
     address public owner;
@@ -86,6 +89,7 @@ contract FullLifecycleTest is Test {
         // Deploy escrow period via factory
         EscrowPeriodFactory escrowPeriodFactory = new EscrowPeriodFactory(address(escrow));
         payerCondition = new PayerCondition();
+        receiverCondition = new ReceiverCondition();
         address escrowPeriodAddr = escrowPeriodFactory.deploy(ESCROW_PERIOD, bytes32(0));
         escrowPeriod = EscrowPeriod(escrowPeriodAddr);
 
@@ -95,19 +99,23 @@ contract FullLifecycleTest is Test {
         );
 
         // Compose escrow period + freeze into release condition
-        ICondition[] memory conditions = new ICondition[](2);
-        conditions[0] = ICondition(address(escrowPeriod));
-        conditions[1] = ICondition(address(freeze));
-        releaseCondition = new AndCondition(conditions);
+        ICondition[] memory escrowConditions = new ICondition[](2);
+        escrowConditions[0] = ICondition(address(escrowPeriod));
+        escrowConditions[1] = ICondition(address(freeze));
+        escrowReleaseCondition = new AndCondition(escrowConditions);
 
-        // Deploy RefundRequest
-        refundRequest = new RefundRequest(arbiter, false);
+        // Deploy RefundRequest with arbiter
+        refundRequest = new RefundRequest(arbiter);
+
+        // Build REFUND_IN_ESCROW_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)
+        StaticAddressCondition arbiterCondition = new StaticAddressCondition(arbiter);
+        ICondition[] memory refundConditions = new ICondition[](2);
+        refundConditions[0] = ICondition(address(arbiterCondition));
+        refundConditions[1] = ICondition(address(receiverCondition));
+        refundInEscrowCondition = new OrCondition(refundConditions);
 
         // Deploy operator with full configuration
         operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), false);
-
-        // Deploy StaticAddressCondition pointing to RefundRequest for refundInEscrow gating
-        refundCondition = new StaticAddressCondition(address(refundRequest));
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeRecipient: operatorFeeRecipient,
@@ -116,10 +124,10 @@ contract FullLifecycleTest is Test {
             authorizeRecorder: address(escrowPeriod),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(releaseCondition),
+            releaseCondition: address(escrowReleaseCondition),
             releaseRecorder: address(0),
-            refundInEscrowCondition: address(refundCondition),
-            refundInEscrowRecorder: address(0),
+            refundInEscrowCondition: address(refundInEscrowCondition),
+            refundInEscrowRecorder: address(refundRequest),
             refundPostEscrowCondition: address(0),
             refundPostEscrowRecorder: address(0)
         });
@@ -190,15 +198,15 @@ contract FullLifecycleTest is Test {
 
         // --- Step 8: REFUND REQUEST ---
         vm.prank(payer);
-        refundRequest.requestRefund(paymentInfo, uint120(expectedNetAmount), 0);
+        refundRequest.requestRefund(paymentInfo, uint120(expectedNetAmount));
 
-        RefundRequest.RefundRequestData memory reqData = refundRequest.getRefundRequest(paymentInfo, 0);
+        RefundRequest.RefundRequestData memory reqData = refundRequest.getRefundRequest(paymentInfo);
         assertEq(uint256(reqData.status), uint256(RequestStatus.Pending), "Step 8: Request pending");
 
         // --- Step 9: Verify refund request state is tracked correctly ---
         assertEq(refundRequest.payerRefundRequestCount(payer), 1, "Step 9: Payer has 1 refund request");
         assertEq(refundRequest.receiverRefundRequestCount(receiver), 1, "Step 9: Receiver has 1 refund request");
-        assertTrue(refundRequest.hasRefundRequest(paymentInfo, 0), "Step 9: Refund request exists");
+        assertTrue(refundRequest.hasRefundRequest(paymentInfo), "Step 9: Refund request exists");
     }
 
     // ============ Charge Direct Payment Lifecycle ============
@@ -241,11 +249,11 @@ contract FullLifecycleTest is Test {
         // Payer requests partial refund (50%)
         uint120 refundAmount = uint120(PAYMENT_AMOUNT / 2);
         vm.prank(payer);
-        refundRequest.requestRefund(paymentInfo, refundAmount, 0);
+        refundRequest.requestRefund(paymentInfo, refundAmount);
 
-        // Arbiter approves (atomically refunds)
+        // Arbiter calls operator.refundInEscrow() which triggers record()
         vm.prank(arbiter);
-        refundRequest.approve(paymentInfo, 0, refundAmount, "");
+        operator.refundInEscrow(paymentInfo, refundAmount, "");
 
         bytes32 hash = escrow.getHash(paymentInfo);
         (, uint120 capturable,) = escrow.paymentState(hash);
