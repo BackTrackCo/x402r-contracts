@@ -153,11 +153,11 @@ contract FullLifecycleTest is Test {
         // --- Step 2: RELEASE BLOCKED (within escrow period) ---
         vm.prank(receiver);
         vm.expectRevert();
-        operator.release(paymentInfo, PAYMENT_AMOUNT);
+        operator.release(paymentInfo, PAYMENT_AMOUNT, "");
 
         // --- Step 3: FREEZE ---
         vm.prank(payer);
-        freeze.freeze(paymentInfo);
+        freeze.freeze(paymentInfo, "");
         assertTrue(freeze.isFrozen(paymentInfo), "Step 3: Must be frozen");
 
         // --- Step 4: Warp past both freeze duration and escrow period ---
@@ -169,7 +169,7 @@ contract FullLifecycleTest is Test {
         // --- Step 6: RELEASE ---
         uint256 receiverBefore = token.balanceOf(receiver);
         vm.prank(receiver);
-        operator.release(paymentInfo, PAYMENT_AMOUNT);
+        operator.release(paymentInfo, PAYMENT_AMOUNT, "");
 
         uint256 expectedTotalFee = (PAYMENT_AMOUNT * TOTAL_BPS) / 10000;
         uint256 expectedNetAmount = PAYMENT_AMOUNT - expectedTotalFee;
@@ -245,7 +245,7 @@ contract FullLifecycleTest is Test {
 
         // Arbiter approves (atomically refunds)
         vm.prank(arbiter);
-        refundRequest.approve(paymentInfo, 0, refundAmount);
+        refundRequest.approve(paymentInfo, 0, refundAmount, "");
 
         bytes32 hash = escrow.getHash(paymentInfo);
         (, uint120 capturable,) = escrow.paymentState(hash);
@@ -261,7 +261,7 @@ contract FullLifecycleTest is Test {
         uint256 remainder = PAYMENT_AMOUNT - refundAmount;
         uint256 receiverBefore = token.balanceOf(receiver);
         vm.prank(receiver);
-        operator.release(paymentInfo, remainder);
+        operator.release(paymentInfo, remainder, "");
 
         uint256 expectedFee = (remainder * TOTAL_BPS) / 10000;
         uint256 expectedNet = remainder - expectedFee;

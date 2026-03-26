@@ -185,7 +185,12 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
      *        authorizationExpiry can be set to any value (use type(uint48).max for no expiry)
      * @param amount Amount to authorize
      * @param tokenCollector Address of the token collector
-     * @param collectorData Data to pass to the token collector
+     * @param collectorData Data passed to both the token collector AND forwarded to
+     *        AUTHORIZE_CONDITION.check() and AUTHORIZE_RECORDER.record() as the `data` parameter.
+     *        NOTE: This means collectorData serves dual purpose — collector initialization data
+     *        (e.g. ERC-3009 authorization params) AND hook data for conditions/recorders.
+     *        A condition that decodes collectorData may conflict with collector-specific encoding.
+     *        Callers packing both should use a structured encoding (e.g. abi.encode(collectorPayload, hookPayload)).
      */
     function authorize(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
@@ -196,7 +201,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         // ============ CHECKS ============
         // Check AUTHORIZE_CONDITION (address(0) = always allow)
         if (address(AUTHORIZE_CONDITION) != address(0)) {
-            if (!AUTHORIZE_CONDITION.check(paymentInfo, amount, msg.sender)) {
+            if (!AUTHORIZE_CONDITION.check(paymentInfo, amount, msg.sender, collectorData)) {
                 revert ConditionNotMet();
             }
         }
@@ -222,7 +227,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
 
         // Call AUTHORIZE_RECORDER (address(0) = no-op)
         if (address(AUTHORIZE_RECORDER) != address(0)) {
-            AUTHORIZE_RECORDER.record(paymentInfo, amount, msg.sender);
+            AUTHORIZE_RECORDER.record(paymentInfo, amount, msg.sender, collectorData);
         }
     }
 
@@ -236,7 +241,9 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
      *        - feeReceiver == address(this)
      * @param amount Amount to charge
      * @param tokenCollector Address of the token collector
-     * @param collectorData Data to pass to the token collector
+     * @param collectorData Data passed to both the token collector AND forwarded to
+     *        CHARGE_CONDITION.check() and CHARGE_RECORDER.record() as the `data` parameter.
+     *        NOTE: Dual-purpose — see authorize() for collision considerations.
      */
     function charge(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
@@ -247,7 +254,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         // ============ CHECKS ============
         // Check CHARGE_CONDITION (address(0) = always allow)
         if (address(CHARGE_CONDITION) != address(0)) {
-            if (!CHARGE_CONDITION.check(paymentInfo, amount, msg.sender)) {
+            if (!CHARGE_CONDITION.check(paymentInfo, amount, msg.sender, collectorData)) {
                 revert ConditionNotMet();
             }
         }
@@ -273,7 +280,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
 
         // Call CHARGE_RECORDER (address(0) = no-op)
         if (address(CHARGE_RECORDER) != address(0)) {
-            CHARGE_RECORDER.record(paymentInfo, amount, msg.sender);
+            CHARGE_RECORDER.record(paymentInfo, amount, msg.sender, collectorData);
         }
     }
 
@@ -281,14 +288,25 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
      * @notice Release funds to receiver
      * @dev Checks RELEASE_CONDITION, performs capture, then calls RELEASE_RECORDER.
      *      Uses fees stored at authorization time to prevent protocol fee changes from breaking capture.
+     *
+     *      BREAKING CHANGE: Signature changed from `release(PaymentInfo, uint256)` to
+     *      `release(PaymentInfo, uint256, bytes)` to support forwarding arbitrary data to
+     *      RELEASE_CONDITION and RELEASE_RECORDER. SDK callers must update to pass the new
+     *      `data` parameter (use `""` / `"0x"` for no data).
+     *
      * @param paymentInfo PaymentInfo struct
      * @param amount Amount to release
+     * @param data Arbitrary data forwarded to RELEASE_CONDITION.check() and RELEASE_RECORDER.record()
+     *        (e.g. signatures, proofs, attestations)
      */
-    function release(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount) external nonReentrant {
+    function release(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount, bytes calldata data)
+        external
+        nonReentrant
+    {
         // ============ CHECKS ============
         // Check RELEASE_CONDITION (address(0) = always allow)
         if (address(RELEASE_CONDITION) != address(0)) {
-            if (!RELEASE_CONDITION.check(paymentInfo, amount, msg.sender)) {
+            if (!RELEASE_CONDITION.check(paymentInfo, amount, msg.sender, data)) {
                 revert ConditionNotMet();
             }
         }
@@ -311,7 +329,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
 
         // Call RELEASE_RECORDER (address(0) = no-op)
         if (address(RELEASE_RECORDER) != address(0)) {
-            RELEASE_RECORDER.record(paymentInfo, amount, msg.sender);
+            RELEASE_RECORDER.record(paymentInfo, amount, msg.sender, data);
         }
     }
 
@@ -319,14 +337,25 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
      * @notice Refund funds while still in escrow (before capture)
      * @dev Checks REFUND_IN_ESCROW_CONDITION, performs partialVoid, then calls REFUND_IN_ESCROW_RECORDER
      *      Typically receiver or arbiter can call (controlled via condition).
+     *
+     *      BREAKING CHANGE: Signature changed from `refundInEscrow(PaymentInfo, uint120)` to
+     *      `refundInEscrow(PaymentInfo, uint120, bytes)` to support forwarding arbitrary data to
+     *      REFUND_IN_ESCROW_CONDITION and REFUND_IN_ESCROW_RECORDER. SDK callers must update to
+     *      pass the new `data` parameter (use `""` / `"0x"` for no data).
+     *
      * @param paymentInfo PaymentInfo struct
      * @param amount Amount to return to payer
+     * @param data Arbitrary data forwarded to REFUND_IN_ESCROW_CONDITION.check() and
+     *        REFUND_IN_ESCROW_RECORDER.record() (e.g. signatures, proofs, attestations)
      */
-    function refundInEscrow(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint120 amount) external nonReentrant {
+    function refundInEscrow(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint120 amount, bytes calldata data)
+        external
+        nonReentrant
+    {
         // ============ CHECKS ============
         // Check REFUND_IN_ESCROW_CONDITION (address(0) = always allow)
         if (address(REFUND_IN_ESCROW_CONDITION) != address(0)) {
-            if (!REFUND_IN_ESCROW_CONDITION.check(paymentInfo, amount, msg.sender)) {
+            if (!REFUND_IN_ESCROW_CONDITION.check(paymentInfo, amount, msg.sender, data)) {
                 revert ConditionNotMet();
             }
         }
@@ -343,7 +372,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
 
         // Call REFUND_IN_ESCROW_RECORDER (address(0) = no-op)
         if (address(REFUND_IN_ESCROW_RECORDER) != address(0)) {
-            REFUND_IN_ESCROW_RECORDER.record(paymentInfo, amount, msg.sender);
+            REFUND_IN_ESCROW_RECORDER.record(paymentInfo, amount, msg.sender, data);
         }
     }
 
@@ -356,7 +385,9 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
      * @param paymentInfo PaymentInfo struct
      * @param amount Amount to refund to payer
      * @param tokenCollector Address of the token collector that will source the refund
-     * @param collectorData Data to pass to the token collector (e.g., signatures)
+     * @param collectorData Data passed to both the token collector AND forwarded to
+     *        REFUND_POST_ESCROW_CONDITION.check() and REFUND_POST_ESCROW_RECORDER.record()
+     *        as the `data` parameter. NOTE: Dual-purpose — see authorize() for collision considerations.
      */
     function refundPostEscrow(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
@@ -367,7 +398,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         // ============ CHECKS ============
         // Check REFUND_POST_ESCROW_CONDITION (address(0) = always allow)
         if (address(REFUND_POST_ESCROW_CONDITION) != address(0)) {
-            if (!REFUND_POST_ESCROW_CONDITION.check(paymentInfo, amount, msg.sender)) {
+            if (!REFUND_POST_ESCROW_CONDITION.check(paymentInfo, amount, msg.sender, collectorData)) {
                 revert ConditionNotMet();
             }
         }
@@ -384,7 +415,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
 
         // Call REFUND_POST_ESCROW_RECORDER (address(0) = no-op)
         if (address(REFUND_POST_ESCROW_RECORDER) != address(0)) {
-            REFUND_POST_ESCROW_RECORDER.record(paymentInfo, amount, msg.sender);
+            REFUND_POST_ESCROW_RECORDER.record(paymentInfo, amount, msg.sender, collectorData);
         }
     }
 

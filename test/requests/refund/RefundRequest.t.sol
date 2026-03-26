@@ -174,7 +174,7 @@ contract RefundRequestTest is Test {
         uint256 payerBalanceBefore = token.balanceOf(payer);
 
         vm.prank(arbiter);
-        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT), "");
 
         // Check request status
         RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo, 0);
@@ -195,7 +195,7 @@ contract RefundRequestTest is Test {
         uint256 payerBalanceBefore = token.balanceOf(payer);
 
         vm.prank(receiver);
-        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT), "");
 
         // Check request status
         RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo, 0);
@@ -217,7 +217,7 @@ contract RefundRequestTest is Test {
         uint256 payerBalanceBefore = token.balanceOf(payer);
 
         vm.prank(arbiter);
-        refundRequest.approve(paymentInfo, 0, halfAmount);
+        refundRequest.approve(paymentInfo, 0, halfAmount, "");
 
         // Check partial approval
         RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo, 0);
@@ -239,13 +239,13 @@ contract RefundRequestTest is Test {
         // Payer cannot approve
         vm.prank(payer);
         vm.expectRevert(RefundRequest.NotArbiterOrReceiver.selector);
-        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT), "");
 
         // Random address cannot approve
         address random = makeAddr("random");
         vm.prank(random);
         vm.expectRevert(RefundRequest.NotArbiterOrReceiver.selector);
-        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT), "");
     }
 
     function test_approve_revertsIfDenied() public {
@@ -261,7 +261,7 @@ contract RefundRequestTest is Test {
         // Cannot approve a denied request
         vm.prank(arbiter);
         vm.expectRevert(RequestNotApprovable.selector);
-        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT), "");
     }
 
     function test_approve_revertsIfFullyApproved() public {
@@ -272,12 +272,12 @@ contract RefundRequestTest is Test {
 
         // Approve full amount
         vm.prank(arbiter);
-        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT), "");
 
         // Try again — exceeds request
         vm.prank(arbiter);
         vm.expectRevert(ApproveAmountExceedsRequest.selector);
-        refundRequest.approve(paymentInfo, 0, 1);
+        refundRequest.approve(paymentInfo, 0, 1, "");
     }
 
     function test_approve_revertsIfZeroAmount() public {
@@ -288,7 +288,7 @@ contract RefundRequestTest is Test {
 
         vm.prank(arbiter);
         vm.expectRevert();
-        refundRequest.approve(paymentInfo, 0, 0);
+        refundRequest.approve(paymentInfo, 0, 0, "");
     }
 
     function test_approve_revertsIfExceedsRequested() public {
@@ -300,7 +300,7 @@ contract RefundRequestTest is Test {
 
         vm.prank(arbiter);
         vm.expectRevert();
-        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT), "");
     }
 
     function test_approve_revertsIfZeroOperator() public {
@@ -309,7 +309,7 @@ contract RefundRequestTest is Test {
 
         vm.prank(arbiter);
         vm.expectRevert(RefundRequest.InvalidOperator.selector);
-        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT), "");
     }
 
     // ============ Cumulative Top-Up Tests ============
@@ -326,7 +326,7 @@ contract RefundRequestTest is Test {
 
         // Arbiter approves first chunk
         vm.prank(arbiter);
-        refundRequest.approve(paymentInfo, 0, firstAmount);
+        refundRequest.approve(paymentInfo, 0, firstAmount, "");
 
         RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo, 0);
         assertEq(data.approvedAmount, firstAmount);
@@ -334,7 +334,7 @@ contract RefundRequestTest is Test {
 
         // Receiver tops up second chunk
         vm.prank(receiver);
-        refundRequest.approve(paymentInfo, 0, secondAmount);
+        refundRequest.approve(paymentInfo, 0, secondAmount, "");
 
         data = refundRequest.getRefundRequest(paymentInfo, 0);
         assertEq(data.approvedAmount, firstAmount + secondAmount);
@@ -357,11 +357,11 @@ contract RefundRequestTest is Test {
 
         // Receiver approves first
         vm.prank(receiver);
-        refundRequest.approve(paymentInfo, 0, firstAmount);
+        refundRequest.approve(paymentInfo, 0, firstAmount, "");
 
         // Arbiter tops up
         vm.prank(arbiter);
-        refundRequest.approve(paymentInfo, 0, secondAmount);
+        refundRequest.approve(paymentInfo, 0, secondAmount, "");
 
         RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo, 0);
         assertEq(data.approvedAmount, firstAmount + secondAmount);
@@ -380,11 +380,11 @@ contract RefundRequestTest is Test {
         uint256 payerBalanceBefore = token.balanceOf(payer);
 
         vm.prank(arbiter);
-        refundRequest.approve(paymentInfo, 0, chunk);
+        refundRequest.approve(paymentInfo, 0, chunk, "");
         vm.prank(receiver);
-        refundRequest.approve(paymentInfo, 0, chunk);
+        refundRequest.approve(paymentInfo, 0, chunk, "");
         vm.prank(arbiter);
-        refundRequest.approve(paymentInfo, 0, chunk);
+        refundRequest.approve(paymentInfo, 0, chunk, "");
 
         RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo, 0);
         assertEq(data.approvedAmount, chunk * 3);
@@ -403,12 +403,12 @@ contract RefundRequestTest is Test {
 
         // Approve half
         vm.prank(arbiter);
-        refundRequest.approve(paymentInfo, 0, halfAmount);
+        refundRequest.approve(paymentInfo, 0, halfAmount, "");
 
         // Try to approve more than remaining — should revert
         vm.prank(receiver);
         vm.expectRevert(ApproveAmountExceedsRequest.selector);
-        refundRequest.approve(paymentInfo, 0, halfAmount + 1);
+        refundRequest.approve(paymentInfo, 0, halfAmount + 1, "");
     }
 
     // ============ Post-Escrow Tests ============
@@ -420,12 +420,12 @@ contract RefundRequestTest is Test {
         refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT), 0);
 
         // Release all funds (moves them out of escrow)
-        operator.release(paymentInfo, PAYMENT_AMOUNT);
+        operator.release(paymentInfo, PAYMENT_AMOUNT, "");
 
         // Approve reverts — no capturable funds left
         vm.prank(arbiter);
         vm.expectRevert();
-        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT), "");
     }
 
     function test_approve_partialRelease_refundsRemaining() public {
@@ -437,13 +437,13 @@ contract RefundRequestTest is Test {
         refundRequest.requestRefund(paymentInfo, refundAmount, 0);
 
         // Release half — half remains in escrow
-        operator.release(paymentInfo, uint256(releaseAmount));
+        operator.release(paymentInfo, uint256(releaseAmount), "");
 
         uint256 payerBalanceBefore = token.balanceOf(payer);
 
         // Approve refund — succeeds since refundAmount <= capturableAmount
         vm.prank(arbiter);
-        refundRequest.approve(paymentInfo, 0, refundAmount);
+        refundRequest.approve(paymentInfo, 0, refundAmount, "");
 
         RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo, 0);
         assertEq(uint256(data.status), uint256(RequestStatus.Approved));
@@ -570,17 +570,17 @@ contract RefundRequestTest is Test {
         // Calling operator.refundInEscrow directly (not through RefundRequest) should revert
         // because StaticAddressCondition only allows refundRequest as caller
         vm.expectRevert();
-        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
+        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT), "");
 
         // Arbiter calling directly also blocked
         vm.prank(arbiter);
         vm.expectRevert();
-        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
+        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT), "");
 
         // Receiver calling directly also blocked
         vm.prank(receiver);
         vm.expectRevert();
-        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
+        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT), "");
     }
 
     function test_e2e_approveAndRefund() public {
@@ -593,7 +593,7 @@ contract RefundRequestTest is Test {
         // Step 2: Arbiter approves (atomically refunds)
         uint256 payerBalanceBefore = token.balanceOf(payer);
         vm.prank(arbiter);
-        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT));
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT), "");
 
         // Step 3: Payer received funds
         uint256 payerBalanceAfter = token.balanceOf(payer);
@@ -718,7 +718,7 @@ contract RefundRequestTest is Test {
 
         // Approve nonce 0
         vm.prank(arbiter);
-        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT / 2));
+        refundRequest.approve(paymentInfo, 0, uint120(PAYMENT_AMOUNT / 2), "");
 
         // Nonce 0 is Approved
         RefundRequest.RefundRequestData memory data0 = refundRequest.getRefundRequest(paymentInfo, 0);

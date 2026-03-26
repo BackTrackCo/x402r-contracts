@@ -19,9 +19,12 @@ interface ICondition {
     /// @param amount The amount involved in the action (0 when used for authorization-only checks
     ///        such as refund request status updates, where no specific amount is relevant)
     /// @param caller The address attempting the action
+    /// @param data Arbitrary data forwarded from the caller (e.g. signatures, proofs, attestations)
     /// @return allowed True if the action is allowed
-    function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount, address caller)
-        external
-        view
-        returns (bool allowed);
+    function check(
+        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
+        uint256 amount,
+        address caller,
+        bytes calldata data
+    ) external view returns (bool allowed);
 }

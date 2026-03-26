@@ -282,7 +282,7 @@ contract GasBenchmark is Test {
 
         vm.prank(receiver);
         uint256 gasBefore = gasleft();
-        bareOperator.release(pi, PAYMENT_AMOUNT);
+        bareOperator.release(pi, PAYMENT_AMOUNT, "");
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== BARE COMMERCE PAYMENTS ===");
@@ -330,7 +330,7 @@ contract GasBenchmark is Test {
 
         vm.prank(receiver);
         uint256 gasBefore = gasleft();
-        feesOnlyOperator.release(pi, PAYMENT_AMOUNT);
+        feesOnlyOperator.release(pi, PAYMENT_AMOUNT, "");
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== FEES ONLY ===");
@@ -364,7 +364,7 @@ contract GasBenchmark is Test {
 
         vm.prank(receiver);
         uint256 gasBefore = gasleft();
-        simpleOperator.release(pi, PAYMENT_AMOUNT);
+        simpleOperator.release(pi, PAYMENT_AMOUNT, "");
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== SIMPLE CONDITIONS ===");
@@ -448,7 +448,7 @@ contract GasBenchmark is Test {
 
         vm.prank(receiver);
         uint256 gasBefore = gasleft();
-        fullOperator.release(pi, PAYMENT_AMOUNT);
+        fullOperator.release(pi, PAYMENT_AMOUNT, "");
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== x402r HAPPY PATH ===");
@@ -463,7 +463,7 @@ contract GasBenchmark is Test {
         fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
         vm.warp(block.timestamp + ESCROW_PERIOD_DURATION + 1);
         vm.prank(receiver);
-        fullOperator.release(pi, PAYMENT_AMOUNT);
+        fullOperator.release(pi, PAYMENT_AMOUNT, "");
 
         uint256 gasBefore = gasleft();
         fullOperator.distributeFees(address(token));
@@ -486,7 +486,7 @@ contract GasBenchmark is Test {
 
         vm.prank(payer);
         uint256 gasBefore = gasleft();
-        freeze.freeze(pi);
+        freeze.freeze(pi, "");
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== x402r UNHAPPY PATH ===");
@@ -521,7 +521,7 @@ contract GasBenchmark is Test {
 
         vm.prank(arbiter);
         uint256 gasBefore = gasleft();
-        refundRequest.approve(pi, 0, uint120(PAYMENT_AMOUNT));
+        refundRequest.approve(pi, 0, uint120(PAYMENT_AMOUNT), "");
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== x402r UNHAPPY PATH ===");
@@ -555,7 +555,7 @@ contract GasBenchmark is Test {
         fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
 
         uint256 gasBefore = gasleft();
-        fullOperator.refundInEscrow(pi, uint120(PAYMENT_AMOUNT));
+        fullOperator.refundInEscrow(pi, uint120(PAYMENT_AMOUNT), "");
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== x402r UNHAPPY PATH ===");
@@ -571,7 +571,7 @@ contract GasBenchmark is Test {
 
         vm.warp(block.timestamp + ESCROW_PERIOD_DURATION + 1);
         vm.prank(receiver);
-        fullOperator.release(pi, PAYMENT_AMOUNT);
+        fullOperator.release(pi, PAYMENT_AMOUNT, "");
 
         // Receiver already approved refundCollector in setUp()
         uint256 netAmount = PAYMENT_AMOUNT - (PAYMENT_AMOUNT * TOTAL_BPS) / 10000;
@@ -606,13 +606,13 @@ contract GasBenchmark is Test {
         // Cold release: first release in this transaction
         vm.prank(receiver);
         uint256 g1 = gasleft();
-        fullOperator.release(pi1, PAYMENT_AMOUNT);
+        fullOperator.release(pi1, PAYMENT_AMOUNT, "");
         uint256 coldGas = g1 - gasleft();
 
         // Warm release: second release, contracts cached
         vm.prank(receiver);
         uint256 g2 = gasleft();
-        fullOperator.release(pi2, PAYMENT_AMOUNT);
+        fullOperator.release(pi2, PAYMENT_AMOUNT, "");
         uint256 warmGas = g2 - gasleft();
 
         console.log("=== RELEASE COLD vs WARM ===");
@@ -640,9 +640,9 @@ contract GasBenchmark is Test {
         vm.warp(block.timestamp + ESCROW_PERIOD_DURATION + 1);
 
         vm.prank(receiver);
-        fullOperator.release(pi1, PAYMENT_AMOUNT);
+        fullOperator.release(pi1, PAYMENT_AMOUNT, "");
         vm.prank(receiver);
-        escrowOnlyOperator.release(pi2, PAYMENT_AMOUNT);
+        escrowOnlyOperator.release(pi2, PAYMENT_AMOUNT, "");
 
         // Cold distributeFees
         uint256 g1 = gasleft();
@@ -679,13 +679,13 @@ contract GasBenchmark is Test {
         // Cold freeze
         vm.prank(payer);
         uint256 g1 = gasleft();
-        freeze.freeze(pi1);
+        freeze.freeze(pi1, "");
         uint256 coldGas = g1 - gasleft();
 
         // Warm freeze
         vm.prank(payer);
         uint256 g2 = gasleft();
-        freeze.freeze(pi2);
+        freeze.freeze(pi2, "");
         uint256 warmGas = g2 - gasleft();
 
         console.log("=== FREEZE COLD vs WARM ===");
@@ -777,13 +777,13 @@ contract GasBenchmark is Test {
         // Cold approve
         vm.prank(arbiter);
         uint256 g1 = gasleft();
-        refundRequest.approve(pi1, 0, uint120(PAYMENT_AMOUNT));
+        refundRequest.approve(pi1, 0, uint120(PAYMENT_AMOUNT), "");
         uint256 coldGas = g1 - gasleft();
 
         // Warm approve
         vm.prank(arbiter);
         uint256 g2 = gasleft();
-        refundRequest.approve(pi2, 0, uint120(PAYMENT_AMOUNT));
+        refundRequest.approve(pi2, 0, uint120(PAYMENT_AMOUNT), "");
         uint256 warmGas = g2 - gasleft();
 
         console.log("=== APPROVE REFUND COLD vs WARM ===");
@@ -806,12 +806,12 @@ contract GasBenchmark is Test {
 
         // Cold refundInEscrow
         uint256 g1 = gasleft();
-        fullOperator.refundInEscrow(pi1, uint120(PAYMENT_AMOUNT));
+        fullOperator.refundInEscrow(pi1, uint120(PAYMENT_AMOUNT), "");
         uint256 coldGas = g1 - gasleft();
 
         // Warm refundInEscrow
         uint256 g2 = gasleft();
-        fullOperator.refundInEscrow(pi2, uint120(PAYMENT_AMOUNT));
+        fullOperator.refundInEscrow(pi2, uint120(PAYMENT_AMOUNT), "");
         uint256 warmGas = g2 - gasleft();
 
         console.log("=== REFUND IN ESCROW COLD vs WARM ===");
@@ -835,9 +835,9 @@ contract GasBenchmark is Test {
         vm.warp(block.timestamp + ESCROW_PERIOD_DURATION + 1);
 
         vm.prank(receiver);
-        fullOperator.release(pi1, PAYMENT_AMOUNT);
+        fullOperator.release(pi1, PAYMENT_AMOUNT, "");
         vm.prank(receiver);
-        fullOperator.release(pi2, PAYMENT_AMOUNT);
+        fullOperator.release(pi2, PAYMENT_AMOUNT, "");
 
         uint256 netAmount = PAYMENT_AMOUNT - (PAYMENT_AMOUNT * TOTAL_BPS) / 10000;
 
@@ -984,53 +984,53 @@ contract GasBenchmark is Test {
         // --- COLD PASS ---
         vm.prank(receiver);
         uint256 g1 = gasleft();
-        bareOperator.release(piBare1, PAYMENT_AMOUNT);
+        bareOperator.release(piBare1, PAYMENT_AMOUNT, "");
         uint256 bareCold = g1 - gasleft();
 
         vm.prank(receiver);
         uint256 g2 = gasleft();
-        feesOnlyOperator.release(piFees1, PAYMENT_AMOUNT);
+        feesOnlyOperator.release(piFees1, PAYMENT_AMOUNT, "");
         uint256 feesCold = g2 - gasleft();
 
         vm.prank(receiver);
         uint256 g3 = gasleft();
-        simpleOperator.release(piSimple1, PAYMENT_AMOUNT);
+        simpleOperator.release(piSimple1, PAYMENT_AMOUNT, "");
         uint256 simpleCold = g3 - gasleft();
 
         vm.prank(receiver);
         uint256 g4 = gasleft();
-        escrowOnlyOperator.release(piEscrow1, PAYMENT_AMOUNT);
+        escrowOnlyOperator.release(piEscrow1, PAYMENT_AMOUNT, "");
         uint256 escrowCold = g4 - gasleft();
 
         vm.prank(receiver);
         uint256 g5 = gasleft();
-        fullOperator.release(piFull1, PAYMENT_AMOUNT);
+        fullOperator.release(piFull1, PAYMENT_AMOUNT, "");
         uint256 fullCold = g5 - gasleft();
 
         // --- WARM PASS ---
         vm.prank(receiver);
         uint256 g6 = gasleft();
-        bareOperator.release(piBare2, PAYMENT_AMOUNT);
+        bareOperator.release(piBare2, PAYMENT_AMOUNT, "");
         uint256 bareWarm = g6 - gasleft();
 
         vm.prank(receiver);
         uint256 g7 = gasleft();
-        feesOnlyOperator.release(piFees2, PAYMENT_AMOUNT);
+        feesOnlyOperator.release(piFees2, PAYMENT_AMOUNT, "");
         uint256 feesWarm = g7 - gasleft();
 
         vm.prank(receiver);
         uint256 g8 = gasleft();
-        simpleOperator.release(piSimple2, PAYMENT_AMOUNT);
+        simpleOperator.release(piSimple2, PAYMENT_AMOUNT, "");
         uint256 simpleWarm = g8 - gasleft();
 
         vm.prank(receiver);
         uint256 g9 = gasleft();
-        escrowOnlyOperator.release(piEscrow2, PAYMENT_AMOUNT);
+        escrowOnlyOperator.release(piEscrow2, PAYMENT_AMOUNT, "");
         uint256 escrowWarm = g9 - gasleft();
 
         vm.prank(receiver);
         uint256 g10 = gasleft();
-        fullOperator.release(piFull2, PAYMENT_AMOUNT);
+        fullOperator.release(piFull2, PAYMENT_AMOUNT, "");
         uint256 fullWarm = g10 - gasleft();
 
         console.log("=== RELEASE OVERHEAD COLD vs WARM ===");
@@ -1133,31 +1133,31 @@ contract GasBenchmark is Test {
         // Release: bare
         vm.prank(receiver);
         uint256 g1 = gasleft();
-        bareOperator.release(piBare, PAYMENT_AMOUNT);
+        bareOperator.release(piBare, PAYMENT_AMOUNT, "");
         uint256 bareGas = g1 - gasleft();
 
         // Release: fees only
         vm.prank(receiver);
         uint256 g2 = gasleft();
-        feesOnlyOperator.release(piFees, PAYMENT_AMOUNT);
+        feesOnlyOperator.release(piFees, PAYMENT_AMOUNT, "");
         uint256 feesGas = g2 - gasleft();
 
         // Release: simple
         vm.prank(receiver);
         uint256 g3 = gasleft();
-        simpleOperator.release(piSimple, PAYMENT_AMOUNT);
+        simpleOperator.release(piSimple, PAYMENT_AMOUNT, "");
         uint256 simpleGas = g3 - gasleft();
 
         // Release: escrow-only
         vm.prank(receiver);
         uint256 g4 = gasleft();
-        escrowOnlyOperator.release(piEscrow, PAYMENT_AMOUNT);
+        escrowOnlyOperator.release(piEscrow, PAYMENT_AMOUNT, "");
         uint256 escrowGas = g4 - gasleft();
 
         // Release: full
         vm.prank(receiver);
         uint256 g5 = gasleft();
-        fullOperator.release(piFull, PAYMENT_AMOUNT);
+        fullOperator.release(piFull, PAYMENT_AMOUNT, "");
         uint256 fullGas = g5 - gasleft();
 
         console.log("=== RELEASE OVERHEAD ===");
@@ -1193,7 +1193,7 @@ contract GasBenchmark is Test {
         vm.warp(block.timestamp + ESCROW_PERIOD_DURATION + 1);
         vm.prank(receiver);
         uint256 g2 = gasleft();
-        fullOperator.release(pi, PAYMENT_AMOUNT);
+        fullOperator.release(pi, PAYMENT_AMOUNT, "");
         uint256 releaseGas = g2 - gasleft();
 
         // distributeFees
@@ -1223,14 +1223,14 @@ contract GasBenchmark is Test {
         // freeze
         vm.prank(payer);
         uint256 g2 = gasleft();
-        freeze.freeze(pi);
+        freeze.freeze(pi, "");
         uint256 freezeGas = g2 - gasleft();
 
         // warp past freeze + escrow, release
         vm.warp(block.timestamp + ESCROW_PERIOD_DURATION + 1);
         vm.prank(receiver);
         uint256 g3 = gasleft();
-        fullOperator.release(pi, PAYMENT_AMOUNT);
+        fullOperator.release(pi, PAYMENT_AMOUNT, "");
         uint256 releaseGas = g3 - gasleft();
 
         // requestRefund

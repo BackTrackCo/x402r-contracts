@@ -41,7 +41,10 @@ contract MaliciousRecorder is IRecorder {
     /**
      * @notice Malicious record function that attempts reentrancy
      */
-    function record(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount, address) external override {
+    function record(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount, address, bytes calldata)
+        external
+        override
+    {
         // Store for potential reuse
         storedPaymentInfo = paymentInfo;
         targetOperator = PaymentOperator(msg.sender);
@@ -53,7 +56,7 @@ contract MaliciousRecorder is IRecorder {
         if (attackType == AttackType.REENTER_SAME_FUNCTION && reentrancyCount <= maxReentrancy) {
             // Try to reenter the same function with same payment
             // This should fail because escrow rejects duplicate operations
-            try targetOperator.release(paymentInfo, amount) {
+            try targetOperator.release(paymentInfo, amount, "") {
             // If this succeeds, it's a vulnerability!
             }
                 catch {
@@ -99,6 +102,6 @@ contract MaliciousRecorder is IRecorder {
      * @notice Manually trigger attack for testing
      */
     function triggerAttack() external {
-        targetOperator.release(storedPaymentInfo, storedPaymentInfo.maxAmount);
+        targetOperator.release(storedPaymentInfo, storedPaymentInfo.maxAmount, "");
     }
 }

@@ -135,7 +135,7 @@ contract ReceiverRefundCollectorTest is Test {
         // Release
         uint256 receiverBefore = token.balanceOf(receiver);
         vm.prank(receiver);
-        operator.release(paymentInfo, amount);
+        operator.release(paymentInfo, amount, "");
         netAmount = token.balanceOf(receiver) - receiverBefore;
     }
 

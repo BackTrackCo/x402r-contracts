@@ -120,7 +120,7 @@ contract RefundRequestInvariants is Test {
         RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequestByKey(compositeKey);
 
         vm.prank(arbiter);
-        try refundRequest.approve(paymentInfo, nonce, data.amount) {
+        try refundRequest.approve(paymentInfo, nonce, data.amount, "") {
             lastKnownStatus[compositeKey] = RequestStatus.Approved;
             wasTerminallyResolved[compositeKey] = true;
         } catch {}

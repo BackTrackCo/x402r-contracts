@@ -208,15 +208,21 @@ contract RefundRequest is ReentrancyGuardTransient {
     ///         Both arbiter and receiver can call. Approvals are cumulative — each call
     ///         adds `amount` to the running `approvedAmount`. The total cannot exceed
     ///         the requested amount. Reverts if funds are no longer in escrow.
+    /// @dev BREAKING CHANGE: Signature changed from `approve(PaymentInfo, uint256, uint120)` to
+    ///      `approve(PaymentInfo, uint256, uint120, bytes)` to support forwarding arbitrary data to
+    ///      the operator's conditions and recorders. SDK callers must update to pass the new
+    ///      `data` parameter (use `""` / `"0x"` for no data).
     /// @param paymentInfo PaymentInfo struct
     /// @param nonce Record index identifying which refund request
     /// @param amount Additional refund amount to approve (added to previous approvals)
-    function approve(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 nonce, uint120 amount)
-        external
-        nonReentrant
-        operatorNotZero(paymentInfo)
-        onlyArbiterOrReceiver(paymentInfo)
-    {
+    /// @param data Arbitrary data forwarded to the operator's REFUND_IN_ESCROW_CONDITION
+    ///        and REFUND_IN_ESCROW_RECORDER (e.g. arbiter attestation, proof of refund justification)
+    function approve(
+        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
+        uint256 nonce,
+        uint120 amount,
+        bytes calldata data
+    ) external nonReentrant operatorNotZero(paymentInfo) onlyArbiterOrReceiver(paymentInfo) {
         PaymentOperator operator = PaymentOperator(paymentInfo.operator);
         bytes32 paymentInfoHash = operator.ESCROW().getHash(paymentInfo);
         bytes32 compositeKey = keccak256(abi.encodePacked(paymentInfoHash, nonce));
@@ -240,7 +246,7 @@ contract RefundRequest is ReentrancyGuardTransient {
         );
 
         // INTERACTIONS — atomic refund execution
-        operator.refundInEscrow(paymentInfo, amount);
+        operator.refundInEscrow(paymentInfo, amount, data);
     }
 
     // ============ Arbiter Actions (msg.sender) ============

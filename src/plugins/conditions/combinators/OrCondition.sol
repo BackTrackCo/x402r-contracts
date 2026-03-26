@@ -37,15 +37,15 @@ contract OrCondition is ICondition {
     /// @param amount The amount involved in the action
     /// @param caller The address attempting the action
     /// @return allowed True if any condition returns true
-    function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount, address caller)
-        external
-        view
-        override
-        returns (bool allowed)
-    {
+    function check(
+        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
+        uint256 amount,
+        address caller,
+        bytes calldata data
+    ) external view override returns (bool allowed) {
         uint256 len = conditions.length;
         for (uint256 i = 0; i < len; i++) {
-            if (conditions[i].check(paymentInfo, amount, caller)) {
+            if (conditions[i].check(paymentInfo, amount, caller, data)) {
                 return true;
             }
         }

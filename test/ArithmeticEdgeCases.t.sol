@@ -131,7 +131,7 @@ contract ArithmeticEdgeCasesTest is Test {
         vm.stopPrank();
 
         // Release and verify fee calculation doesn't overflow
-        operator.release(paymentInfo, maxAmount);
+        operator.release(paymentInfo, maxAmount, "");
 
         // Calculate expected fee (50 bps = 0.5%)
         uint256 expectedTotalFee = (uint256(maxAmount) * MAX_TOTAL_FEE_RATE) / 10000;
@@ -211,7 +211,7 @@ contract ArithmeticEdgeCasesTest is Test {
 
         // Release zero amount - REVERTS with ZeroAmount error
         vm.expectRevert(); // Expecting ZeroAmount() error
-        operator.release(paymentInfo, releaseAmount);
+        operator.release(paymentInfo, releaseAmount, "");
     }
 
     /**
@@ -269,7 +269,7 @@ contract ArithmeticEdgeCasesTest is Test {
         vm.stopPrank();
 
         // Release dust amount
-        operator.release(paymentInfo, dustAmount);
+        operator.release(paymentInfo, dustAmount, "");
 
         // Verify fee is zero (rounds down)
         // Fee = (1 * 50) / 10000 = 0.005 -> rounds to 0
@@ -298,7 +298,7 @@ contract ArithmeticEdgeCasesTest is Test {
         operator.authorize(paymentInfo, minAmount, address(collector), "");
         vm.stopPrank();
 
-        operator.release(paymentInfo, minAmount);
+        operator.release(paymentInfo, minAmount, "");
 
         // Fee = (200 * 50) / 10000 = 1 wei
         operator.distributeFees(address(token));
@@ -326,7 +326,7 @@ contract ArithmeticEdgeCasesTest is Test {
         operator.authorize(paymentInfo, belowMin, address(collector), "");
         vm.stopPrank();
 
-        operator.release(paymentInfo, belowMin);
+        operator.release(paymentInfo, belowMin, "");
 
         // Fee = (199 * 50) / 10000 = 0.995 -> rounds to 0
         operator.distributeFees(address(token));
@@ -358,7 +358,7 @@ contract ArithmeticEdgeCasesTest is Test {
         operator.authorize(paymentInfo, amount, address(collector), "");
         vm.stopPrank();
 
-        operator.release(paymentInfo, amount);
+        operator.release(paymentInfo, amount, "");
 
         // distributeFees() splits tracked protocol amount + remainder to operator
         operator.distributeFees(address(token));

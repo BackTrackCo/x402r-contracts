@@ -55,12 +55,12 @@ contract UsdcTvlLimitTest is Test {
 
     function test_Check_BlocksNonUsdcToken() public view {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(otherToken));
-        assertFalse(tvlLimit.check(paymentInfo, 1000e18, payer));
+        assertFalse(tvlLimit.check(paymentInfo, 1000e18, payer, ""));
     }
 
     function test_Check_BlocksZeroAddressToken() public view {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(0));
-        assertFalse(tvlLimit.check(paymentInfo, 1000, payer));
+        assertFalse(tvlLimit.check(paymentInfo, 1000, payer, ""));
     }
 
     // ============ TVL Limit Tests ============
@@ -72,7 +72,7 @@ contract UsdcTvlLimitTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(usdc));
 
         // $40k payment should be allowed (50k + 40k = 90k < 100k)
-        assertTrue(tvlLimit.check(paymentInfo, 40_000e6, payer));
+        assertTrue(tvlLimit.check(paymentInfo, 40_000e6, payer, ""));
     }
 
     function test_Check_AllowsUsdcAtExactLimit() public {
@@ -82,7 +82,7 @@ contract UsdcTvlLimitTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(usdc));
 
         // $50k payment should be allowed (50k + 50k = 100k = limit)
-        assertTrue(tvlLimit.check(paymentInfo, 50_000e6, payer));
+        assertTrue(tvlLimit.check(paymentInfo, 50_000e6, payer, ""));
     }
 
     function test_Check_BlocksUsdcOverLimit() public {
@@ -92,7 +92,7 @@ contract UsdcTvlLimitTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(usdc));
 
         // $60k payment should be blocked (50k + 60k = 110k > 100k)
-        assertFalse(tvlLimit.check(paymentInfo, 60_000e6, payer));
+        assertFalse(tvlLimit.check(paymentInfo, 60_000e6, payer, ""));
     }
 
     function test_Check_BlocksWhenEscrowAtLimit() public {
@@ -102,7 +102,7 @@ contract UsdcTvlLimitTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(usdc));
 
         // Any payment should be blocked
-        assertFalse(tvlLimit.check(paymentInfo, 1, payer));
+        assertFalse(tvlLimit.check(paymentInfo, 1, payer, ""));
     }
 
     function test_Check_AllowsZeroAmountPayment() public {
@@ -111,7 +111,7 @@ contract UsdcTvlLimitTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(usdc));
 
         // Zero amount should be allowed even at limit
-        assertTrue(tvlLimit.check(paymentInfo, 0, payer));
+        assertTrue(tvlLimit.check(paymentInfo, 0, payer, ""));
     }
 
     // ============ Fuzz Tests ============
@@ -123,7 +123,7 @@ contract UsdcTvlLimitTest is Test {
         usdc.mint(escrow, escrowBalance);
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(usdc));
-        bool allowed = tvlLimit.check(paymentInfo, paymentAmount, payer);
+        bool allowed = tvlLimit.check(paymentInfo, paymentAmount, payer, "");
 
         if (escrowBalance + paymentAmount <= LIMIT) {
             assertTrue(allowed, "Should allow when under limit");
@@ -136,6 +136,6 @@ contract UsdcTvlLimitTest is Test {
         vm.assume(token != address(usdc));
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(token);
-        assertFalse(tvlLimit.check(paymentInfo, amount, payer));
+        assertFalse(tvlLimit.check(paymentInfo, amount, payer, ""));
     }
 }

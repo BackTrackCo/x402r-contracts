@@ -71,15 +71,17 @@ contract RecorderCombinator is IRecorder {
      * @param caller Address that executed the action
      * @dev Reverts if any recorder reverts
      */
-    function record(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount, address caller)
-        external
-        override
-    {
+    function record(
+        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
+        uint256 amount,
+        address caller,
+        bytes calldata data
+    ) external override {
         if (msg.sender != paymentInfo.operator) revert OnlyOperator();
 
         uint256 length = recorders.length;
         for (uint256 i = 0; i < length; i++) {
-            recorders[i].record(paymentInfo, amount, caller);
+            recorders[i].record(paymentInfo, amount, caller, data);
         }
     }
 

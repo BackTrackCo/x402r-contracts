@@ -94,7 +94,7 @@ contract Freeze is ICondition {
      * @param paymentInfo PaymentInfo struct
      * @return allowed True if payment is not frozen
      */
-    function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address)
+    function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address, bytes calldata)
         external
         view
         override(ICondition)
@@ -109,14 +109,22 @@ contract Freeze is ICondition {
      * @notice Freeze a payment to block release
      * @dev When ESCROW_PERIOD_CONTRACT is set, only callable during the escrow period.
      *      Authorization checked via FREEZE_CONDITION.
+     *
+     *      BREAKING CHANGE: Signature changed from `freeze(PaymentInfo)` to
+     *      `freeze(PaymentInfo, bytes)` to support forwarding arbitrary data to
+     *      FREEZE_CONDITION. SDK callers must update to pass the new `data` parameter
+     *      (use `""` / `"0x"` for no data).
+     *
      * @param paymentInfo PaymentInfo struct for the payment to freeze
+     * @param data Arbitrary data forwarded to FREEZE_CONDITION.check()
+     *        (e.g. signatures, proofs, attestations)
      * @custom:security MEV RISK: A block builder can censor this transaction until after the
      *         escrow period expires, rendering the freeze ineffective. Submit via private mempool
      *         (Flashbots Protect / MEV Blocker) when freezing near the deadline.
      */
-    function freeze(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external {
+    function freeze(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, bytes calldata data) external {
         // Check authorization via condition
-        if (!FREEZE_CONDITION.check(paymentInfo, 0, msg.sender)) revert UnauthorizedFreeze();
+        if (!FREEZE_CONDITION.check(paymentInfo, 0, msg.sender, data)) revert UnauthorizedFreeze();
 
         bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
 
@@ -146,11 +154,19 @@ contract Freeze is ICondition {
      * @notice Unfreeze a payment to allow release
      * @dev No escrow period check — unfreezing should always be allowed.
      *      Authorization checked via UNFREEZE_CONDITION.
+     *
+     *      BREAKING CHANGE: Signature changed from `unfreeze(PaymentInfo)` to
+     *      `unfreeze(PaymentInfo, bytes)` to support forwarding arbitrary data to
+     *      UNFREEZE_CONDITION. SDK callers must update to pass the new `data` parameter
+     *      (use `""` / `"0x"` for no data).
+     *
      * @param paymentInfo PaymentInfo struct for the payment to unfreeze
+     * @param data Arbitrary data forwarded to UNFREEZE_CONDITION.check()
+     *        (e.g. signatures, proofs, attestations)
      */
-    function unfreeze(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external {
+    function unfreeze(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, bytes calldata data) external {
         // Check authorization via condition
-        if (!UNFREEZE_CONDITION.check(paymentInfo, 0, msg.sender)) revert UnauthorizedFreeze();
+        if (!UNFREEZE_CONDITION.check(paymentInfo, 0, msg.sender, data)) revert UnauthorizedFreeze();
 
         bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
 
