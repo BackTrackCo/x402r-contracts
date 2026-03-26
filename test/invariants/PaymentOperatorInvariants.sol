@@ -187,7 +187,7 @@ contract PaymentOperatorInvariants is Test {
     }
 
     function _release(AuthCaptureEscrow.PaymentInfo memory paymentInfo, uint256 amount) internal {
-        operator.release(paymentInfo, amount);
+        operator.release(paymentInfo, amount, "");
 
         bytes32 hash = escrow.getHash(paymentInfo);
         if (payments[hash].exists) {
@@ -207,7 +207,7 @@ contract PaymentOperatorInvariants is Test {
     }
 
     function _refund(AuthCaptureEscrow.PaymentInfo memory paymentInfo, uint120 amount) internal {
-        operator.refundInEscrow(paymentInfo, amount);
+        operator.refundInEscrow(paymentInfo, amount, "");
 
         bytes32 hash = escrow.getHash(paymentInfo);
         if (payments[hash].exists) {

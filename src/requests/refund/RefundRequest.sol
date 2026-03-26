@@ -114,7 +114,14 @@ contract RefundRequest is IRecorder {
     /// @param paymentInfo PaymentInfo struct
     /// @param amount Amount that was refunded
     /// @param caller The address that called operator.refundInEscrow()
-    function record(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount, address caller) external {
+    function record(
+        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
+        uint256 amount,
+        address caller,
+        bytes calldata /* data */
+    )
+        external
+    {
         // Only the operator in the paymentInfo can call record()
         if (msg.sender != paymentInfo.operator) return;
 

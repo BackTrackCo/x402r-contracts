@@ -234,7 +234,7 @@ contract WeirdTokensTest is Test {
         // Attempting to release full amount would fail (insufficient balance)
         vm.prank(receiver);
         vm.expectRevert();
-        operator.release(paymentInfo, PAYMENT_AMOUNT);
+        operator.release(paymentInfo, PAYMENT_AMOUNT, "");
     }
 
     function test_RebasingToken_DocumentedRisk() public {
@@ -258,7 +258,7 @@ contract WeirdTokensTest is Test {
 
         // 3. Release succeeds (takes 1000 out of 1100)
         vm.prank(receiver);
-        operator.release(paymentInfo, PAYMENT_AMOUNT);
+        operator.release(paymentInfo, PAYMENT_AMOUNT, "");
 
         // 4. Now there's 100 tokens stuck in escrow that no one owns!
         address tokenStore = escrow.getTokenStore(address(operator));

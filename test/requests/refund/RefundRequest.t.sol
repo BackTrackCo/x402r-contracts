@@ -185,7 +185,7 @@ contract RefundRequestTest is Test {
 
         // Arbiter calls operator.refundInEscrow() which triggers record()
         vm.prank(arbiter);
-        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
+        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT), "");
 
         // Check request status
         RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);
@@ -207,7 +207,7 @@ contract RefundRequestTest is Test {
 
         // Receiver calls operator.refundInEscrow() which triggers record()
         vm.prank(receiver);
-        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
+        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT), "");
 
         // Check request status
         RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);
@@ -229,7 +229,7 @@ contract RefundRequestTest is Test {
         uint256 payerBalanceBefore = token.balanceOf(payer);
 
         vm.prank(arbiter);
-        operator.refundInEscrow(paymentInfo, halfAmount);
+        operator.refundInEscrow(paymentInfo, halfAmount, "");
 
         // Check partial approval
         RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);
@@ -251,13 +251,13 @@ contract RefundRequestTest is Test {
         // Payer cannot call refundInEscrow (not in REFUND_IN_ESCROW_CONDITION)
         vm.prank(payer);
         vm.expectRevert();
-        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
+        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT), "");
 
         // Random address cannot approve
         address random = makeAddr("random");
         vm.prank(random);
         vm.expectRevert();
-        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
+        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT), "");
     }
 
     function test_approve_revertsIfDenied() public {
@@ -272,7 +272,7 @@ contract RefundRequestTest is Test {
 
         // refundInEscrow still succeeds (funds move) but record() is a no-op since request is denied
         vm.prank(arbiter);
-        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
+        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT), "");
 
         // Request status remains Denied (record() was a no-op)
         RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);
@@ -287,7 +287,7 @@ contract RefundRequestTest is Test {
 
         // Refund full amount — record() should cap at requested amount
         vm.prank(arbiter);
-        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
+        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT), "");
 
         RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);
         assertEq(data.approvedAmount, uint120(PAYMENT_AMOUNT / 2));
@@ -317,7 +317,7 @@ contract RefundRequestTest is Test {
 
         // Arbiter approves first chunk
         vm.prank(arbiter);
-        operator.refundInEscrow(paymentInfo, firstAmount);
+        operator.refundInEscrow(paymentInfo, firstAmount, "");
 
         RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);
         assertEq(data.approvedAmount, firstAmount);
@@ -325,7 +325,7 @@ contract RefundRequestTest is Test {
 
         // Receiver tops up second chunk
         vm.prank(receiver);
-        operator.refundInEscrow(paymentInfo, secondAmount);
+        operator.refundInEscrow(paymentInfo, secondAmount, "");
 
         data = refundRequest.getRefundRequest(paymentInfo);
         assertEq(data.approvedAmount, firstAmount + secondAmount);
@@ -346,11 +346,11 @@ contract RefundRequestTest is Test {
         uint256 payerBalanceBefore = token.balanceOf(payer);
 
         vm.prank(arbiter);
-        operator.refundInEscrow(paymentInfo, chunk);
+        operator.refundInEscrow(paymentInfo, chunk, "");
         vm.prank(receiver);
-        operator.refundInEscrow(paymentInfo, chunk);
+        operator.refundInEscrow(paymentInfo, chunk, "");
         vm.prank(arbiter);
-        operator.refundInEscrow(paymentInfo, chunk);
+        operator.refundInEscrow(paymentInfo, chunk, "");
 
         RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);
         assertEq(data.approvedAmount, chunk * 3);
@@ -369,12 +369,12 @@ contract RefundRequestTest is Test {
         refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT));
 
         // Release all funds (moves them out of escrow)
-        operator.release(paymentInfo, PAYMENT_AMOUNT);
+        operator.release(paymentInfo, PAYMENT_AMOUNT, "");
 
         // refundInEscrow reverts — no capturable funds left
         vm.prank(arbiter);
         vm.expectRevert();
-        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
+        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT), "");
     }
 
     function test_approve_partialRelease_refundsRemaining() public {
@@ -386,13 +386,13 @@ contract RefundRequestTest is Test {
         refundRequest.requestRefund(paymentInfo, refundAmount);
 
         // Release half
-        operator.release(paymentInfo, uint256(releaseAmount));
+        operator.release(paymentInfo, uint256(releaseAmount), "");
 
         uint256 payerBalanceBefore = token.balanceOf(payer);
 
         // Approve refund — succeeds since refundAmount <= capturableAmount
         vm.prank(arbiter);
-        operator.refundInEscrow(paymentInfo, refundAmount);
+        operator.refundInEscrow(paymentInfo, refundAmount, "");
 
         RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);
         assertEq(uint256(data.status), uint256(RequestStatus.Approved));
@@ -547,12 +547,12 @@ contract RefundRequestTest is Test {
         address random = makeAddr("random");
         vm.prank(random);
         vm.expectRevert();
-        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
+        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT), "");
 
         // Payer calling directly also blocked (not in REFUND_IN_ESCROW_CONDITION)
         vm.prank(payer);
         vm.expectRevert();
-        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
+        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT), "");
     }
 
     function test_e2e_approveAndRefund() public {
@@ -565,7 +565,7 @@ contract RefundRequestTest is Test {
         // Step 2: Arbiter calls operator.refundInEscrow() (atomically refunds + records)
         uint256 payerBalanceBefore = token.balanceOf(payer);
         vm.prank(arbiter);
-        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
+        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT), "");
 
         // Step 3: Payer received funds
         uint256 payerBalanceAfter = token.balanceOf(payer);
@@ -677,7 +677,7 @@ contract RefundRequestTest is Test {
 
         // refundInEscrow succeeds (funds move) even without a request — record() is a no-op
         vm.prank(arbiter);
-        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT));
+        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT), "");
 
         // No request exists, so hasRefundRequest returns false
         assertFalse(refundRequest.hasRefundRequest(paymentInfo));
@@ -691,7 +691,7 @@ contract RefundRequestTest is Test {
 
         // Call record() directly from non-operator — should be a no-op
         vm.prank(arbiter);
-        refundRequest.record(paymentInfo, PAYMENT_AMOUNT, arbiter);
+        refundRequest.record(paymentInfo, PAYMENT_AMOUNT, arbiter, "");
 
         // Status should still be Pending
         RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);

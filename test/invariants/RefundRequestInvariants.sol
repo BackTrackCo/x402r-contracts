@@ -134,7 +134,7 @@ contract RefundRequestInvariants is Test {
 
         // Arbiter calls operator.refundInEscrow() which triggers record()
         vm.prank(arbiter);
-        try operator.refundInEscrow(paymentInfo, data.amount) {
+        try operator.refundInEscrow(paymentInfo, data.amount, "") {
             lastKnownStatus[paymentInfoHash] = RequestStatus.Approved;
             wasTerminallyResolved[paymentInfoHash] = true;
         } catch {}

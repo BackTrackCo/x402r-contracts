@@ -43,7 +43,7 @@ contract UsdcTvlLimit is ICondition {
     /// @param paymentInfo The payment information containing token address
     /// @param amount The payment amount
     /// @return allowed True if USDC and within TVL limit
-    function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount, address)
+    function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount, address, bytes calldata)
         external
         view
         override

@@ -96,7 +96,8 @@ contract SignatureCondition is ICondition, EIP712 {
     function check(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint256 amount,
-        address /* caller */
+        address, /* caller */
+        bytes calldata /* data */
     )
         external
         view

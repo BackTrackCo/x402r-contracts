@@ -97,7 +97,7 @@ contract PaymentOperatorHandler is Test {
         if (capturable == 0) return;
         amount = uint120(bound(amount, 1, capturable));
 
-        try operator.release(paymentInfo, amount) {
+        try operator.release(paymentInfo, amount, "") {
             ghost_capturedAmounts[hash] += amount;
             ghost_totalReleased += amount;
             ghost_callCount_release++;
@@ -115,7 +115,7 @@ contract PaymentOperatorHandler is Test {
         if (capturable == 0) return;
         amount = uint120(bound(amount, 1, capturable));
 
-        try operator.refundInEscrow(paymentInfo, amount) {
+        try operator.refundInEscrow(paymentInfo, amount, "") {
             ghost_refundedAmounts[hash] += amount;
             ghost_totalRefunded += amount;
             ghost_callCount_refund++;

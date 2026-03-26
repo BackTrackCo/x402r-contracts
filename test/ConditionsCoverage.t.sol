@@ -22,7 +22,7 @@ contract MockRecorder is IRecorder {
     uint256 public recordCount;
     AuthCaptureEscrow.PaymentInfo public lastPaymentInfo;
 
-    function record(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address) external {
+    function record(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address, bytes calldata) external {
         recordCount++;
         lastPaymentInfo = paymentInfo;
     }
@@ -36,7 +36,11 @@ contract MockCondition is ICondition {
         result = _result;
     }
 
-    function check(AuthCaptureEscrow.PaymentInfo calldata, uint256, address) external view returns (bool) {
+    function check(AuthCaptureEscrow.PaymentInfo calldata, uint256, address, bytes calldata)
+        external
+        view
+        returns (bool)
+    {
         return result;
     }
 }
@@ -79,21 +83,21 @@ contract ConditionsCoverageTest is Test {
 
     function test_AlwaysTrueCondition_ReturnsTrue() public view {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
-        assertTrue(alwaysTrue.check(paymentInfo, 100, payer));
-        assertTrue(alwaysTrue.check(paymentInfo, 0, address(0)));
+        assertTrue(alwaysTrue.check(paymentInfo, 100, payer, ""));
+        assertTrue(alwaysTrue.check(paymentInfo, 0, address(0), ""));
     }
 
     // ============ ReceiverCondition Tests ============
 
     function test_ReceiverCondition_AllowsReceiver() public view {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
-        assertTrue(receiverCondition.check(paymentInfo, 100, receiver));
+        assertTrue(receiverCondition.check(paymentInfo, 100, receiver, ""));
     }
 
     function test_ReceiverCondition_DeniesNonReceiver() public view {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
-        assertFalse(receiverCondition.check(paymentInfo, 100, payer));
-        assertFalse(receiverCondition.check(paymentInfo, 100, operator));
+        assertFalse(receiverCondition.check(paymentInfo, 100, payer, ""));
+        assertFalse(receiverCondition.check(paymentInfo, 100, operator, ""));
     }
 
     // ============ NotCondition Tests ============
@@ -103,7 +107,7 @@ contract ConditionsCoverageTest is Test {
         NotCondition notCondition = new NotCondition(ICondition(address(mockCondition)));
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
-        assertFalse(notCondition.check(paymentInfo, 100, payer));
+        assertFalse(notCondition.check(paymentInfo, 100, payer, ""));
     }
 
     function test_NotCondition_NegatesFalse() public {
@@ -111,7 +115,7 @@ contract ConditionsCoverageTest is Test {
         NotCondition notCondition = new NotCondition(ICondition(address(mockCondition)));
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
-        assertTrue(notCondition.check(paymentInfo, 100, payer));
+        assertTrue(notCondition.check(paymentInfo, 100, payer, ""));
     }
 
     function test_NotCondition_RevertsOnZeroAddress() public {
@@ -138,7 +142,7 @@ contract ConditionsCoverageTest is Test {
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
         vm.prank(operator);
-        combinator.record(paymentInfo, 500, payer);
+        combinator.record(paymentInfo, 500, payer, "");
 
         assertEq(recorder1.recordCount(), 1);
         assertEq(recorder2.recordCount(), 1);
@@ -281,7 +285,7 @@ contract ConditionsCoverageTest is Test {
         assertEq(condition.DESIGNATED_ADDRESS(), arbiter);
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
-        assertTrue(condition.check(paymentInfo, 100, arbiter));
-        assertFalse(condition.check(paymentInfo, 100, payer));
+        assertTrue(condition.check(paymentInfo, 100, arbiter, ""));
+        assertFalse(condition.check(paymentInfo, 100, payer, ""));
     }
 }
