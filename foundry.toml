@@ -45,6 +45,18 @@ monad = { key = "${MONADSCAN_API_KEY}", url = "https://api.monadscan.com/api" }
 avalanche = { key = "${SNOWSCAN_API_KEY}", url = "https://api.snowscan.xyz/api" }
 optimism = { key = "${OPTIMISM_ETHERSCAN_API_KEY}", url = "https://api-optimistic.etherscan.io/api" }
 
+# Shanghai profile — for pre-Cancun chains (e.g. SKALE Base)
+# 1. evm_version = "shanghai" → compiler avoids MCOPY (EIP-5656)
+# 2. Remaps solady/ → lib/solady-nontransient/ (SSTORE-only ReentrancyGuardTransient,
+#    all other files symlinked to real Solady)
+[profile.shanghai]
+evm_version = "shanghai"
+remappings = [
+    "commerce-payments/=lib/commerce-payments/src/",
+    "solady/=compat/solady-nontransient/src/",
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/"
+]
+
 # CI profile - used in GitHub Actions
 # Coverage threshold enforced in .github/workflows/ci.yml (target: 80%)
 [profile.ci]
