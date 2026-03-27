@@ -75,7 +75,7 @@ contract ReceiverRefundCollectorTest is Test {
         escrowPeriod = EscrowPeriod(escrowPeriodAddr);
 
         // Deploy operator (no release condition for simplicity — warp past escrow period in tests)
-        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), false);
+        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeRecipient: operatorFeeRecipient,

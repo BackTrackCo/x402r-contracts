@@ -46,7 +46,7 @@ contract PaymentIndexingTest is Test {
         protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
 
         // Deploy operator factory
-        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), false);
+        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         // Deploy payment index recorder
         indexRecorder = new PaymentIndexRecorder(address(escrow), bytes32(0));

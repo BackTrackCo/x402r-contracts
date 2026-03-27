@@ -74,7 +74,7 @@ contract PaymentOperatorInvariants is Test {
         protocolFeeConfig = new ProtocolFeeConfig(address(protocolCalc), protocolFeeRecipient, address(this));
 
         // Deploy operator with fee calculators
-        PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), false);
+        PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeRecipient: operatorFeeRecipient,
