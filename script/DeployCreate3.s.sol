@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import {Script, console} from "forge-std/Script.sol";
 
 // Core (commerce-payments)
+// On Shanghai profile, ReentrancyGuardTransient is remapped to SSTORE-only drop-in
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {ERC3009PaymentCollector} from "commerce-payments/collectors/ERC3009PaymentCollector.sol";
 
@@ -50,26 +51,21 @@ interface ICreateX {
 /**
  * @title DeployCreate3
  * @notice Deterministic deployment of all x402r contracts via CREATE3 (CreateX).
- *         Same deployer + same salt = same address on every EVM chain,
- *         regardless of constructor args.
+ *         Same deployer + same salt = same address on every EVM chain.
  *
- * @dev Uses CreateX guarded salts: first 20 bytes = msg.sender.
- *      Only the deployer key can use the salt, preventing front-running.
- *      CreateX is deployed at the same address on 200+ chains.
+ * @dev On the Shanghai profile, Solady's ReentrancyGuardTransient is remapped to an
+ *      SSTORE-only drop-in so TSTORE/TLOAD/MCOPY never appear in the bytecode.
  *
- * Usage:
- *   USDC_ADDRESS=0x... TVL_LIMIT=100000000000 \
- *   forge script script/DeployCreate3.s.sol --rpc-url <RPC> --broadcast --verify -vvvv
+ *      Cancun+ chains (Base, Ethereum, Arbitrum, …):
+ *        USDC_ADDRESS=0x... TVL_LIMIT=100000000000 \
+ *        forge script script/DeployCreate3.s.sol --rpc-url <RPC> --broadcast --verify -vvvv
  *
- * Dry-run (preview addresses without deploying):
- *   USDC_ADDRESS=0x... TVL_LIMIT=100000000000 \
- *   forge script script/DeployCreate3.s.sol --rpc-url <RPC> -vvvv
+ *      SKALE (Shanghai EVM):
+ *        FOUNDRY_PROFILE=shanghai USDC_ADDRESS=0x... TVL_LIMIT=100000000000 \
+ *        forge script script/DeployCreate3.s.sol --rpc-url skale-base --broadcast --legacy --slow -vvvv
  */
 contract DeployCreate3 is Script {
-    /// @dev CreateX canonical address (same on all EVM chains)
     ICreateX constant CREATEX = ICreateX(0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed);
-
-    /// @dev Multicall3 canonical address (same on all EVM chains)
     address constant MULTICALL3 = 0xcA11bde05977b3631167028862bE2a173976CA11;
 
     function run() external {
@@ -98,11 +94,11 @@ contract DeployCreate3 is Script {
         // =============================================
         console.log("\n--- 1. Core Contracts ---");
 
-        address escrow = _deploy3("escrow", type(AuthCaptureEscrow).creationCode);
+        address escrow = _deploy3("escrow-v3", type(AuthCaptureEscrow).creationCode);
         console.log("AuthCaptureEscrow:", escrow);
 
         address tokenCollector = _deploy3(
-            "token-collector",
+            "token-collector-v3",
             abi.encodePacked(type(ERC3009PaymentCollector).creationCode, abi.encode(escrow, MULTICALL3))
         );
         console.log("TokenCollector:", tokenCollector);
@@ -115,14 +111,14 @@ contract DeployCreate3 is Script {
         address calculatorAddr = address(0);
         if (protocolFeeBps > 0) {
             calculatorAddr = _deploy3(
-                "static-fee-calculator",
+                "static-fee-calculator-v3",
                 abi.encodePacked(type(StaticFeeCalculator).creationCode, abi.encode(protocolFeeBps))
             );
             console.log("StaticFeeCalculator:", calculatorAddr);
         }
 
         address protocolFeeConfig = _deploy3(
-            "protocol-fee-config",
+            "protocol-fee-config-v3",
             abi.encodePacked(
                 type(ProtocolFeeConfig).creationCode, abi.encode(calculatorAddr, protocolFeeRecipient, owner)
             )
@@ -130,7 +126,7 @@ contract DeployCreate3 is Script {
         console.log("ProtocolFeeConfig:", protocolFeeConfig);
 
         address paymentOperatorFactory = _deploy3(
-            "payment-operator-factory",
+            "payment-operator-factory-v3",
             abi.encodePacked(type(PaymentOperatorFactory).creationCode, abi.encode(escrow, protocolFeeConfig))
         );
         console.log("PaymentOperatorFactory:", paymentOperatorFactory);
@@ -140,15 +136,13 @@ contract DeployCreate3 is Script {
         // =============================================
         console.log("\n--- 3. Singletons ---");
 
-        address sigCondFactory = _deploy3("sig-condition-factory", type(SignatureConditionFactory).creationCode);
+        address sigCondFactory = _deploy3("sig-condition-factory-v3", type(SignatureConditionFactory).creationCode);
         console.log("SignatureConditionFactory:", sigCondFactory);
 
-        address arbiterRegistry = _deploy3("arbiter-registry", type(ArbiterRegistry).creationCode);
+        address arbiterRegistry = _deploy3("arbiter-registry-v3", type(ArbiterRegistry).creationCode);
         console.log("ArbiterRegistry:", arbiterRegistry);
 
-        // NOTE: label kept as "sig-refund-request-factory" for salt compatibility
-        // (contract was renamed SignatureRefundRequestFactory -> RefundRequestConditionFactory -> RefundRequestFactory)
-        address refundReqFactory = _deploy3("sig-refund-request-factory", type(RefundRequestFactory).creationCode);
+        address refundReqFactory = _deploy3("refund-request-factory-v3", type(RefundRequestFactory).creationCode);
         console.log("RefundRequestFactory:", refundReqFactory);
 
         // =============================================
@@ -156,17 +150,17 @@ contract DeployCreate3 is Script {
         // =============================================
         console.log("\n--- 4. Condition Singletons ---");
 
-        address payerCondition = _deploy3("payer-condition", type(PayerCondition).creationCode);
+        address payerCondition = _deploy3("payer-condition-v3", type(PayerCondition).creationCode);
         console.log("PayerCondition:", payerCondition);
 
-        address receiverCondition = _deploy3("receiver-condition", type(ReceiverCondition).creationCode);
+        address receiverCondition = _deploy3("receiver-condition-v3", type(ReceiverCondition).creationCode);
         console.log("ReceiverCondition:", receiverCondition);
 
-        address alwaysTrueCondition = _deploy3("always-true-condition", type(AlwaysTrueCondition).creationCode);
+        address alwaysTrueCondition = _deploy3("always-true-condition-v3", type(AlwaysTrueCondition).creationCode);
         console.log("AlwaysTrueCondition:", alwaysTrueCondition);
 
         address usdcTvlLimit = _deploy3(
-            "usdc-tvl-limit",
+            "usdc-tvl-limit-v3",
             abi.encodePacked(type(UsdcTvlLimit).creationCode, abi.encode(escrow, usdcAddress, tvlLimit))
         );
         console.log("UsdcTvlLimit:", usdcTvlLimit);
@@ -177,33 +171,33 @@ contract DeployCreate3 is Script {
         console.log("\n--- 5. Factories ---");
 
         address escrowPeriodFactory = _deploy3(
-            "escrow-period-factory", abi.encodePacked(type(EscrowPeriodFactory).creationCode, abi.encode(escrow))
+            "escrow-period-factory-v3", abi.encodePacked(type(EscrowPeriodFactory).creationCode, abi.encode(escrow))
         );
         console.log("EscrowPeriodFactory:", escrowPeriodFactory);
 
         address freezeFactory =
-            _deploy3("freeze-factory", abi.encodePacked(type(FreezeFactory).creationCode, abi.encode(escrow)));
+            _deploy3("freeze-factory-v3", abi.encodePacked(type(FreezeFactory).creationCode, abi.encode(escrow)));
         console.log("FreezeFactory:", freezeFactory);
 
         address staticFeeCalcFactory =
-            _deploy3("static-fee-calc-factory", type(StaticFeeCalculatorFactory).creationCode);
+            _deploy3("static-fee-calc-factory-v3", type(StaticFeeCalculatorFactory).creationCode);
         console.log("StaticFeeCalculatorFactory:", staticFeeCalcFactory);
 
         address staticAddrCondFactory =
-            _deploy3("static-addr-condition-factory", type(StaticAddressConditionFactory).creationCode);
+            _deploy3("static-addr-condition-factory-v3", type(StaticAddressConditionFactory).creationCode);
         console.log("StaticAddressConditionFactory:", staticAddrCondFactory);
 
-        address andFactory = _deploy3("and-condition-factory", type(AndConditionFactory).creationCode);
+        address andFactory = _deploy3("and-condition-factory-v3", type(AndConditionFactory).creationCode);
         console.log("AndConditionFactory:", andFactory);
 
-        address orFactory = _deploy3("or-condition-factory", type(OrConditionFactory).creationCode);
+        address orFactory = _deploy3("or-condition-factory-v3", type(OrConditionFactory).creationCode);
         console.log("OrConditionFactory:", orFactory);
 
-        address notFactory = _deploy3("not-condition-factory", type(NotConditionFactory).creationCode);
+        address notFactory = _deploy3("not-condition-factory-v3", type(NotConditionFactory).creationCode);
         console.log("NotConditionFactory:", notFactory);
 
         address recorderCombFactory =
-            _deploy3("recorder-combinator-factory", type(RecorderCombinatorFactory).creationCode);
+            _deploy3("recorder-combinator-factory-v3", type(RecorderCombinatorFactory).creationCode);
         console.log("RecorderCombinatorFactory:", recorderCombFactory);
 
         // =============================================
@@ -212,13 +206,13 @@ contract DeployCreate3 is Script {
         console.log("\n--- 6. Additional ---");
 
         address receiverRefundCollector = _deploy3(
-            "receiver-refund-collector",
+            "receiver-refund-collector-v3",
             abi.encodePacked(type(ReceiverRefundCollector).creationCode, abi.encode(escrow))
         );
         console.log("ReceiverRefundCollector:", receiverRefundCollector);
 
         address refundRequestEvidenceFactory =
-            _deploy3("refund-request-evidence-factory", type(RefundRequestEvidenceFactory).creationCode);
+            _deploy3("refund-request-evidence-factory-v3", type(RefundRequestEvidenceFactory).creationCode);
         console.log("RefundRequestEvidenceFactory:", refundRequestEvidenceFactory);
 
         vm.stopBroadcast();
@@ -254,14 +248,7 @@ contract DeployCreate3 is Script {
         console.log("========================================");
     }
 
-    /// @dev Deploy a contract via CreateX CREATE3 with a guarded salt
-    /// @param label Human-readable label used to derive the salt
-    /// @param initCode The contract creation code (bytecode + constructor args)
-    /// @return deployed The address of the deployed contract
     function _deploy3(string memory label, bytes memory initCode) internal returns (address deployed) {
-        // CreateX salt format: [20 bytes sender][1 byte flags][11 bytes label]
-        // Byte 20 = 0x00 means sender-guarded + no cross-chain redeploy protection
-        // (0x01 would add chain ID to salt, giving different addresses per chain)
         bytes32 salt = bytes32(abi.encodePacked(msg.sender, bytes1(0x00), bytes11(keccak256(bytes(label)))));
         deployed = CREATEX.deployCreate3(salt, initCode);
     }
