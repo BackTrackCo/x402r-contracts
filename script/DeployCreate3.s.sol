@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.28;
 
-import {Script, console} from "forge-std/Script.sol";
+import {console} from "forge-std/Script.sol";
+import {Create3Deployer} from "./deploy/Create3Deployer.sol";
 
 // Core (commerce-payments)
 // On Shanghai profile, ReentrancyGuardTransient is remapped to SSTORE-only drop-in
@@ -42,12 +43,6 @@ import {RefundRequestFactory} from "../src/requests/refund/RefundRequestFactory.
 import {ReceiverRefundCollector} from "../src/collectors/ReceiverRefundCollector.sol";
 import {RefundRequestEvidenceFactory} from "../src/evidence/RefundRequestEvidenceFactory.sol";
 
-/// @notice Minimal interface for CreateX's CREATE3 deployment
-interface ICreateX {
-    function deployCreate3(bytes32 salt, bytes memory initCode) external payable returns (address);
-    function computeCreate3Address(bytes32 salt, address deployer) external view returns (address);
-}
-
 /**
  * @title DeployCreate3
  * @notice Deterministic deployment of all x402r contracts via CREATE3 (CreateX).
@@ -58,6 +53,8 @@ interface ICreateX {
  *
  *      SALT is appended to each contract's base label to form the CREATE3 salt.
  *      Use SALT="" for first deployment, SALT="-v2" for redeployment at new addresses, etc.
+ *      NOTE: Salt labels differ from v1/v2 deployments (e.g. "refund-request-factory" was
+ *      "sig-refund-request-factory"). Always use a fresh SALT when migrating from old addresses.
  *
  *      Cancun+ chains (Base, Ethereum, Arbitrum, …):
  *        SALT="-v3" USDC_ADDRESS=0x... TVL_LIMIT=100000000000 \
@@ -67,15 +64,12 @@ interface ICreateX {
  *        FOUNDRY_PROFILE=shanghai SALT="-v3" USDC_ADDRESS=0x... TVL_LIMIT=100000000000 \
  *        forge script script/DeployCreate3.s.sol --rpc-url skale-base --broadcast --legacy --slow -vvvv
  */
-contract DeployCreate3 is Script {
-    ICreateX constant CREATEX = ICreateX(0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed);
+contract DeployCreate3 is Create3Deployer {
     address constant MULTICALL3 = 0xcA11bde05977b3631167028862bE2a173976CA11;
-
-    string private _salt;
 
     function run() external {
         uint256 deployerPk = vm.envUint("PRIVATE_KEY");
-        _salt = vm.envString("SALT");
+        string memory salt = vm.envString("SALT");
         address owner = vm.envOr("OWNER_ADDRESS", msg.sender);
         address protocolFeeRecipient = vm.envOr("PROTOCOL_FEE_RECIPIENT", msg.sender);
         uint256 protocolFeeBps = vm.envOr("PROTOCOL_FEE_BPS", uint256(0));
@@ -87,7 +81,7 @@ contract DeployCreate3 is Script {
         console.log("========================================");
         console.log("Chain ID:", block.chainid);
         console.log("Deployer:", vm.addr(deployerPk));
-        console.log("Salt:", _salt);
+        console.log("Salt:", salt);
         console.log("Owner:", owner);
         console.log("Fee Recipient:", protocolFeeRecipient);
         console.log("Fee BPS:", protocolFeeBps);
@@ -101,11 +95,12 @@ contract DeployCreate3 is Script {
         // =============================================
         console.log("\n--- 1. Core Contracts ---");
 
-        address escrow = _deploy3("escrow", type(AuthCaptureEscrow).creationCode);
+        address escrow = _deploy3("escrow", salt, type(AuthCaptureEscrow).creationCode);
         console.log("AuthCaptureEscrow:", escrow);
 
         address tokenCollector = _deploy3(
             "token-collector",
+            salt,
             abi.encodePacked(type(ERC3009PaymentCollector).creationCode, abi.encode(escrow, MULTICALL3))
         );
         console.log("TokenCollector:", tokenCollector);
@@ -119,6 +114,7 @@ contract DeployCreate3 is Script {
         if (protocolFeeBps > 0) {
             calculatorAddr = _deploy3(
                 "static-fee-calculator",
+                salt,
                 abi.encodePacked(type(StaticFeeCalculator).creationCode, abi.encode(protocolFeeBps))
             );
             console.log("StaticFeeCalculator:", calculatorAddr);
@@ -126,6 +122,7 @@ contract DeployCreate3 is Script {
 
         address protocolFeeConfig = _deploy3(
             "protocol-fee-config",
+            salt,
             abi.encodePacked(
                 type(ProtocolFeeConfig).creationCode, abi.encode(calculatorAddr, protocolFeeRecipient, owner)
             )
@@ -134,6 +131,7 @@ contract DeployCreate3 is Script {
 
         address paymentOperatorFactory = _deploy3(
             "payment-operator-factory",
+            salt,
             abi.encodePacked(type(PaymentOperatorFactory).creationCode, abi.encode(escrow, protocolFeeConfig))
         );
         console.log("PaymentOperatorFactory:", paymentOperatorFactory);
@@ -143,13 +141,13 @@ contract DeployCreate3 is Script {
         // =============================================
         console.log("\n--- 3. Singletons ---");
 
-        address sigCondFactory = _deploy3("sig-condition-factory", type(SignatureConditionFactory).creationCode);
+        address sigCondFactory = _deploy3("sig-condition-factory", salt, type(SignatureConditionFactory).creationCode);
         console.log("SignatureConditionFactory:", sigCondFactory);
 
-        address arbiterRegistry = _deploy3("arbiter-registry", type(ArbiterRegistry).creationCode);
+        address arbiterRegistry = _deploy3("arbiter-registry", salt, type(ArbiterRegistry).creationCode);
         console.log("ArbiterRegistry:", arbiterRegistry);
 
-        address refundReqFactory = _deploy3("refund-request-factory", type(RefundRequestFactory).creationCode);
+        address refundReqFactory = _deploy3("refund-request-factory", salt, type(RefundRequestFactory).creationCode);
         console.log("RefundRequestFactory:", refundReqFactory);
 
         // =============================================
@@ -157,17 +155,18 @@ contract DeployCreate3 is Script {
         // =============================================
         console.log("\n--- 4. Condition Singletons ---");
 
-        address payerCondition = _deploy3("payer-condition", type(PayerCondition).creationCode);
+        address payerCondition = _deploy3("payer-condition", salt, type(PayerCondition).creationCode);
         console.log("PayerCondition:", payerCondition);
 
-        address receiverCondition = _deploy3("receiver-condition", type(ReceiverCondition).creationCode);
+        address receiverCondition = _deploy3("receiver-condition", salt, type(ReceiverCondition).creationCode);
         console.log("ReceiverCondition:", receiverCondition);
 
-        address alwaysTrueCondition = _deploy3("always-true-condition", type(AlwaysTrueCondition).creationCode);
+        address alwaysTrueCondition = _deploy3("always-true-condition", salt, type(AlwaysTrueCondition).creationCode);
         console.log("AlwaysTrueCondition:", alwaysTrueCondition);
 
         address usdcTvlLimit = _deploy3(
             "usdc-tvl-limit",
+            salt,
             abi.encodePacked(type(UsdcTvlLimit).creationCode, abi.encode(escrow, usdcAddress, tvlLimit))
         );
         console.log("UsdcTvlLimit:", usdcTvlLimit);
@@ -178,33 +177,33 @@ contract DeployCreate3 is Script {
         console.log("\n--- 5. Factories ---");
 
         address escrowPeriodFactory = _deploy3(
-            "escrow-period-factory", abi.encodePacked(type(EscrowPeriodFactory).creationCode, abi.encode(escrow))
+            "escrow-period-factory", salt, abi.encodePacked(type(EscrowPeriodFactory).creationCode, abi.encode(escrow))
         );
         console.log("EscrowPeriodFactory:", escrowPeriodFactory);
 
         address freezeFactory =
-            _deploy3("freeze-factory", abi.encodePacked(type(FreezeFactory).creationCode, abi.encode(escrow)));
+            _deploy3("freeze-factory", salt, abi.encodePacked(type(FreezeFactory).creationCode, abi.encode(escrow)));
         console.log("FreezeFactory:", freezeFactory);
 
         address staticFeeCalcFactory =
-            _deploy3("static-fee-calc-factory", type(StaticFeeCalculatorFactory).creationCode);
+            _deploy3("static-fee-calc-factory", salt, type(StaticFeeCalculatorFactory).creationCode);
         console.log("StaticFeeCalculatorFactory:", staticFeeCalcFactory);
 
         address staticAddrCondFactory =
-            _deploy3("static-addr-condition-factory", type(StaticAddressConditionFactory).creationCode);
+            _deploy3("static-addr-condition-factory", salt, type(StaticAddressConditionFactory).creationCode);
         console.log("StaticAddressConditionFactory:", staticAddrCondFactory);
 
-        address andFactory = _deploy3("and-condition-factory", type(AndConditionFactory).creationCode);
+        address andFactory = _deploy3("and-condition-factory", salt, type(AndConditionFactory).creationCode);
         console.log("AndConditionFactory:", andFactory);
 
-        address orFactory = _deploy3("or-condition-factory", type(OrConditionFactory).creationCode);
+        address orFactory = _deploy3("or-condition-factory", salt, type(OrConditionFactory).creationCode);
         console.log("OrConditionFactory:", orFactory);
 
-        address notFactory = _deploy3("not-condition-factory", type(NotConditionFactory).creationCode);
+        address notFactory = _deploy3("not-condition-factory", salt, type(NotConditionFactory).creationCode);
         console.log("NotConditionFactory:", notFactory);
 
         address recorderCombFactory =
-            _deploy3("recorder-combinator-factory", type(RecorderCombinatorFactory).creationCode);
+            _deploy3("recorder-combinator-factory", salt, type(RecorderCombinatorFactory).creationCode);
         console.log("RecorderCombinatorFactory:", recorderCombFactory);
 
         // =============================================
@@ -214,12 +213,13 @@ contract DeployCreate3 is Script {
 
         address receiverRefundCollector = _deploy3(
             "receiver-refund-collector",
+            salt,
             abi.encodePacked(type(ReceiverRefundCollector).creationCode, abi.encode(escrow))
         );
         console.log("ReceiverRefundCollector:", receiverRefundCollector);
 
         address refundRequestEvidenceFactory =
-            _deploy3("refund-request-evidence-factory", type(RefundRequestEvidenceFactory).creationCode);
+            _deploy3("refund-request-evidence-factory", salt, type(RefundRequestEvidenceFactory).creationCode);
         console.log("RefundRequestEvidenceFactory:", refundRequestEvidenceFactory);
 
         vm.stopBroadcast();
@@ -253,11 +253,5 @@ contract DeployCreate3 is Script {
         console.log("    receiverRefundCollector:", receiverRefundCollector);
         console.log("    refundRequestEvidenceFactory:", refundRequestEvidenceFactory);
         console.log("========================================");
-    }
-
-    function _deploy3(string memory label, bytes memory initCode) internal returns (address deployed) {
-        string memory fullLabel = string.concat(label, _salt);
-        bytes32 salt = bytes32(abi.encodePacked(msg.sender, bytes1(0x00), bytes11(keccak256(bytes(fullLabel)))));
-        deployed = CREATEX.deployCreate3(salt, initCode);
     }
 }

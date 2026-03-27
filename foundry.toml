@@ -47,7 +47,7 @@ optimism = { key = "${OPTIMISM_ETHERSCAN_API_KEY}", url = "https://api-optimisti
 
 # Shanghai profile — for pre-Cancun chains (e.g. SKALE Base)
 # 1. evm_version = "shanghai" → compiler avoids MCOPY (EIP-5656)
-# 2. Remaps solady/ → lib/solady-nontransient/ (SSTORE-only ReentrancyGuardTransient,
+# 2. Remaps solady/ → compat/solady-nontransient/ (SSTORE-only ReentrancyGuardTransient,
 #    all other files symlinked to real Solady)
 [profile.shanghai]
 evm_version = "shanghai"

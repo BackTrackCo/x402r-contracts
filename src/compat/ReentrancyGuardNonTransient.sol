@@ -47,8 +47,9 @@ abstract contract ReentrancyGuardTransient {
         _;
     }
 
-    /// @dev Exists for interface compatibility with child-contract overrides.
-    ///      Not called by the modifiers above — always uses SSTORE.
+    /// @dev Dead code — not called by the modifiers above (always SSTORE).
+    ///      Kept so contracts that override this function in Solady's real
+    ///      ReentrancyGuardTransient still compile when remapped here.
     function _useTransientReentrancyGuardOnlyOnMainnet() internal view virtual returns (bool) {
         return true;
     }
