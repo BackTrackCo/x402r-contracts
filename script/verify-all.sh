@@ -300,7 +300,6 @@ USDC=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
 TVL=100000000000
 PROTOCOL_FEE_CONFIG=0xb33D6502EdBbC47201cd1E53C49d703EC0a660b8
 
-# From DeployAllChain
 verify 1 "Ethereum Mainnet" $ESCROW \
   "lib/commerce-payments/src/AuthCaptureEscrow.sol:AuthCaptureEscrow"
 
@@ -335,7 +334,6 @@ verify 1 "Ethereum Mainnet" 0x67B63Af4bcdCD3E4263d9995aB04563fbC229944 \
 verify 1 "Ethereum Mainnet" 0x7254b68D1AaAbd118C8A8b15756b4654c10a16d2 \
   "src/plugins/conditions/access/AlwaysTrueCondition.sol:AlwaysTrueCondition"
 
-# Factories from DeployAllChain
 verify 1 "Ethereum Mainnet" 0x6926c05193c714ED4bA3867Ee93d6816Fdc14128 \
   "src/plugins/escrow-period/EscrowPeriodFactory.sol:EscrowPeriodFactory" \
   "$(encode_args 'constructor(address)' $ESCROW)"
@@ -353,7 +351,6 @@ verify 1 "Ethereum Mainnet" 0x6a7E26c3A78a7B1eFF9Dd28d51B2a15df3208B84 \
 verify 1 "Ethereum Mainnet" 0x19a798c7F66E6401f6004b732dA604196952e843 \
   "src/plugins/conditions/combinators/AndConditionFactory.sol:AndConditionFactory"
 
-# Factories from DeployEthRemaining (used in SDK config)
 verify 1 "Ethereum Mainnet" 0x32471d31910A009273a812dE0894D9F0AdeF4834 \
   "src/plugins/conditions/combinators/OrConditionFactory.sol:OrConditionFactory"
 

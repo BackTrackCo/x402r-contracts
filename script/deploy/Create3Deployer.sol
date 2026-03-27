@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.28;
 
-import {Script} from "forge-std/Script.sol";
+import {Script, console} from "forge-std/Script.sol";
 
 /// @notice Minimal interface for CreateX's CREATE3 deployment
 interface ICreateX {
@@ -18,6 +18,9 @@ abstract contract Create3Deployer is Script {
         internal
         returns (address deployed)
     {
+        if (bytes(salt).length == 0) {
+            console.log("Warning: SALT is empty, deploying at default address for label:", label);
+        }
         string memory fullLabel = string.concat(label, salt);
         bytes32 s = bytes32(abi.encodePacked(msg.sender, bytes1(0x00), bytes11(keccak256(bytes(fullLabel)))));
         deployed = CREATEX.deployCreate3(s, initCode);
