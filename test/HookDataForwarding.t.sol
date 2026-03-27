@@ -43,7 +43,7 @@ contract HookDataForwardingTest is Test {
         token = new MockERC20("Test Token", "TEST");
         collector = new PreApprovalPaymentCollector(address(escrow));
         protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
-        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), false);
+        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         token.mint(payer, PAYMENT_AMOUNT * 10);
         vm.prank(payer);

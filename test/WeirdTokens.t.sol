@@ -42,7 +42,7 @@ contract WeirdTokensTest is Test {
         escrow = new AuthCaptureEscrow();
         collector = new PreApprovalPaymentCollector(address(escrow));
         protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
-        factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), false);
+        factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         // Deploy operator
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({

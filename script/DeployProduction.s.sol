@@ -62,7 +62,7 @@ contract DeployProduction is Script {
         console.log("ProtocolFeeConfig:", address(protocolFeeConfig));
 
         // Deploy factory
-        PaymentOperatorFactory factory = new PaymentOperatorFactory(escrow, address(protocolFeeConfig), false);
+        PaymentOperatorFactory factory = new PaymentOperatorFactory(escrow, address(protocolFeeConfig));
         console.log("Factory deployed:", address(factory));
 
         // Transfer ProtocolFeeConfig ownership to multisig

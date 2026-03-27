@@ -115,7 +115,7 @@ contract FullLifecycleTest is Test {
         refundInEscrowCondition = new OrCondition(refundConditions);
 
         // Deploy operator with full configuration
-        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), false);
+        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeRecipient: operatorFeeRecipient,

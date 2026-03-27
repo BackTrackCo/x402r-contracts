@@ -42,18 +42,16 @@ contract PaymentOperatorFactory {
     // Immutable configuration shared by all deployed operators
     address public immutable ESCROW;
     address public immutable PROTOCOL_FEE_CONFIG;
-    bool public immutable NON_TRANSIENT_REENTRANCY_GUARD_MODE;
 
     // keccak256(config) => operator address
     mapping(bytes32 => address) public operators;
 
-    constructor(address _escrow, address _protocolFeeConfig, bool nonTransientReentrancyGuardMode_) {
+    constructor(address _escrow, address _protocolFeeConfig) {
         if (_escrow == address(0)) revert ZeroAddress();
         if (_protocolFeeConfig == address(0)) revert ZeroAddress();
 
         ESCROW = _escrow;
         PROTOCOL_FEE_CONFIG = _protocolFeeConfig;
-        NON_TRANSIENT_REENTRANCY_GUARD_MODE = nonTransientReentrancyGuardMode_;
     }
 
     /**
@@ -128,12 +126,7 @@ contract PaymentOperatorFactory {
         });
         address deployed = address(
             new PaymentOperator{salt: key}(
-                ESCROW,
-                PROTOCOL_FEE_CONFIG,
-                config.feeRecipient,
-                config.feeCalculator,
-                conditions,
-                NON_TRANSIENT_REENTRANCY_GUARD_MODE
+                ESCROW, PROTOCOL_FEE_CONFIG, config.feeRecipient, config.feeCalculator, conditions
             )
         );
 
@@ -181,14 +174,7 @@ contract PaymentOperatorFactory {
 
         return abi.encodePacked(
             type(PaymentOperator).creationCode,
-            abi.encode(
-                ESCROW,
-                PROTOCOL_FEE_CONFIG,
-                config.feeRecipient,
-                config.feeCalculator,
-                conditions,
-                NON_TRANSIENT_REENTRANCY_GUARD_MODE
-            )
+            abi.encode(ESCROW, PROTOCOL_FEE_CONFIG, config.feeRecipient, config.feeCalculator, conditions)
         );
     }
 }

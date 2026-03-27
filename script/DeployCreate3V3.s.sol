@@ -125,12 +125,9 @@ contract DeployCreate3V3 is Script {
         );
         console.log("ProtocolFeeConfig:", protocolFeeConfig);
 
-        // nonTransientReentrancyGuardMode = false: on Cancun+ this means always-TSTORE (efficient).
-        // On Shanghai (FOUNDRY_PROFILE=shanghai), ReentrancyGuardTransient is remapped to the
-        // SSTORE-only drop-in at compile time, so the flag is irrelevant.
         address paymentOperatorFactory = _deploy3(
             "payment-operator-factory-v3",
-            abi.encodePacked(type(PaymentOperatorFactory).creationCode, abi.encode(escrow, protocolFeeConfig, false))
+            abi.encodePacked(type(PaymentOperatorFactory).creationCode, abi.encode(escrow, protocolFeeConfig))
         );
         console.log("PaymentOperatorFactory:", paymentOperatorFactory);
 

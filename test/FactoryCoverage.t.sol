@@ -543,7 +543,7 @@ contract FactoryCoverageTest is Test {
     // ============ PaymentOperatorFactory ============
 
     function test_PaymentOperatorFactory_DifferentConfigs() public {
-        PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), false);
+        PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         PaymentOperatorFactory.OperatorConfig memory config1 = _defaultConfig(address(0));
         PaymentOperatorFactory.OperatorConfig memory config2 = _defaultConfig(address(0));
@@ -555,7 +555,7 @@ contract FactoryCoverageTest is Test {
     }
 
     function test_PaymentOperatorFactory_ImmutableFields() public {
-        PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), false);
+        PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
         assertEq(address(factory.ESCROW()), address(escrow), "ESCROW should be immutable");
         assertEq(address(factory.PROTOCOL_FEE_CONFIG()), address(protocolFeeConfig), "FEE_CONFIG should be immutable");
     }

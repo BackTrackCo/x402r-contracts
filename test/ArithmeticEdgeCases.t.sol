@@ -60,7 +60,7 @@ contract ArithmeticEdgeCasesTest is Test {
         protocolFeeConfig = new ProtocolFeeConfig(address(protocolCalculator), protocolFeeRecipient, owner);
 
         // Deploy operator factory
-        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), false);
+        operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         // Deploy operator with operator fee calculator
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({

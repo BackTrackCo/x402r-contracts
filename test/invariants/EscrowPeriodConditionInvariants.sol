@@ -67,8 +67,7 @@ contract EscrowPeriodConditionInvariants is Test {
 
         ProtocolFeeConfig protocolFeeConfig = new ProtocolFeeConfig(address(0), address(this), address(this));
 
-        PaymentOperatorFactory operatorFactory =
-            new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig), false);
+        PaymentOperatorFactory operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeRecipient: address(this),
