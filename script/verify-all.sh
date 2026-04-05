@@ -90,8 +90,6 @@ verify 84532 "Base Sepolia" 0x97d53e63A9CB97556c00BeFd325AF810c9b267B2 \
 verify 84532 "Base Sepolia" 0x1C2Ab244aC8bDdDB74d43389FF34B118aF2E90F4 \
   "src/requests/refund/RefundRequest.sol:RefundRequest"
 
-verify 84532 "Base Sepolia" 0x762d562a5ff10EcbFD2Bc4fea663433b84226F35 \
-  "src/registry/ArbiterRegistry.sol:ArbiterRegistry"
 
 verify 84532 "Base Sepolia" 0xc07b00609f0be9C120B502FA84AFE9db346CB2da \
   "src/plugins/conditions/tvl-limit/UsdcTvlLimit.sol:UsdcTvlLimit" \
@@ -166,8 +164,6 @@ verify 8453 "Base Mainnet" 0x3D0837fF8Ea36F417261577b9BA568400A840260 \
 verify 8453 "Base Mainnet" 0x35fb2EFEfAc3Ee9f6E52A9AAE5C9655bC08dEc00 \
   "src/requests/refund/RefundRequest.sol:RefundRequest"
 
-verify 8453 "Base Mainnet" 0xB68C023365EB08021E12f7f7f11a03282443863A \
-  "src/registry/ArbiterRegistry.sol:ArbiterRegistry"
 
 verify 8453 "Base Mainnet" 0x67B63Af4bcdCD3E4263d9995aB04563fbC229944 \
   "src/plugins/conditions/tvl-limit/UsdcTvlLimit.sol:UsdcTvlLimit" \
@@ -242,8 +238,6 @@ verify 11155111 "Ethereum Sepolia" 0x32d6AC59BCe8DFB3026F10BcaDB8D00AB218f5b6 \
 verify 11155111 "Ethereum Sepolia" 0xc1256Bb30bd0cdDa07D8C8Cf67a59105f2EA1b98 \
   "src/requests/refund/RefundRequest.sol:RefundRequest"
 
-verify 11155111 "Ethereum Sepolia" 0xE78648e7af7B1BaDE717FF6E410B922F92adE80f \
-  "src/registry/ArbiterRegistry.sol:ArbiterRegistry"
 
 verify 11155111 "Ethereum Sepolia" 0xb33D6502EdBbC47201cd1E53C49d703EC0a660b8 \
   "src/plugins/conditions/tvl-limit/UsdcTvlLimit.sol:UsdcTvlLimit" \
@@ -319,8 +313,6 @@ verify 1 "Ethereum Mainnet" 0x48ADf6E37F9b31dC2AAD0462C5862B5422C736B8 \
 verify 1 "Ethereum Mainnet" 0x59314674BAbb1a24Eb2704468a9cCdD50668a1C6 \
   "src/requests/refund/RefundRequest.sol:RefundRequest"
 
-verify 1 "Ethereum Mainnet" 0x3D0837fF8Ea36F417261577b9BA568400A840260 \
-  "src/registry/ArbiterRegistry.sol:ArbiterRegistry"
 
 verify 1 "Ethereum Mainnet" 0x35fb2EFEfAc3Ee9f6E52A9AAE5C9655bC08dEc00 \
   "src/plugins/conditions/tvl-limit/UsdcTvlLimit.sol:UsdcTvlLimit" \
@@ -397,8 +389,6 @@ verify 137 "Polygon" 0xb33D6502EdBbC47201cd1E53C49d703EC0a660b8 \
 verify 137 "Polygon" 0xed02d3E5167BCc9582D851885A89b050AB816a56 \
   "src/requests/refund/RefundRequest.sol:RefundRequest"
 
-verify 137 "Polygon" 0xc9BbA6A2CF9838e7Dd8c19BC8B3BAC620B9D8178 \
-  "src/registry/ArbiterRegistry.sol:ArbiterRegistry"
 
 verify 137 "Polygon" 0x46C44071BDf9753482400B76d88A5850318b776F \
   "src/plugins/conditions/tvl-limit/UsdcTvlLimit.sol:UsdcTvlLimit" \
@@ -473,8 +463,6 @@ verify 42161 "Arbitrum" 0x32d6AC59BCe8DFB3026F10BcaDB8D00AB218f5b6 \
 verify 42161 "Arbitrum" 0xc1256Bb30bd0cdDa07D8C8Cf67a59105f2EA1b98 \
   "src/requests/refund/RefundRequest.sol:RefundRequest"
 
-verify 42161 "Arbitrum" 0xE78648e7af7B1BaDE717FF6E410B922F92adE80f \
-  "src/registry/ArbiterRegistry.sol:ArbiterRegistry"
 
 verify 42161 "Arbitrum" 0xb33D6502EdBbC47201cd1E53C49d703EC0a660b8 \
   "src/plugins/conditions/tvl-limit/UsdcTvlLimit.sol:UsdcTvlLimit" \
@@ -549,8 +537,6 @@ verify 42220 "Celo" 0x32d6AC59BCe8DFB3026F10BcaDB8D00AB218f5b6 \
 verify 42220 "Celo" 0xc1256Bb30bd0cdDa07D8C8Cf67a59105f2EA1b98 \
   "src/requests/refund/RefundRequest.sol:RefundRequest"
 
-verify 42220 "Celo" 0xE78648e7af7B1BaDE717FF6E410B922F92adE80f \
-  "src/registry/ArbiterRegistry.sol:ArbiterRegistry"
 
 verify 42220 "Celo" 0xb33D6502EdBbC47201cd1E53C49d703EC0a660b8 \
   "src/plugins/conditions/tvl-limit/UsdcTvlLimit.sol:UsdcTvlLimit" \
@@ -625,8 +611,6 @@ verify 43114 "Avalanche" 0x32d6AC59BCe8DFB3026F10BcaDB8D00AB218f5b6 \
 verify 43114 "Avalanche" 0xc1256Bb30bd0cdDa07D8C8Cf67a59105f2EA1b98 \
   "src/requests/refund/RefundRequest.sol:RefundRequest"
 
-verify 43114 "Avalanche" 0xE78648e7af7B1BaDE717FF6E410B922F92adE80f \
-  "src/registry/ArbiterRegistry.sol:ArbiterRegistry"
 
 verify 43114 "Avalanche" 0xb33D6502EdBbC47201cd1E53C49d703EC0a660b8 \
   "src/plugins/conditions/tvl-limit/UsdcTvlLimit.sol:UsdcTvlLimit" \
@@ -701,8 +685,6 @@ verify 10 "Optimism" 0x32d6AC59BCe8DFB3026F10BcaDB8D00AB218f5b6 \
 verify 10 "Optimism" 0xc1256Bb30bd0cdDa07D8C8Cf67a59105f2EA1b98 \
   "src/requests/refund/RefundRequest.sol:RefundRequest"
 
-verify 10 "Optimism" 0xE78648e7af7B1BaDE717FF6E410B922F92adE80f \
-  "src/registry/ArbiterRegistry.sol:ArbiterRegistry"
 
 verify 10 "Optimism" 0xb33D6502EdBbC47201cd1E53C49d703EC0a660b8 \
   "src/plugins/conditions/tvl-limit/UsdcTvlLimit.sol:UsdcTvlLimit" \
