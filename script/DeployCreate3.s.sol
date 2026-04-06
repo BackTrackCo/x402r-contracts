@@ -15,7 +15,6 @@ import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
 import {StaticFeeCalculator} from "../src/plugins/fees/static-fee-calculator/StaticFeeCalculator.sol";
 
 // Singletons
-import {ArbiterRegistry} from "../src/registry/ArbiterRegistry.sol";
 import {SignatureConditionFactory} from "../src/plugins/conditions/access/signature/SignatureConditionFactory.sol";
 
 // Condition singletons
@@ -144,9 +143,6 @@ contract DeployCreate3 is Create3Deployer {
         address sigCondFactory = _deploy3("sig-condition-factory", salt, type(SignatureConditionFactory).creationCode);
         console.log("SignatureConditionFactory:", sigCondFactory);
 
-        address arbiterRegistry = _deploy3("arbiter-registry", salt, type(ArbiterRegistry).creationCode);
-        console.log("ArbiterRegistry:", arbiterRegistry);
-
         address refundReqFactory = _deploy3("refund-request-factory", salt, type(RefundRequestFactory).creationCode);
         console.log("RefundRequestFactory:", refundReqFactory);
 
@@ -236,7 +232,6 @@ contract DeployCreate3 is Create3Deployer {
         console.log("    protocolFeeConfig:", protocolFeeConfig);
         console.log("    paymentOperatorFactory:", paymentOperatorFactory);
         console.log("    signatureConditionFactory:", sigCondFactory);
-        console.log("    arbiterRegistry:", arbiterRegistry);
         console.log("    refundRequestFactory:", refundReqFactory);
         console.log("    payerCondition:", payerCondition);
         console.log("    receiverCondition:", receiverCondition);
