@@ -90,7 +90,6 @@ verify 84532 "Base Sepolia" 0x97d53e63A9CB97556c00BeFd325AF810c9b267B2 \
 verify 84532 "Base Sepolia" 0x1C2Ab244aC8bDdDB74d43389FF34B118aF2E90F4 \
   "src/requests/refund/RefundRequest.sol:RefundRequest"
 
-
 verify 84532 "Base Sepolia" 0xc07b00609f0be9C120B502FA84AFE9db346CB2da \
   "src/plugins/conditions/tvl-limit/UsdcTvlLimit.sol:UsdcTvlLimit" \
   "$(encode_args 'constructor(address,address,uint256)' $ESCROW $USDC $TVL)"
@@ -134,7 +133,6 @@ verify 84532 "Base Sepolia" 0x36a03071bA0D3F09a50381fCA6C9906B69Ba8c0E \
   "src/collectors/ReceiverRefundCollector.sol:ReceiverRefundCollector" \
   "$(encode_args 'constructor(address)' $ESCROW)"
 
-
 # ==========================================
 # BASE MAINNET (8453)
 # ==========================================
@@ -163,7 +161,6 @@ verify 8453 "Base Mainnet" 0x3D0837fF8Ea36F417261577b9BA568400A840260 \
 
 verify 8453 "Base Mainnet" 0x35fb2EFEfAc3Ee9f6E52A9AAE5C9655bC08dEc00 \
   "src/requests/refund/RefundRequest.sol:RefundRequest"
-
 
 verify 8453 "Base Mainnet" 0x67B63Af4bcdCD3E4263d9995aB04563fbC229944 \
   "src/plugins/conditions/tvl-limit/UsdcTvlLimit.sol:UsdcTvlLimit" \
@@ -208,7 +205,6 @@ verify 8453 "Base Mainnet" 0x4bDb9ccC91CA63cfedb6CB0dbf21BC6dD562bb04 \
   "src/collectors/ReceiverRefundCollector.sol:ReceiverRefundCollector" \
   "$(encode_args 'constructor(address)' $ESCROW)"
 
-
 # ==========================================
 # ETHEREUM SEPOLIA (11155111)
 # ==========================================
@@ -237,7 +233,6 @@ verify 11155111 "Ethereum Sepolia" 0x32d6AC59BCe8DFB3026F10BcaDB8D00AB218f5b6 \
 
 verify 11155111 "Ethereum Sepolia" 0xc1256Bb30bd0cdDa07D8C8Cf67a59105f2EA1b98 \
   "src/requests/refund/RefundRequest.sol:RefundRequest"
-
 
 verify 11155111 "Ethereum Sepolia" 0xb33D6502EdBbC47201cd1E53C49d703EC0a660b8 \
   "src/plugins/conditions/tvl-limit/UsdcTvlLimit.sol:UsdcTvlLimit" \
@@ -282,7 +277,6 @@ verify 11155111 "Ethereum Sepolia" 0x19a798c7F66E6401f6004b732dA604196952e843 \
   "src/collectors/ReceiverRefundCollector.sol:ReceiverRefundCollector" \
   "$(encode_args 'constructor(address)' $ESCROW)"
 
-
 # ==========================================
 # ETHEREUM MAINNET (1)
 # ==========================================
@@ -312,7 +306,6 @@ verify 1 "Ethereum Mainnet" 0x48ADf6E37F9b31dC2AAD0462C5862B5422C736B8 \
 
 verify 1 "Ethereum Mainnet" 0x59314674BAbb1a24Eb2704468a9cCdD50668a1C6 \
   "src/requests/refund/RefundRequest.sol:RefundRequest"
-
 
 verify 1 "Ethereum Mainnet" 0x35fb2EFEfAc3Ee9f6E52A9AAE5C9655bC08dEc00 \
   "src/plugins/conditions/tvl-limit/UsdcTvlLimit.sol:UsdcTvlLimit" \
@@ -359,7 +352,6 @@ verify 1 "Ethereum Mainnet" 0xb9488351E48b23D798f24e8174514F28B741Eb4f \
   "src/collectors/ReceiverRefundCollector.sol:ReceiverRefundCollector" \
   "$(encode_args 'constructor(address)' $ESCROW)"
 
-
 # ==========================================
 # POLYGON (137)
 # ==========================================
@@ -388,7 +380,6 @@ verify 137 "Polygon" 0xb33D6502EdBbC47201cd1E53C49d703EC0a660b8 \
 
 verify 137 "Polygon" 0xed02d3E5167BCc9582D851885A89b050AB816a56 \
   "src/requests/refund/RefundRequest.sol:RefundRequest"
-
 
 verify 137 "Polygon" 0x46C44071BDf9753482400B76d88A5850318b776F \
   "src/plugins/conditions/tvl-limit/UsdcTvlLimit.sol:UsdcTvlLimit" \
@@ -433,7 +424,6 @@ verify 137 "Polygon" 0x9B16ff5bcF5C0B2c31Cd17032a306E91CA67F546 \
   "src/collectors/ReceiverRefundCollector.sol:ReceiverRefundCollector" \
   "$(encode_args 'constructor(address)' $ESCROW)"
 
-
 # ==========================================
 # ARBITRUM (42161)
 # ==========================================
@@ -462,7 +452,6 @@ verify 42161 "Arbitrum" 0x32d6AC59BCe8DFB3026F10BcaDB8D00AB218f5b6 \
 
 verify 42161 "Arbitrum" 0xc1256Bb30bd0cdDa07D8C8Cf67a59105f2EA1b98 \
   "src/requests/refund/RefundRequest.sol:RefundRequest"
-
 
 verify 42161 "Arbitrum" 0xb33D6502EdBbC47201cd1E53C49d703EC0a660b8 \
   "src/plugins/conditions/tvl-limit/UsdcTvlLimit.sol:UsdcTvlLimit" \
@@ -507,7 +496,6 @@ verify 42161 "Arbitrum" 0x19a798c7F66E6401f6004b732dA604196952e843 \
   "src/collectors/ReceiverRefundCollector.sol:ReceiverRefundCollector" \
   "$(encode_args 'constructor(address)' $ESCROW)"
 
-
 # ==========================================
 # CELO (42220)
 # ==========================================
@@ -536,7 +524,6 @@ verify 42220 "Celo" 0x32d6AC59BCe8DFB3026F10BcaDB8D00AB218f5b6 \
 
 verify 42220 "Celo" 0xc1256Bb30bd0cdDa07D8C8Cf67a59105f2EA1b98 \
   "src/requests/refund/RefundRequest.sol:RefundRequest"
-
 
 verify 42220 "Celo" 0xb33D6502EdBbC47201cd1E53C49d703EC0a660b8 \
   "src/plugins/conditions/tvl-limit/UsdcTvlLimit.sol:UsdcTvlLimit" \
@@ -581,7 +568,6 @@ verify 42220 "Celo" 0x19a798c7F66E6401f6004b732dA604196952e843 \
   "src/collectors/ReceiverRefundCollector.sol:ReceiverRefundCollector" \
   "$(encode_args 'constructor(address)' $ESCROW)"
 
-
 # ==========================================
 # AVALANCHE (43114)
 # ==========================================
@@ -610,7 +596,6 @@ verify 43114 "Avalanche" 0x32d6AC59BCe8DFB3026F10BcaDB8D00AB218f5b6 \
 
 verify 43114 "Avalanche" 0xc1256Bb30bd0cdDa07D8C8Cf67a59105f2EA1b98 \
   "src/requests/refund/RefundRequest.sol:RefundRequest"
-
 
 verify 43114 "Avalanche" 0xb33D6502EdBbC47201cd1E53C49d703EC0a660b8 \
   "src/plugins/conditions/tvl-limit/UsdcTvlLimit.sol:UsdcTvlLimit" \
@@ -655,7 +640,6 @@ verify 43114 "Avalanche" 0x19a798c7F66E6401f6004b732dA604196952e843 \
   "src/collectors/ReceiverRefundCollector.sol:ReceiverRefundCollector" \
   "$(encode_args 'constructor(address)' $ESCROW)"
 
-
 # ==========================================
 # OPTIMISM (10)
 # ==========================================
@@ -684,7 +668,6 @@ verify 10 "Optimism" 0x32d6AC59BCe8DFB3026F10BcaDB8D00AB218f5b6 \
 
 verify 10 "Optimism" 0xc1256Bb30bd0cdDa07D8C8Cf67a59105f2EA1b98 \
   "src/requests/refund/RefundRequest.sol:RefundRequest"
-
 
 verify 10 "Optimism" 0xb33D6502EdBbC47201cd1E53C49d703EC0a660b8 \
   "src/plugins/conditions/tvl-limit/UsdcTvlLimit.sol:UsdcTvlLimit" \
@@ -728,7 +711,6 @@ verify 10 "Optimism" 0x6a7E26c3A78a7B1eFF9Dd28d51B2a15df3208B84 \
 verify 10 "Optimism" 0x19a798c7F66E6401f6004b732dA604196952e843 \
   "src/collectors/ReceiverRefundCollector.sol:ReceiverRefundCollector" \
   "$(encode_args 'constructor(address)' $ESCROW)"
-
 
 # ==========================================
 # SUMMARY
