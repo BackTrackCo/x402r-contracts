@@ -251,10 +251,10 @@ node scripts/verify-deployment.js
   - [ ] Grafana (if using)
   - [ ] Custom monitoring scripts
 - [ ] Configure event monitoring
-  - [ ] AuthorizationCreated
-  - [ ] ReleaseExecuted
-  - [ ] RefundInEscrowExecuted
-  - [ ] RefundPostEscrowExecuted
+  - [ ] AuthorizeExecuted
+  - [ ] CaptureExecuted
+  - [ ] VoidExecuted
+  - [ ] RefundExecuted
   - [ ] FeesDistributed
 
 ### Set Up Alerts

@@ -54,30 +54,30 @@ import {PaymentOperator} from "src/operator/payment/PaymentOperator.sol";
 
 // 1. Deploy infrastructure
 AuthCaptureEscrow escrow = new AuthCaptureEscrow();
-ProtocolFeeConfig feeConfig = new ProtocolFeeConfig(address(0), feeRecipient, owner);
+ProtocolFeeConfig feeConfig = new ProtocolFeeConfig(address(0), feeReceiver, owner);
 PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(feeConfig));
 
 // 2. Configure and deploy operator
 PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
-    feeRecipient: feeRecipient,
+    feeReceiver: feeReceiver,
     feeCalculator: address(0),            // No operator fee
-    authorizeCondition: address(0),        // Anyone can authorize
-    authorizeRecorder: address(0),         // No recording
-    chargeCondition: address(0),
-    chargeRecorder: address(0),
-    releaseCondition: address(0),          // Anyone can release
-    releaseRecorder: address(0),
-    refundInEscrowCondition: address(0),
-    refundInEscrowRecorder: address(0),
-    refundPostEscrowCondition: address(0),
-    refundPostEscrowRecorder: address(0)
+    authorizePreActionCondition: address(0),        // Anyone can authorize
+    authorizePostActionHook: address(0),         // No recording
+    chargePreActionCondition: address(0),
+    chargePostActionHook: address(0),
+    capturePreActionCondition: address(0),          // Anyone can release
+    capturePostActionHook: address(0),
+    voidPreActionCondition: address(0),
+    voidPostActionHook: address(0),
+    refundPreActionCondition: address(0),
+    refundPostActionHook: address(0)
 });
 address operator = factory.deployOperator(config);
 
 // 3. Use the operator
 PaymentOperator op = PaymentOperator(operator);
 op.authorize(paymentInfo, amount, tokenCollector, "");
-op.release(paymentInfo, amount);
+op.capture(paymentInfo, amount);
 ```
 
 ---
@@ -96,9 +96,9 @@ op.release(paymentInfo, amount);
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  Payer              Receiver              Designated Address                │
 │    │                   │                         │                           │
-│    │  authorize()      │  release()              │  refund*() (if configured)│
+│    │  authorize()      │  capture()              │  refund*() (if configured)│
 │    │  freeze()         │  charge()               │  updateStatus()           │
-│    │  requestRefund()  │  requestRefund()        │  release() (if configured)│
+│    │  requestRefund()  │  requestRefund()        │  capture() (if configured)│
 └────┼───────────────────┼─────────────────────────┼───────────────────────────┘
      │                   │                         │
      ▼                   ▼                         ▼
@@ -107,11 +107,11 @@ op.release(paymentInfo, amount);
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │  Condition Slots (before action)    Recorder Slots (after action)   │   │
 │  │  ─────────────────────────────────  ─────────────────────────────   │   │
-│  │  AUTHORIZE_CONDITION ──────────────► AUTHORIZE_RECORDER             │   │
-│  │  CHARGE_CONDITION ─────────────────► CHARGE_RECORDER                │   │
-│  │  RELEASE_CONDITION ────────────────► RELEASE_RECORDER               │   │
-│  │  REFUND_IN_ESCROW_CONDITION ───────► REFUND_IN_ESCROW_RECORDER      │   │
-│  │  REFUND_POST_ESCROW_CONDITION ─────► REFUND_POST_ESCROW_RECORDER    │   │
+│  │  AUTHORIZE_PRE_ACTION_CONDITION ──────────────► AUTHORIZE_POST_ACTION_HOOK             │   │
+│  │  CHARGE_PRE_ACTION_CONDITION ─────────────────► CHARGE_POST_ACTION_HOOK                │   │
+│  │  RELEASE_PRE_ACTION_CONDITION ────────────────► RELEASE_POST_ACTION_HOOK               │   │
+│  │  REFUND_IN_ESCROW_PRE_ACTION_CONDITION ───────► REFUND_IN_ESCROW_POST_ACTION_HOOK      │   │
+│  │  REFUND_POST_ESCROW_PRE_ACTION_CONDITION ─────► REFUND_POST_ESCROW_POST_ACTION_HOOK    │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                    │                                        │
 │  Owner Functions (7-day Timelock):  │                                        │
@@ -127,10 +127,10 @@ op.release(paymentInfo, amount);
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │  Payment State Machine:                                              │   │
 │  │                                                                      │   │
-│  │  NonExistent ──authorize()──► InEscrow ──release()──► Released      │   │
+│  │  NonExistent ──authorize()──► InEscrow ──capture()──► Released      │   │
 │  │                                  │                        │          │   │
-│  │                     void/reclaim │      refundPostEscrow  │          │   │
-│  │                     refundInEscrow                        │          │   │
+│  │                     void/reclaim │      refund  │          │   │
+│  │                     void                        │          │   │
 │  │                                  ▼                        ▼          │   │
 │  │                            ┌─────────────────────────────────┐      │   │
 │  │                            │           Settled               │      │   │
@@ -148,17 +148,17 @@ Conditions are composable plugins that control access to operator actions:
 │                     CONDITION COMBINATORS                         │
 ├──────────────────────────────────────────────────────────────────┤
 │                                                                   │
-│  AndCondition([A, B, C])  ──►  A && B && C                       │
-│  OrCondition([A, B])      ──►  A || B                            │
-│  NotCondition(A)          ──►  !A                                │
+│  AndPreActionCondition([A, B, C])  ──►  A && B && C                       │
+│  OrPreActionCondition([A, B])      ──►  A || B                            │
+│  NotPreActionCondition(A)          ──►  !A                                │
 │                                                                   │
 │  Example: Release requires (Receiver OR DesignatedAddr) AND EscrowPassed│
 │                                                                   │
-│  OrCondition([                                                   │
-│    ReceiverCondition,                                            │
-│    StaticAddressCondition(designatedAddr)                        │
+│  OrPreActionCondition([                                                   │
+│    ReceiverPreActionCondition,                                            │
+│    StaticAddressPreActionCondition(designatedAddr)                        │
 │  ])                                                              │
-│    └──► AndCondition([                                           │
+│    └──► AndPreActionCondition([                                           │
 │           <above>,                                               │
 │           EscrowPeriod                                           │
 │         ])                                                       │
@@ -170,10 +170,10 @@ Conditions are composable plugins that control access to operator actions:
 
 Freeze and EscrowPeriod are now **separate, composable modules**:
 
-- **EscrowPeriod**: ICondition that blocks release during the escrow period
-- **Freeze**: Standalone ICondition with `freeze()`/`unfreeze()` methods
+- **EscrowPeriod**: IPreActionCondition that blocks release during the escrow period
+- **Freeze**: Standalone IPreActionCondition with `freeze()`/`unfreeze()` methods
 
-Compose them via `AndCondition([escrowPeriod, freeze])` when you want both behaviors.
+Compose them via `AndPreActionCondition([escrowPeriod, freeze])` when you want both behaviors.
 
 ```
 Timeline:
@@ -209,15 +209,15 @@ MEV Protection: Payers should freeze EARLY, not at deadline.
 │                    PLUGGABLE CONDITIONS                      │
 ├─────────────────────────────────────────────────────────────┤
 │  Access Conditions:          │  Time/State Conditions:      │
-│  - PayerCondition            │  - EscrowPeriod              │
-│  - ReceiverCondition         │  - Freeze                    │
-│  - StaticAddressCondition    │                              │
-│  - AlwaysTrueCondition       │                              │
+│  - PayerPreActionCondition            │  - EscrowPeriod              │
+│  - ReceiverPreActionCondition         │  - Freeze                    │
+│  - StaticAddressPreActionCondition    │                              │
+│  - AlwaysTruePreActionCondition       │                              │
 ├─────────────────────────────────────────────────────────────┤
 │  Combinators:                │  Recorders (Optional):       │
-│  - AndCondition              │  - PaymentIndexRecorder      │
-│  - OrCondition               │  - RecorderCombinator        │
-│  - NotCondition              │                              │
+│  - AndPreActionCondition              │  - PaymentIndexPostActionHook      │
+│  - OrPreActionCondition               │  - PostActionHookCombinator        │
+│  - NotPreActionCondition              │                              │
 ├─────────────────────────────────────────────────────────────┤
 │  Auxiliary:                  │                              │
 │  - RefundRequest             │                              │
@@ -230,8 +230,8 @@ MEV Protection: Payers should freeze EARLY, not at deadline.
 | Role | Capabilities |
 |------|-------------|
 | **Payer** | `authorize()`, `freeze()`, `unfreeze()`, `requestRefund()`, `cancelRefundRequest()`, `void()` (after expiry) |
-| **Receiver** | `release()` (if condition allows), `charge()` |
-| **Designated Address** | Per operator configuration - can include `refundInEscrow()`, `refundPostEscrow()`, `release()`, `updateStatus()` (arbiter, service provider, DAO, etc.) |
+| **Receiver** | `capture()` (if condition allows), `charge()` |
+| **Designated Address** | Per operator configuration - can include `void()`, `refund()`, `capture()`, `updateStatus()` (arbiter, service provider, DAO, etc.) |
 | **Owner** | `queueFeesEnabled()`, `executeFeesEnabled()`, `cancelFeesEnabled()`, `rescueETH()` |
 
 **Authorization Expiry:** The `PaymentInfo` struct includes an `authorizationExpiry` field from base commerce-payments. Payers can set this to limit how long receivers can charge funds. Set to `type(uint48).max` for no expiry, or specify a timestamp for time-limited authorizations (useful for subscriptions). After expiry, payers can reclaim unused funds via `void()`.
@@ -263,7 +263,7 @@ Typical gas costs for common operations (measured with via-IR optimization and r
 | **Refund In Escrow** | ~45,000 | ~45,000 | Refund before release |
 | **Freeze Payment** | ~50,000 | ~50,000 | Payer freezes during escrow |
 
-**Implementation**: Payment indexing is **optional** via `PaymentIndexRecorder`. Deploy with indexing for on-chain queries (+42k gas first, +22k subsequent) or skip for gas savings when using external indexers (The Graph).
+**Implementation**: Payment indexing is **optional** via `PaymentIndexPostActionHook`. Deploy with indexing for on-chain queries (+42k gas first, +22k subsequent) or skip for gas savings when using external indexers (The Graph).
 
 ### Condition Evaluation
 
@@ -323,7 +323,7 @@ Estimated transaction costs on different networks (at typical gas prices):
 
 ### Pagination Queries (On-Chain)
 
-**Optional Feature**: Deploy `PaymentIndexRecorder` to enable on-chain payment lookups.
+**Optional Feature**: Deploy `PaymentIndexPostActionHook` to enable on-chain payment lookups.
 
 | Query Type | Gas Cost | Notes |
 |------------|----------|-------|
@@ -331,7 +331,7 @@ Estimated transaction costs on different networks (at typical gas prices):
 | **Get 50 payments** | ~82,000 | Scales linearly with count |
 | **Get single payment** | ~2,000 | Direct index access |
 
-**API**: `PaymentIndexRecorder.getPayerPayments(address, offset, count)` returns `(bytes32[] hashes, uint256 total)`:
+**API**: `PaymentIndexPostActionHook.getPayerPayments(address, offset, count)` returns `(bytes32[] hashes, uint256 total)`:
 - `hashes`: Array of payment hashes for escrow lookup
 - `total`: Total number of payments for this address
 
@@ -364,28 +364,28 @@ The commerce-payments contracts provide refund functionality for Base Commerce P
 
 #### Freeze Module
 
-**Freeze** is a standalone `ICondition` contract with `freeze()`/`unfreeze()` methods. It's separate from `EscrowPeriod` for better composability.
+**Freeze** is a standalone `IPreActionCondition` contract with `freeze()`/`unfreeze()` methods. It's separate from `EscrowPeriod` for better composability.
 
 **Deploy via FreezeFactory:**
 
 ```solidity
 // Deploy Freeze with freeze/unfreeze conditions and optional EscrowPeriod constraint
 address freeze = freezeFactory.deploy(
-    freezeCondition,      // ICondition - who can freeze (e.g., PayerCondition)
-    unfreezeCondition,    // ICondition - who can unfreeze (e.g., PayerCondition)
+    freezeCondition,      // IPreActionCondition - who can freeze (e.g., PayerPreActionCondition)
+    unfreezeCondition,    // IPreActionCondition - who can unfreeze (e.g., PayerPreActionCondition)
     freezeDuration,       // uint256 - how long freeze lasts (0 = permanent until unfrozen)
     escrowPeriodContract  // address(0) = unconstrained, or EscrowPeriod address
 );
 ```
 
-**Freeze/Unfreeze conditions** determine who can freeze/unfreeze using `ICondition` contracts:
+**Freeze/Unfreeze conditions** determine who can freeze/unfreeze using `IPreActionCondition` contracts:
 
 | Condition | Description |
 |-----------|-------------|
-| `PayerCondition` | Allows the payment's payer |
-| `ReceiverCondition` | Allows the payment's receiver |
-| `StaticAddressCondition(addr)` | Allows a designated address (arbiter, service provider, DAO, platform, etc.) |
-| `AlwaysTrueCondition` | Allows anyone |
+| `PayerPreActionCondition` | Allows the payment's payer |
+| `ReceiverPreActionCondition` | Allows the payment's receiver |
+| `StaticAddressPreActionCondition(addr)` | Allows a designated address (arbiter, service provider, DAO, platform, etc.) |
+| `AlwaysTruePreActionCondition` | Allows anyone |
 
 **Example:**
 
@@ -397,13 +397,13 @@ address escrowPeriod = escrowPeriodFactory.deploy(7 days, bytes32(0));
 address freeze = freezeFactory.deploy(payerCondition, payerCondition, 3 days, escrowPeriod);
 
 // 3. Compose for release condition: must pass both escrow period AND not be frozen
-address releaseCondition = address(new AndCondition([ICondition(escrowPeriod), ICondition(freeze)]));
+address capturePreActionCondition = address(new AndPreActionCondition([IPreActionCondition(escrowPeriod), IPreActionCondition(freeze)]));
 ```
 
 **Composition Patterns:**
-- Escrow period only: `releaseCondition = escrowPeriod`
-- Freeze only: `releaseCondition = freeze`
-- Both: `releaseCondition = AndCondition([escrowPeriod, freeze])`
+- Escrow period only: `capturePreActionCondition = escrowPeriod`
+- Freeze only: `capturePreActionCondition = freeze`
+- Both: `capturePreActionCondition = AndPreActionCondition([escrowPeriod, freeze])`
 
 #### PaymentOperatorFactory API
 
@@ -411,18 +411,18 @@ The `PaymentOperatorFactory` provides a single generic `deployOperator(OperatorC
 
 ```solidity
 struct OperatorConfig {
-    address feeRecipient;
+    address feeReceiver;
     address feeCalculator;
-    address authorizeCondition;
-    address authorizeRecorder;
-    address chargeCondition;
-    address chargeRecorder;
-    address releaseCondition;
-    address releaseRecorder;
-    address refundInEscrowCondition;
-    address refundInEscrowRecorder;
-    address refundPostEscrowCondition;
-    address refundPostEscrowRecorder;
+    address authorizePreActionCondition;
+    address authorizePostActionHook;
+    address chargePreActionCondition;
+    address chargePostActionHook;
+    address capturePreActionCondition;
+    address capturePostActionHook;
+    address voidPreActionCondition;
+    address voidPostActionHook;
+    address refundPreActionCondition;
+    address refundPostActionHook;
 }
 ```
 
@@ -432,18 +432,18 @@ struct OperatorConfig {
 address arbiterCondition = staticAddressConditionFactory.deploy(arbiterAddress);
 
 PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
-    feeRecipient: arbiterAddress,           // Arbiter earns fees for dispute resolution
+    feeReceiver: arbiterAddress,           // Arbiter earns fees for dispute resolution
     feeCalculator: address(feeCalc),        // Operator fee calculator
-    authorizeCondition: address(0),         // Anyone can authorize
-    authorizeRecorder: address(0),          // No recording
-    chargeCondition: RECEIVER_CONDITION,    // Only receiver can charge
-    chargeRecorder: address(0),
-    releaseCondition: address(0),           // Anyone can release after escrow
-    releaseRecorder: escrowRecorder,        // Record timestamp
-    refundInEscrowCondition: arbiterCondition,  // Only arbiter can refund
-    refundInEscrowRecorder: address(0),
-    refundPostEscrowCondition: arbiterCondition, // Only arbiter for post-escrow refunds
-    refundPostEscrowRecorder: address(0)
+    authorizePreActionCondition: address(0),         // Anyone can authorize
+    authorizePostActionHook: address(0),          // No recording
+    chargePreActionCondition: RECEIVER_PRE_ACTION_CONDITION,    // Only receiver can charge
+    chargePostActionHook: address(0),
+    capturePreActionCondition: address(0),           // Anyone can release after escrow
+    capturePostActionHook: escrowRecorder,        // Record timestamp
+    voidPreActionCondition: arbiterCondition,  // Only arbiter can refund
+    voidPostActionHook: address(0),
+    refundPreActionCondition: arbiterCondition, // Only arbiter for post-escrow refunds
+    refundPostActionHook: address(0)
 });
 address operator = factory.deployOperator(config);
 ```
@@ -452,25 +452,25 @@ address operator = factory.deployOperator(config);
 
 #### Optional Payment Indexing
 
-`PaymentIndexRecorder` provides on-chain payment lookups by payer/receiver. Deploy once and share across operators:
+`PaymentIndexPostActionHook` provides on-chain payment lookups by payer/receiver. Deploy once and share across operators:
 
 ```solidity
 // Deploy indexer (optional)
-PaymentIndexRecorder indexRecorder = new PaymentIndexRecorder(address(escrow));
+PaymentIndexPostActionHook indexRecorder = new PaymentIndexPostActionHook(address(escrow));
 
 // Option 1: Enable indexing
 PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
     // ...
-    authorizeRecorder: address(indexRecorder),  // Index on authorize
-    chargeRecorder: address(indexRecorder),     // Index on charge
+    authorizePostActionHook: address(indexRecorder),  // Index on authorize
+    chargePostActionHook: address(indexRecorder),     // Index on charge
     // ...
 });
 
 // Option 2: Skip indexing (lower gas, use The Graph instead)
 PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
     // ...
-    authorizeRecorder: address(0),  // No indexing
-    chargeRecorder: address(0),     // No indexing
+    authorizePostActionHook: address(0),  // No indexing
+    chargePostActionHook: address(0),     // No indexing
     // ...
 });
 
@@ -485,7 +485,7 @@ PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.Ope
 - **Efficient Storage**: Stores only payment hashes (minimal gas cost)
 - **Gas Savings**: ~55k per authorization when indexing disabled
 - **Flexibility**: Deploy with or without on-chain queries
-- **Composability**: Combine with other recorders via `RecorderCombinator`
+- **Composability**: Combine with other recorders via `PostActionHookCombinator`
 - **No Duplication**: Use `EscrowPeriod` for timestamps, escrow for amounts
 
 **When to use indexing:**

@@ -64,7 +64,7 @@ Conditions are **pre-check hooks** that run BEFORE operations:
 
 ```solidity
 // Condition interface
-interface ICondition {
+interface IPreActionCondition {
     function check(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         address caller
@@ -72,19 +72,19 @@ interface ICondition {
 }
 
 // Usage in PaymentOperator
-if (address(RELEASE_CONDITION) != address(0)) {
-    if (!RELEASE_CONDITION.check(paymentInfo, msg.sender)) {
-        revert ConditionNotMet();
+if (address(RELEASE_PRE_ACTION_CONDITION) != address(0)) {
+    if (!RELEASE_PRE_ACTION_CONDITION.check(paymentInfo, msg.sender)) {
+        revert PreActionConditionNotMet();
     }
 }
 ```
 
 **Condition slots** (all immutable after deployment):
-- `AUTHORIZE_CONDITION`
-- `CHARGE_CONDITION`
-- `RELEASE_CONDITION`
-- `REFUND_IN_ESCROW_CONDITION`
-- `REFUND_POST_ESCROW_CONDITION`
+- `AUTHORIZE_PRE_ACTION_CONDITION`
+- `CHARGE_PRE_ACTION_CONDITION`
+- `RELEASE_PRE_ACTION_CONDITION`
+- `REFUND_IN_ESCROW_PRE_ACTION_CONDITION`
+- `REFUND_POST_ESCROW_PRE_ACTION_CONDITION`
 
 ---
 
@@ -93,7 +93,7 @@ if (address(RELEASE_CONDITION) != address(0)) {
 **Malicious condition always returns false**:
 
 ```solidity
-contract MaliciousDOSCondition is ICondition {
+contract MaliciousDOSCondition is IPreActionCondition {
     function check(PaymentInfo calldata, address) external pure returns (bool) {
         return false; // Always blocks!
     }
@@ -117,7 +117,7 @@ contract MaliciousDOSCondition is ICondition {
 **Malicious condition blocks specific addresses**:
 
 ```solidity
-contract MaliciousCensorCondition is ICondition {
+contract MaliciousCensorCondition is IPreActionCondition {
     mapping(address => bool) public blocklist;
 
     function check(PaymentInfo calldata paymentInfo, address caller)
@@ -151,7 +151,7 @@ contract MaliciousCensorCondition is ICondition {
 **Malicious condition leaks data or provides MEV**:
 
 ```solidity
-contract MaliciousFrontrunCondition is ICondition {
+contract MaliciousFrontrunCondition is IPreActionCondition {
     address public immutable operator;
 
     function check(PaymentInfo calldata paymentInfo, address caller)
@@ -186,7 +186,7 @@ contract MaliciousFrontrunCondition is ICondition {
 **Malicious condition consumes excessive gas**:
 
 ```solidity
-contract MaliciousGasGriefCondition is ICondition {
+contract MaliciousGasGriefCondition is IPreActionCondition {
     function check(PaymentInfo calldata, address) external view returns (bool) {
         // Infinite loop or heavy computation
         for (uint256 i = 0; i < type(uint256).max; i++) {
@@ -216,9 +216,9 @@ contract MaliciousGasGriefCondition is ICondition {
 ```solidity
 // Create deeply nested condition
 AndCondition(
-    OrCondition(
-        NotCondition(
-            AndCondition(
+    OrPreActionCondition(
+        NotPreActionCondition(
+            AndPreActionCondition(
                 // ... 10 levels deep
             )
         )
@@ -232,7 +232,7 @@ AndCondition(
 - ❌ Hidden backdoors in complex logic
 
 **Mitigation:**
-- Protocol enforces `MAX_CONDITIONS = 10` depth limit
+- Protocol enforces `MAX_PRE_ACTION_CONDITIONS = 10` depth limit
 - Avoid complex combinator trees
 - Prefer simple, audited conditions
 
@@ -246,7 +246,7 @@ Recorders are **post-action hooks** that run AFTER operations:
 
 ```solidity
 // Recorder interface
-interface IRecorder {
+interface IPostActionHook {
     function record(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint256 amount,
@@ -257,17 +257,17 @@ interface IRecorder {
 // Usage in PaymentOperator
 ESCROW.authorize(...);  // Main action
 
-if (address(AUTHORIZE_RECORDER) != address(0)) {
-    AUTHORIZE_RECORDER.record(paymentInfo, amount, msg.sender);  // Callback
+if (address(AUTHORIZE_POST_ACTION_HOOK) != address(0)) {
+    AUTHORIZE_POST_ACTION_HOOK.record(paymentInfo, amount, msg.sender);  // Callback
 }
 ```
 
 **Recorder slots** (all immutable):
-- `AUTHORIZE_RECORDER`
-- `CHARGE_RECORDER`
-- `RELEASE_RECORDER`
-- `REFUND_IN_ESCROW_RECORDER`
-- `REFUND_POST_ESCROW_RECORDER`
+- `AUTHORIZE_POST_ACTION_HOOK`
+- `CHARGE_POST_ACTION_HOOK`
+- `RELEASE_POST_ACTION_HOOK`
+- `REFUND_IN_ESCROW_POST_ACTION_HOOK`
+- `REFUND_POST_ESCROW_POST_ACTION_HOOK`
 
 ---
 
@@ -276,7 +276,7 @@ if (address(AUTHORIZE_RECORDER) != address(0)) {
 **Malicious recorder reenters PaymentOperator during callback**:
 
 ```solidity
-contract MaliciousReentrantRecorder is IRecorder {
+contract MaliciousReentrantRecorder is IPostActionHook {
     PaymentOperator public targetOperator;
 
     function record(
@@ -286,14 +286,14 @@ contract MaliciousReentrantRecorder is IRecorder {
     ) external {
         // Reenter during callback!
         // Note: PaymentOperator does NOT have nonReentrant guards
-        targetOperator.release(paymentInfo, amount);
+        targetOperator.capture(paymentInfo, amount);
     }
 }
 ```
 
 **Impact:**
 - ❌ **CRITICAL**: Recorder can manipulate payment state during callback
-- ❌ Example: Call `release()` during `authorize()` callback
+- ❌ Example: Call `capture()` during `authorize()` callback
 - ❌ Bypass business logic, create unexpected state
 
 **Evidence from tests**:
@@ -301,7 +301,7 @@ contract MaliciousReentrantRecorder is IRecorder {
 ```solidity
 // test/ReentrancyAttack.t.sol:90-106
 function test_ReentrancyOnAuthorize_SameFunction() public {
-    // Malicious recorder successfully calls release() during authorize callback
+    // Malicious recorder successfully calls capture() during authorize callback
     // Because PaymentOperator doesn't have reentrancy protection at operator level
 
     assertEq(capturableAmount, 0); // Already captured by malicious release
@@ -314,7 +314,7 @@ function test_ReentrancyOnAuthorize_SameFunction() public {
 1. `operator.authorize()` is called
 2. Escrow authorizes payment (has `nonReentrant`)
 3. **Operator calls recorder.record()** (no reentrancy guard)
-4. Malicious recorder calls `operator.release()`
+4. Malicious recorder calls `operator.capture()`
 5. PaymentOperator allows it (no guard)
 6. Escrow processes release (separate `nonReentrant` context)
 
@@ -330,7 +330,7 @@ function test_ReentrancyOnAuthorize_SameFunction() public {
 **Malicious recorder modifies external state**:
 
 ```solidity
-contract MaliciousStateRecorder is IRecorder {
+contract MaliciousStateRecorder is IPostActionHook {
     mapping(bytes32 => bool) public paymentProcessed;
 
     function record(
@@ -366,7 +366,7 @@ contract MaliciousStateRecorder is IRecorder {
 **Malicious recorder consumes excessive gas**:
 
 ```solidity
-contract MaliciousGasRecorder is IRecorder {
+contract MaliciousGasRecorder is IPostActionHook {
     function record(PaymentInfo calldata, uint256, address) external {
         // Infinite loop
         while (true) {}
@@ -405,7 +405,7 @@ contract PaymentOperator is Ownable, PaymentOperatorAccess, IOperator {
 
     function authorize(...) external {
         ESCROW.authorize(...);  // Escrow is protected
-        AUTHORIZE_RECORDER.record(...);  // Callback - can reenter!
+        AUTHORIZE_POST_ACTION_HOOK.record(...);  // Callback - can reenter!
     }
 }
 ```
@@ -415,8 +415,8 @@ contract PaymentOperator is Ownable, PaymentOperatorAccess, IOperator {
 ```
 1. User calls operator.authorize()
 2.   ├─> ESCROW.authorize() [PROTECTED by nonReentrant]
-3.   └─> AUTHORIZE_RECORDER.record() [CALLBACK]
-4.        └─> Malicious recorder calls operator.release() [NO GUARD]
+3.   └─> AUTHORIZE_POST_ACTION_HOOK.record() [CALLBACK]
+4.        └─> Malicious recorder calls operator.capture() [NO GUARD]
 5.             └─> ESCROW.capture() [PROTECTED by nonReentrant - separate context]
 ```
 
@@ -435,7 +435,7 @@ contract PaymentOperator is Ownable, PaymentOperatorAccess, ReentrancyGuard, IOp
         // Protected against malicious recorder reentrancy
     }
 
-    function release(...) external nonReentrant validOperator(...) validFees(...) {
+    function capture(...) external nonReentrant validOperator(...) validFees(...) {
         // Protected
     }
 
@@ -460,10 +460,10 @@ contract PaymentOperator is Ownable, PaymentOperatorAccess, ReentrancyGuard, IOp
 
 The following conditions are **audited and safe** to use:
 
-#### 1. AlwaysTrueCondition ✅
+#### 1. AlwaysTruePreActionCondition ✅
 ```solidity
 // Always allows the operation
-contract AlwaysTrueCondition is ICondition {
+contract AlwaysTruePreActionCondition is IPreActionCondition {
     function check(PaymentInfo calldata, address) external pure returns (bool) {
         return true;
     }
@@ -475,10 +475,10 @@ contract AlwaysTrueCondition is ICondition {
 
 ---
 
-#### 2. PayerCondition ✅
+#### 2. PayerPreActionCondition ✅
 ```solidity
 // Only payer can call
-contract PayerCondition is ICondition {
+contract PayerPreActionCondition is IPreActionCondition {
     function check(PaymentInfo calldata paymentInfo, address caller)
         external
         pure
@@ -494,10 +494,10 @@ contract PayerCondition is ICondition {
 
 ---
 
-#### 3. ReceiverCondition ✅
+#### 3. ReceiverPreActionCondition ✅
 ```solidity
 // Only receiver can call
-contract ReceiverCondition is ICondition {
+contract ReceiverPreActionCondition is IPreActionCondition {
     function check(PaymentInfo calldata paymentInfo, address caller)
         external
         pure
@@ -513,10 +513,10 @@ contract ReceiverCondition is ICondition {
 
 ---
 
-#### 4. StaticAddressCondition ✅
+#### 4. StaticAddressPreActionCondition ✅
 ```solidity
 // Only designated address can call
-contract StaticAddressCondition is ICondition {
+contract StaticAddressPreActionCondition is IPreActionCondition {
     address public immutable DESIGNATED_ADDRESS;
 
     constructor(address _designatedAddress) {
@@ -542,7 +542,7 @@ contract StaticAddressCondition is ICondition {
 #### 5. EscrowPeriod ✅
 ```solidity
 // Combined recorder + condition: records auth time, blocks release until escrow period expires
-contract EscrowPeriod is AuthorizationTimeRecorder, ICondition {
+contract EscrowPeriod is AuthorizationTimePostActionHook, IPreActionCondition {
     uint256 public immutable ESCROW_PERIOD;
 
     function check(PaymentInfo calldata paymentInfo, uint256, address)
@@ -557,16 +557,16 @@ contract EscrowPeriod is AuthorizationTimeRecorder, ICondition {
 
 **Use case**: Payment escrow with dispute period
 **Risk**: None (if recorder is trusted)
-**NOTE**: Use the same EscrowPeriod address for both AUTHORIZE_RECORDER and RELEASE_CONDITION
+**NOTE**: Use the same EscrowPeriod address for both AUTHORIZE_POST_ACTION_HOOK and RELEASE_PRE_ACTION_CONDITION
 
 ---
 
-#### 6. AndCondition ✅
+#### 6. AndPreActionCondition ✅
 ```solidity
 // Both conditions must pass
-contract AndCondition is ICondition {
-    ICondition public immutable CONDITION_A;
-    ICondition public immutable CONDITION_B;
+contract AndPreActionCondition is IPreActionCondition {
+    IPreActionCondition public immutable CONDITION_A;
+    IPreActionCondition public immutable CONDITION_B;
 
     function check(PaymentInfo calldata paymentInfo, address caller)
         external
@@ -590,8 +590,8 @@ contract AndCondition is ICondition {
 #### 1. EscrowPeriod ✅ (also serves as condition)
 ```solidity
 // Combined recorder + condition with freeze/unfreeze
-contract EscrowPeriod is AuthorizationTimeRecorder, ICondition {
-    // record() inherited from AuthorizationTimeRecorder
+contract EscrowPeriod is AuthorizationTimePostActionHook, IPreActionCondition {
+    // record() inherited from AuthorizationTimePostActionHook
     // check() delegates to canRelease()
     // freeze()/unfreeze() for dispute handling
 }
@@ -667,11 +667,11 @@ Before deploying a PaymentOperator:
 
 ---
 
-## RELEASE_CONDITION = address(0) Risk
+## RELEASE_PRE_ACTION_CONDITION = address(0) Risk
 
 ### Warning: Immediate Release Without Escrow Period
 
-When deploying a PaymentOperator with `RELEASE_CONDITION = address(0)`, **anyone can release funds immediately after authorization**. This is the default behavior and is dangerous for most payment use cases.
+When deploying a PaymentOperator with `RELEASE_PRE_ACTION_CONDITION = address(0)`, **anyone can release funds immediately after authorization**. This is the default behavior and is dangerous for most payment use cases.
 
 ### Attack Scenario: Front-Running Refund Requests
 
@@ -679,7 +679,7 @@ When deploying a PaymentOperator with `RELEASE_CONDITION = address(0)`, **anyone
 1. Payer authorizes payment (funds enter escrow)
 2. Payer realizes an issue and submits requestRefund() to the RefundRequest contract
 3. Receiver sees the refund request in the mempool
-4. Receiver front-runs with release() (no condition to block it)
+4. Receiver front-runs with capture() (no condition to block it)
 5. Funds are captured by receiver before refund can be processed
 6. Payer's refund request becomes meaningless (funds already released)
 ```
@@ -700,17 +700,17 @@ This is a **race condition** inherent to `address(0)` release conditions. The Re
 
 ### Recommendation
 
-Use `EscrowPeriod` as `RELEASE_CONDITION` for any payment flow that involves:
+Use `EscrowPeriod` as `RELEASE_PRE_ACTION_CONDITION` for any payment flow that involves:
 - Refund requests (RefundRequest contract)
 - Dispute resolution
 - Delivery-based settlement
 
 ```solidity
 // SAFE: Release blocked until escrow period passes
-config.releaseCondition = address(escrowPeriod);
+config.capturePreActionCondition = address(escrowPeriod);
 
 // DANGEROUS: Immediate release, refund requests easily front-run
-config.releaseCondition = address(0);
+config.capturePreActionCondition = address(0);
 ```
 
 See [SECURITY.md](./SECURITY.md) for the full escrow trust boundary analysis.

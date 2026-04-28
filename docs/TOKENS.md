@@ -291,7 +291,7 @@ collector.preApprove(paymentInfo);
 operator.authorize(paymentInfo, 1000e6, address(collector), ""); // Note: 6 decimals
 
 // 3. Handle potential pauses
-try operator.release(paymentInfo, 1000e6) {
+try operator.capture(paymentInfo, 1000e6) {
     // Success
 } catch {
     // Could be paused or sender is blocklisted

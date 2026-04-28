@@ -62,7 +62,7 @@
 - Uses reentrancy guard
 - Emits `PaymentPartiallyVoided` event
 
-**Use Case**: Enables `refundInEscrow()` in PaymentOperator to refund partial amounts instead of requiring full void.
+**Use Case**: Enables `void()` in PaymentOperator to refund partial amounts instead of requiring full void.
 
 **Security Considerations**:
 - Amount validation (must not exceed capturable)
@@ -79,16 +79,16 @@
 ```
 PaymentOperatorFactory
     └── deploys → PaymentOperator (immutable, no upgrade)
-                      ├── AUTHORIZE_CONDITION (optional)
-                      ├── AUTHORIZE_RECORDER (optional)
-                      ├── CHARGE_CONDITION (optional)
-                      ├── CHARGE_RECORDER (optional)
-                      ├── RELEASE_CONDITION (optional)
-                      ├── RELEASE_RECORDER (optional)
-                      ├── REFUND_IN_ESCROW_CONDITION (optional)
-                      ├── REFUND_IN_ESCROW_RECORDER (optional)
-                      ├── REFUND_POST_ESCROW_CONDITION (optional)
-                      └── REFUND_POST_ESCROW_RECORDER (optional)
+                      ├── AUTHORIZE_PRE_ACTION_CONDITION (optional)
+                      ├── AUTHORIZE_POST_ACTION_HOOK (optional)
+                      ├── CHARGE_PRE_ACTION_CONDITION (optional)
+                      ├── CHARGE_POST_ACTION_HOOK (optional)
+                      ├── RELEASE_PRE_ACTION_CONDITION (optional)
+                      ├── RELEASE_POST_ACTION_HOOK (optional)
+                      ├── REFUND_IN_ESCROW_PRE_ACTION_CONDITION (optional)
+                      ├── REFUND_IN_ESCROW_POST_ACTION_HOOK (optional)
+                      ├── REFUND_POST_ESCROW_PRE_ACTION_CONDITION (optional)
+                      └── REFUND_POST_ESCROW_POST_ACTION_HOOK (optional)
 
 EscrowPeriodFactory
     └── deploys → EscrowPeriod (combined condition + recorder)
@@ -205,7 +205,7 @@ Coverage: 85%+ on core contracts
 1. **Unit Tests**:
    - Arithmetic edge cases (16 tests)
    - Payment indexing (15 tests)
-   - Refund requests (13 tests) - **Includes partialVoid() integration via refundInEscrow()**
+   - Refund requests (13 tests) - **Includes partialVoid() integration via void()**
    - Escrow period (3 tests)
 
 2. **Attack Vectors**:
@@ -221,7 +221,7 @@ Coverage: 85%+ on core contracts
    - Refund workflows (including partial refunds via partialVoid)
    - Freeze/unfreeze scenarios
 
-**Note on partialVoid()**: Tested through `refundInEscrow()` in RefundRequest tests. The function correctly calls `ESCROW.partialVoid()` and verifies token transfers.
+**Note on partialVoid()**: Tested through `void()` in RefundRequest tests. The function correctly calls `ESCROW.partialVoid()` and verifies token transfers.
 
 See `FUZZING.md` for fuzzing methodology.
 
@@ -440,7 +440,7 @@ See `SOLADY_VS_OZ_ANALYSIS.md` for full comparison.
 
 9. **Token Handling**: Are our weird token checks (balance verification, rebase detection) sufficient?
 
-10. **partialVoid Integration**: Does refundInEscrow() correctly integrate with partialVoid()? Any state inconsistency risks?
+10. **partialVoid Integration**: Does void() correctly integrate with partialVoid()? Any state inconsistency risks?
 
 ---
 

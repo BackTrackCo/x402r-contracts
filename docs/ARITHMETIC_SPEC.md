@@ -13,7 +13,7 @@ Formal specification of all arithmetic operations in x402r-contracts, mapping fo
 fee = amount * feeBps / 10000
 ```
 
-**Code location:** `PaymentOperator.sol` — fee is computed by the escrow layer during `release()` and `charge()`. The operator provides the fee BPS to the escrow, which performs the arithmetic.
+**Code location:** `PaymentOperator.sol` — fee is computed by the escrow layer during `capture()` and `charge()`. The operator provides the fee BPS to the escrow, which performs the arithmetic.
 
 **Bounds:**
 - `amount`: `uint120` (max 1,329,227,995,784,915,872,903,807,060,280,344,575)
@@ -98,7 +98,7 @@ fee = releaseAmount * combinedFeeBps / 10000
 
 **Constraint:**
 ```
-0 < refundAmount <= capturableAmount  (for refundInEscrow)
+0 < refundAmount <= capturableAmount  (for void)
 ```
 
 **After refund:**
@@ -109,7 +109,7 @@ refundableAmount' = refundableAmount + refundAmount
 
 **Code location:** Escrow layer (`refund` function)
 
-**Invariant:** `capturableAmount + refundableAmount` is conserved during refundInEscrow (tokens don't leave escrow, they change bucket).
+**Invariant:** `capturableAmount + refundableAmount` is conserved during void (tokens don't leave escrow, they change bucket).
 
 ### 2.4 Refund Request Amount
 
@@ -185,7 +185,7 @@ remaining = total - offset
 actualCount = min(remaining, count)
 ```
 
-**Code location:** `PaymentIndexRecorder.sol:getPayerPayments()`, `getReceiverPayments()`
+**Code location:** `PaymentIndexPostActionHook.sol:getPayerPayments()`, `getReceiverPayments()`
 
 **Edge cases:**
 - `offset >= total`: returns empty array
@@ -201,7 +201,7 @@ payerPaymentCount[payer]++
 receiverPaymentCount[receiver]++
 ```
 
-**Code location:** `PaymentIndexRecorder.sol:record()`
+**Code location:** `PaymentIndexPostActionHook.sol:record()`
 
 **Overflow safety:** `uint256` counters. Would need 10^77 calls to overflow — practically impossible.
 

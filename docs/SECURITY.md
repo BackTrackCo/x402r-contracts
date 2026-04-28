@@ -171,10 +171,10 @@ Monitor these events for anomalies:
 
 | Event | Contract | Alert Condition |
 |-------|----------|-----------------|
-| `AuthorizationCreated` | PaymentOperator | Unusual volume, large amounts |
-| `ReleaseExecuted` | PaymentOperator | Rapid releases, unusual patterns |
-| `RefundInEscrowExecuted` | PaymentOperator | High in-escrow refund rate |
-| `RefundPostEscrowExecuted` | PaymentOperator | High post-escrow refund rate |
+| `AuthorizeExecuted` | PaymentOperator | Unusual volume, large amounts |
+| `CaptureExecuted` | PaymentOperator | Rapid releases, unusual patterns |
+| `VoidExecuted` | PaymentOperator | High in-escrow refund rate |
+| `RefundExecuted` | PaymentOperator | High post-escrow refund rate |
 | `PaymentFrozen` | EscrowPeriod | Mass freezing |
 | `FeesDistributed` | PaymentOperator | Unexpected distribution |
 
@@ -299,10 +299,10 @@ The escrow layer provides hard guarantees that **no operator, condition, or reco
 
 Operators control the business logic layer. A malicious or buggy operator **can**:
 
-- **Block releases**: A malicious `RELEASE_CONDITION` can return `false` indefinitely, trapping funds until `authorizationExpiry` when the payer can reclaim.
+- **Block releases**: A malicious `RELEASE_PRE_ACTION_CONDITION` can return `false` indefinitely, trapping funds until `authorizationExpiry` when the payer can reclaim.
 - **Censor users**: Conditions with blocklists can selectively prevent specific addresses from interacting.
 - **Leak MEV**: Non-`view` conditions (should never be used) could emit events or make external calls that leak payment data to MEV bots.
-- **Front-run refunds**: Without an escrow period (`RELEASE_CONDITION = address(0)`), a receiver can release funds before a refund request is processed.
+- **Front-run refunds**: Without an escrow period (`RELEASE_PRE_ACTION_CONDITION = address(0)`), a receiver can release funds before a refund request is processed.
 - **Gas grief**: Conditions or recorders with unbounded loops can make operations fail with out-of-gas.
 
 ### Implications
@@ -317,21 +317,21 @@ Operators control the business logic layer. A malicious or buggy operator **can*
 
 ### Maximum Combinator Depth Recommendation
 
-**Protocol Enforced Limit**: `MAX_CONDITIONS = 10`
+**Protocol Enforced Limit**: `MAX_PRE_ACTION_CONDITIONS = 10`
 
-The condition combinator architecture (AndCondition, OrCondition, NotCondition) allows nesting but has a hard limit to prevent gas exhaustion and stack depth issues.
+The condition combinator architecture (AndPreActionCondition, OrPreActionCondition, NotPreActionCondition) allows nesting but has a hard limit to prevent gas exhaustion and stack depth issues.
 
 #### Why Depth Matters
 
 ```solidity
 // Example: Depth 3 combinator
 AndCondition(
-    OrCondition(
-        PayerCondition(),          // Depth 2
-        ReceiverCondition()        // Depth 2
+    OrPreActionCondition(
+        PayerPreActionCondition(),          // Depth 2
+        ReceiverPreActionCondition()        // Depth 2
     ),
-    NotCondition(
-        StaticAddressCondition(arbiter)  // Depth 2
+    NotPreActionCondition(
+        StaticAddressPreActionCondition(arbiter)  // Depth 2
     )
 )
 // Total depth: 3 levels
@@ -351,7 +351,7 @@ AndCondition(
 | 3-4 | ⚠️ Acceptable | Moderate complexity | Moderate gas |
 | 5-7 | ⚠️ Use sparingly | Complex requirements | High gas, hard to audit |
 | 8-10 | ❌ Avoid | Emergency only | Very high gas, difficult to understand |
-| 11+ | ❌ Blocked | N/A | Protocol enforces MAX_CONDITIONS = 10 |
+| 11+ | ❌ Blocked | N/A | Protocol enforces MAX_PRE_ACTION_CONDITIONS = 10 |
 
 #### Best Practices
 
@@ -367,7 +367,7 @@ AndCondition(
 ```solidity
 // Receiver can release after escrow period
 AndCondition(
-    ReceiverCondition(),
+    ReceiverPreActionCondition(),
     EscrowPeriod(escrowPeriod, freezePolicy, escrow, codehash)
 )
 ```
@@ -376,11 +376,11 @@ AndCondition(
 ```solidity
 // Receiver OR arbiter can release after escrow, but not if frozen
 AndCondition(
-    OrCondition(
-        ReceiverCondition(),
-        StaticAddressCondition(arbiter)
+    OrPreActionCondition(
+        ReceiverPreActionCondition(),
+        StaticAddressPreActionCondition(arbiter)
     ),
-    NotCondition(
+    NotPreActionCondition(
         FrozenCondition(recorder)
     )
 )
@@ -390,10 +390,10 @@ AndCondition(
 ```solidity
 // Too complex - hard to understand, high gas, difficult to audit
 AndCondition(
-    OrCondition(
-        AndCondition(
-            NotCondition(
-                OrCondition(
+    OrPreActionCondition(
+        AndPreActionCondition(
+            NotPreActionCondition(
+                OrPreActionCondition(
                     ConditionA(),
                     ConditionB()
                 )
@@ -413,7 +413,7 @@ AndCondition(
 // Test gas costs for your combinator tree
 function testCombinatorGas() public {
     uint256 gasBefore = gasleft();
-    bool result = MY_COMPLEX_CONDITION.check(paymentInfo, msg.sender);
+    bool result = MY_COMPLEX_PRE_ACTION_CONDITION.check(paymentInfo, msg.sender);
     uint256 gasUsed = gasBefore - gasleft();
 
     // Ensure reasonable gas usage
@@ -424,9 +424,9 @@ function testCombinatorGas() public {
 #### Enforcement
 
 ```solidity
-// CombinatorDepthChecker.sol enforces MAX_CONDITIONS = 10
+// CombinatorDepthChecker.sol enforces MAX_PRE_ACTION_CONDITIONS = 10
 function _checkDepth(address condition, uint8 depth) internal view {
-    if (depth > MAX_CONDITIONS) revert MaxConditionsExceeded();
+    if (depth > MAX_PRE_ACTION_CONDITIONS) revert MaxConditionsExceeded();
     // Recursively check nested conditions
 }
 ```
@@ -470,7 +470,7 @@ Payment operations can be vulnerable to front-running and MEV (Maximal Extractab
 ```
 1. Payer calls: requestRefund(paymentInfo)
 2. Receiver sees request in mempool
-3. Receiver front-runs with: release(paymentInfo, amount)
+3. Receiver front-runs with: capture(paymentInfo, amount)
 4. Release executes first, capturing funds before refund request
 ```
 
@@ -522,7 +522,7 @@ RefundRequestBlockerCondition {
 
 ```solidity
 // DANGEROUS: Condition that emits events
-contract MaliciousFrontrunCondition is ICondition {
+contract MaliciousFrontrunCondition is IPreActionCondition {
     event PaymentAttempt(address payer, uint256 amount);
 
     function check(PaymentInfo calldata paymentInfo, address)
@@ -666,7 +666,7 @@ function releaseWithDeadline(
     uint256 deadline  // Timestamp after which tx reverts
 ) external {
     require(block.timestamp <= deadline, "Transaction expired");
-    release(paymentInfo, amount);
+    capture(paymentInfo, amount);
 }
 ```
 
@@ -699,7 +699,7 @@ function releaseWithExpectedState(
 ) external {
     (, uint256 capturable, ) = ESCROW.paymentState(getHash(paymentInfo));
     require(capturable == expectedCapturableAmount, "State changed");
-    release(paymentInfo, amount);
+    capture(paymentInfo, amount);
 }
 ```
 
@@ -768,7 +768,7 @@ contract AntiMEVReleaseCondition {
 Bundle multiple operations to share MEV:
 
 ```solidity
-// Instead of: authorize() -> release() (two separate txs, MEV risk)
+// Instead of: authorize() -> capture() (two separate txs, MEV risk)
 // Use: batchAuthorizeAndRelease() (one atomic tx, no MEV window)
 
 function batchAuthorizeAndRelease(
@@ -777,7 +777,7 @@ function batchAuthorizeAndRelease(
 ) external {
     for (uint256 i = 0; i < payments.length; i++) {
         authorize(payments[i], amounts[i], collector, "");
-        release(payments[i], amounts[i]);
+        capture(payments[i], amounts[i]);
     }
 }
 ```
@@ -859,7 +859,7 @@ await operator.authorizeWithProtection(
 
 **Detection Signals**:
 1. **Unusually high gas prices** on payment operations
-2. **Rapid authorize() → release() sequences** (< 2 blocks)
+2. **Rapid authorize() → capture() sequences** (< 2 blocks)
 3. **Multiple failed transactions** before successful one
 4. **Suspicious condition contracts** with state changes
 
@@ -905,7 +905,7 @@ if (gasPrice > 100 gwei && timeSinceAuth < 2 blocks) {
 | Operation | Front-Run Risk | Mitigation | Residual Risk |
 |-----------|---------------|------------|---------------|
 | `authorize()` | Low | Immutable conditions, salt | Minimal |
-| `release()` | Medium | Escrow period, refund conditions | Low with proper setup |
+| `capture()` | Medium | Escrow period, refund conditions | Low with proper setup |
 | `refund()` | Low | Conditions check authorization | Minimal |
 | `withdrawFees()` | Low | Timelock, multisig | Minimal |
 | Condition evaluation | Critical | View-only, no external calls | Minimal if audited |
