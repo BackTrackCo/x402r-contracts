@@ -1,1 +1,0 @@
-../../../../lib/solady/src/auth/Ownable.sol

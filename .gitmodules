@@ -6,4 +6,4 @@
 	url = https://github.com/Vectorized/solady
 [submodule "lib/commerce-payments"]
 	path = lib/commerce-payments
-	url = https://github.com/BackTrackCo/commerce-payments.git
+	url = https://github.com/base/commerce-payments.git
