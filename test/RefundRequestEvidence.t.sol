@@ -81,7 +81,7 @@ contract RefundRequestEvidenceTest is Test {
         // Deploy operator factory
         operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
-        // Deploy operator with condition tree and refundRequest as recorder
+        // Deploy operator with condition tree and refundRequest as hook
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),

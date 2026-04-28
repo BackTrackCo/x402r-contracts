@@ -49,7 +49,7 @@
     "reentrancy-benign": {
       "location": "PaymentOperator recorder callbacks",
       "reason": "MITIGATED - PaymentOperator now has nonReentrant guards on all functions",
-      "protection": "ReentrancyGuardTransient on authorize, charge, release, refundInEscrow, refundPostEscrow"
+      "protection": "ReentrancyGuardTransient on authorize, charge, capture, void, refund"
     },
     "external-calls-loop": {
       "location": "Combinator condition checks",

@@ -8,9 +8,9 @@ import {OnlyOperator, ZeroAddress, PaymentDoesNotExist} from "../../types/Errors
 
 /**
  * @title BasePostActionHook
- * @notice Abstract base for all recorders with operator verification and escrow existence checks.
+ * @notice Abstract base for all hooks with operator verification and escrow existence checks.
  * @dev Subclasses implement IPostActionHook.run() and call _verifyAndHash() to get a validated
- *      payment hash. This prevents fake operators from poisoning recorder state, since
+ *      payment hash. This prevents fake operators from poisoning hook state, since
  *      paymentInfo.operator is part of the payment hash — a fake operator produces a hash
  *      that doesn't exist in the real escrow.
  *
@@ -25,7 +25,7 @@ abstract contract BasePostActionHook is IPostActionHook {
     AuthCaptureEscrow public immutable ESCROW;
 
     /// @notice Runtime codehash of authorized caller contract (e.g. PostActionHookCombinator)
-    /// @dev bytes32(0) means no authorized codehash — only the operator itself can call record().
+    /// @dev bytes32(0) means no authorized codehash — only the operator itself can call run().
     ///      Uses EXTCODEHASH to verify caller bytecode, which is unforgeable (unlike ERC-165).
     bytes32 public immutable AUTHORIZED_CODEHASH;
 

@@ -13,7 +13,7 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 ///
 /// @dev Mirrors OperatorRefundCollector but pulls from `paymentInfo.receiver` instead of `paymentInfo.operator`.
 ///      The receiver pre-approves a refund budget via `token.approve(collectorAddress, amount)`.
-///      When `refundPostEscrow()` is called, this collector transfers from the receiver's wallet to the token store.
+///      When `refund()` is called, this collector transfers from the receiver's wallet to the token store.
 contract ReceiverRefundCollector is TokenCollector {
     /// @inheritdoc TokenCollector
     TokenCollector.CollectorType public constant override collectorType = TokenCollector.CollectorType.Refund;

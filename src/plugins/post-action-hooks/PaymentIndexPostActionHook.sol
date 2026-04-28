@@ -7,10 +7,10 @@ import {BasePostActionHook} from "./BasePostActionHook.sol";
 
 /**
  * @title PaymentIndexPostActionHook
- * @notice Recorder that indexes payments by payer and receiver for on-chain lookups,
+ * @notice PostActionHook that indexes payments by payer and receiver for on-chain lookups,
  *         and stores full PaymentInfo for retrieval.
  * @dev Extracted from PaymentOperator for optional gas optimization.
- *      Deploy this recorder when you want on-chain payment queries.
+ *      Deploy this hook when you want on-chain payment queries.
  *      Skip (use address(0)) when using external indexer (The Graph).
  *
  *      NOTE: The escrow contract only allows one authorization per paymentInfo hash
@@ -22,11 +22,11 @@ import {BasePostActionHook} from "./BasePostActionHook.sol";
  *
  * USAGE:
  *   // Deploy once, share across operators
- *   PaymentIndexPostActionHook indexRecorder = new PaymentIndexPostActionHook(address(escrow));
+ *   PaymentIndexPostActionHook indexPostActionHook = new PaymentIndexPostActionHook(address(escrow));
  *
  *   // Query payments with full PaymentInfo
- *   (AuthCaptureEscrow.PaymentInfo[] memory infos, uint256 total) = indexRecorder.getPayerPayments(alice, 0, 10);
- *   AuthCaptureEscrow.PaymentInfo memory info = indexRecorder.getPaymentInfo(hash);
+ *   (AuthCaptureEscrow.PaymentInfo[] memory infos, uint256 total) = indexHook.getPayerPayments(alice, 0, 10);
+ *   AuthCaptureEscrow.PaymentInfo memory info = indexHook.getPaymentInfo(hash);
  */
 contract PaymentIndexPostActionHook is BasePostActionHook {
     // ============ Errors ============

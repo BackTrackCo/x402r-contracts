@@ -51,8 +51,9 @@ contract PostActionHookCoverageTest is Test {
     // ============ AuthorizationTimePostActionHook ============
 
     function test_AuthorizationTimePostActionHook_RecordsTimestamp() public {
-        AuthorizationTimePostActionHook timeRecorder = new AuthorizationTimePostActionHook(address(escrow), bytes32(0));
-        PaymentOperator op = _deployWithRecorder(address(timeRecorder));
+        AuthorizationTimePostActionHook timePostActionHook =
+            new AuthorizationTimePostActionHook(address(escrow), bytes32(0));
+        PaymentOperator op = _deployWithPostActionHook(address(timePostActionHook));
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), 1);
 
@@ -60,34 +61,35 @@ contract PostActionHookCoverageTest is Test {
         collector.preApprove(paymentInfo);
         op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
-        uint256 authTime = timeRecorder.getAuthorizationTime(paymentInfo);
+        uint256 authTime = timePostActionHook.getAuthorizationTime(paymentInfo);
         assertEq(authTime, block.timestamp, "Auth time should be current timestamp");
     }
 
     function test_AuthorizationTimePostActionHook_ReturnsZeroForUnknown() public {
-        AuthorizationTimePostActionHook timeRecorder = new AuthorizationTimePostActionHook(address(escrow), bytes32(0));
+        AuthorizationTimePostActionHook timePostActionHook =
+            new AuthorizationTimePostActionHook(address(escrow), bytes32(0));
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(this), 99);
-        assertEq(timeRecorder.getAuthorizationTime(paymentInfo), 0, "Should be zero for unknown payment");
+        assertEq(timePostActionHook.getAuthorizationTime(paymentInfo), 0, "Should be zero for unknown payment");
     }
 
     // ============ PaymentIndexPostActionHook ============
 
     function test_PaymentIndexPostActionHook_IndexesPayerAndReceiver() public {
-        PaymentIndexPostActionHook indexRecorder = new PaymentIndexPostActionHook(address(escrow), bytes32(0));
-        PaymentOperator op = _deployWithRecorder(address(indexRecorder));
+        PaymentIndexPostActionHook indexPostActionHook = new PaymentIndexPostActionHook(address(escrow), bytes32(0));
+        PaymentOperator op = _deployWithPostActionHook(address(indexPostActionHook));
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), 2);
         vm.prank(payer);
         collector.preApprove(paymentInfo);
         op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
-        assertEq(indexRecorder.payerPaymentCount(payer), 1, "Payer should have 1 payment");
-        assertEq(indexRecorder.receiverPaymentCount(receiver), 1, "Receiver should have 1 payment");
+        assertEq(indexPostActionHook.payerPaymentCount(payer), 1, "Payer should have 1 payment");
+        assertEq(indexPostActionHook.receiverPaymentCount(receiver), 1, "Receiver should have 1 payment");
     }
 
     function test_PaymentIndexPostActionHook_GetPayerPayments_Pagination() public {
-        PaymentIndexPostActionHook indexRecorder = new PaymentIndexPostActionHook(address(escrow), bytes32(0));
-        PaymentOperator op = _deployWithRecorder(address(indexRecorder));
+        PaymentIndexPostActionHook indexPostActionHook = new PaymentIndexPostActionHook(address(escrow), bytes32(0));
+        PaymentOperator op = _deployWithPostActionHook(address(indexPostActionHook));
 
         // Create 3 payments
         for (uint256 i = 0; i < 3; i++) {
@@ -98,45 +100,48 @@ contract PostActionHookCoverageTest is Test {
         }
 
         // Get page 1 (offset 0, count 2)
-        (AuthCaptureEscrow.PaymentInfo[] memory records, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 2);
+        (AuthCaptureEscrow.PaymentInfo[] memory records, uint256 total) =
+            indexPostActionHook.getPayerPayments(payer, 0, 2);
         assertEq(total, 3, "Total should be 3");
         assertEq(records.length, 2, "Page should have 2 records");
 
         // Get page 2 (offset 2, count 2)
-        (records, total) = indexRecorder.getPayerPayments(payer, 2, 2);
+        (records, total) = indexPostActionHook.getPayerPayments(payer, 2, 2);
         assertEq(records.length, 1, "Last page should have 1 record");
     }
 
     function test_PaymentIndexPostActionHook_GetPayerPayments_OffsetBeyondTotal() public {
-        PaymentIndexPostActionHook indexRecorder = new PaymentIndexPostActionHook(address(escrow), bytes32(0));
-        (AuthCaptureEscrow.PaymentInfo[] memory records, uint256 total) = indexRecorder.getPayerPayments(payer, 100, 10);
+        PaymentIndexPostActionHook indexPostActionHook = new PaymentIndexPostActionHook(address(escrow), bytes32(0));
+        (AuthCaptureEscrow.PaymentInfo[] memory records, uint256 total) =
+            indexPostActionHook.getPayerPayments(payer, 100, 10);
         assertEq(total, 0, "Total should be 0 for no payments");
         assertEq(records.length, 0, "Should return empty array");
     }
 
     function test_PaymentIndexPostActionHook_GetPayerPayments_ZeroCount() public {
-        PaymentIndexPostActionHook indexRecorder = new PaymentIndexPostActionHook(address(escrow), bytes32(0));
-        PaymentOperator op = _deployWithRecorder(address(indexRecorder));
+        PaymentIndexPostActionHook indexPostActionHook = new PaymentIndexPostActionHook(address(escrow), bytes32(0));
+        PaymentOperator op = _deployWithPostActionHook(address(indexPostActionHook));
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), 3);
         vm.prank(payer);
         collector.preApprove(paymentInfo);
         op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
-        (AuthCaptureEscrow.PaymentInfo[] memory records, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 0);
+        (AuthCaptureEscrow.PaymentInfo[] memory records, uint256 total) =
+            indexPostActionHook.getPayerPayments(payer, 0, 0);
         assertEq(total, 1, "Total should be 1");
         assertEq(records.length, 0, "Should return empty for zero count");
     }
 
     function test_PaymentIndexPostActionHook_GetPayerPayment_IndexOutOfBounds() public {
-        PaymentIndexPostActionHook indexRecorder = new PaymentIndexPostActionHook(address(escrow), bytes32(0));
+        PaymentIndexPostActionHook indexPostActionHook = new PaymentIndexPostActionHook(address(escrow), bytes32(0));
         vm.expectRevert(PaymentIndexPostActionHook.IndexOutOfBounds.selector);
-        indexRecorder.getPayerPayment(payer, 0);
+        indexPostActionHook.getPayerPayment(payer, 0);
     }
 
     function test_PaymentIndexPostActionHook_GetReceiverPayments() public {
-        PaymentIndexPostActionHook indexRecorder = new PaymentIndexPostActionHook(address(escrow), bytes32(0));
-        PaymentOperator op = _deployWithRecorder(address(indexRecorder));
+        PaymentIndexPostActionHook indexPostActionHook = new PaymentIndexPostActionHook(address(escrow), bytes32(0));
+        PaymentOperator op = _deployWithPostActionHook(address(indexPostActionHook));
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), 4);
         vm.prank(payer);
@@ -144,39 +149,40 @@ contract PostActionHookCoverageTest is Test {
         op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
         (AuthCaptureEscrow.PaymentInfo[] memory records, uint256 total) =
-            indexRecorder.getReceiverPayments(receiver, 0, 10);
+            indexPostActionHook.getReceiverPayments(receiver, 0, 10);
         assertEq(total, 1, "Receiver should have 1 payment");
         assertEq(records.length, 1, "Should return 1 record");
     }
 
     function test_PaymentIndexPostActionHook_GetReceiverPayment_IndexOutOfBounds() public {
-        PaymentIndexPostActionHook indexRecorder = new PaymentIndexPostActionHook(address(escrow), bytes32(0));
+        PaymentIndexPostActionHook indexPostActionHook = new PaymentIndexPostActionHook(address(escrow), bytes32(0));
         vm.expectRevert(PaymentIndexPostActionHook.IndexOutOfBounds.selector);
-        indexRecorder.getReceiverPayment(receiver, 0);
+        indexPostActionHook.getReceiverPayment(receiver, 0);
     }
 
     // ============ PostActionHookCombinator ============
 
-    function test_PostActionHookCombinator_CombinesMultipleRecorders() public {
-        // Use codehash(0) so sub-recorders accept calls from the combinator
+    function test_PostActionHookCombinator_CombinesMultipleHooks() public {
+        // Use codehash(0) so sub-hooks accept calls from the combinator
         // The combinator itself checks msg.sender == operator, then delegates
-        AuthorizationTimePostActionHook timeRecorder = new AuthorizationTimePostActionHook(address(escrow), bytes32(0));
+        AuthorizationTimePostActionHook timePostActionHook =
+            new AuthorizationTimePostActionHook(address(escrow), bytes32(0));
 
         IPostActionHook[] memory recs = new IPostActionHook[](1);
-        recs[0] = IPostActionHook(address(timeRecorder));
+        recs[0] = IPostActionHook(address(timePostActionHook));
 
         PostActionHookCombinator combinator = new PostActionHookCombinator(recs);
-        PaymentOperator op = _deployWithRecorder(address(combinator));
+        PaymentOperator op = _deployWithPostActionHook(address(combinator));
 
         // The combinator checks msg.sender == paymentInfo.operator
-        // Sub-recorders (BasePostActionHook) check codehash of msg.sender
+        // Sub-hooks (BasePostActionHook) check codehash of msg.sender
         // With codehash=bytes32(0), BasePostActionHook accepts any operator-codehash caller
-        // But the actual caller of sub-recorders is the combinator, not the operator
+        // But the actual caller of sub-hooks is the combinator, not the operator
         // So we just test the combinator's own validation and setup
-        assertEq(combinator.getRecorderCount(), 1, "Combinator should have 1 recorder");
+        assertEq(combinator.getHookCount(), 1, "Combinator should have 1 hook");
 
-        IPostActionHook[] memory retrieved = combinator.getRecorders();
-        assertEq(address(retrieved[0]), address(timeRecorder), "Should contain time recorder");
+        IPostActionHook[] memory retrieved = combinator.getHooks();
+        assertEq(address(retrieved[0]), address(timePostActionHook), "Should contain time hook");
     }
 
     function test_PostActionHookCombinator_RecorderCount() public {
@@ -188,10 +194,10 @@ contract PostActionHookCoverageTest is Test {
         recs[1] = IPostActionHook(address(r2));
 
         PostActionHookCombinator combinator = new PostActionHookCombinator(recs);
-        assertEq(combinator.getRecorderCount(), 2, "Should have 2 recorders");
+        assertEq(combinator.getHookCount(), 2, "Should have 2 hooks");
     }
 
-    function test_PostActionHookCombinator_GetRecorders() public {
+    function test_PostActionHookCombinator_GetHooks() public {
         AuthorizationTimePostActionHook r1 = new AuthorizationTimePostActionHook(address(escrow), bytes32(0));
         AuthorizationTimePostActionHook r2 = new AuthorizationTimePostActionHook(address(escrow), bytes32(0));
 
@@ -200,19 +206,19 @@ contract PostActionHookCoverageTest is Test {
         recs[1] = IPostActionHook(address(r2));
 
         PostActionHookCombinator combinator = new PostActionHookCombinator(recs);
-        IPostActionHook[] memory retrieved = combinator.getRecorders();
-        assertEq(retrieved.length, 2, "Should return 2 recorders");
-        assertEq(address(retrieved[0]), address(r1), "First recorder should match");
-        assertEq(address(retrieved[1]), address(r2), "Second recorder should match");
+        IPostActionHook[] memory retrieved = combinator.getHooks();
+        assertEq(retrieved.length, 2, "Should return 2 hooks");
+        assertEq(address(retrieved[0]), address(r1), "First hook should match");
+        assertEq(address(retrieved[1]), address(r2), "Second hook should match");
     }
 
-    function test_PostActionHookCombinator_EmptyRecorders_Reverts() public {
+    function test_PostActionHookCombinator_EmptyHooks_Reverts() public {
         IPostActionHook[] memory empty = new IPostActionHook[](0);
-        vm.expectRevert(PostActionHookCombinator.EmptyRecorders.selector);
+        vm.expectRevert(PostActionHookCombinator.EmptyHooks.selector);
         new PostActionHookCombinator(empty);
     }
 
-    function test_PostActionHookCombinator_TooManyRecorders_Reverts() public {
+    function test_PostActionHookCombinator_TooManyHooks_Reverts() public {
         IPostActionHook[] memory tooMany = new IPostActionHook[](11);
         for (uint256 i = 0; i < 11; i++) {
             tooMany[i] = IPostActionHook(address(new AuthorizationTimePostActionHook(address(escrow), bytes32(0))));
@@ -225,7 +231,7 @@ contract PostActionHookCoverageTest is Test {
         IPostActionHook[] memory recs = new IPostActionHook[](2);
         recs[0] = IPostActionHook(address(new AuthorizationTimePostActionHook(address(escrow), bytes32(0))));
         recs[1] = IPostActionHook(address(0));
-        vm.expectRevert(abi.encodeWithSelector(PostActionHookCombinator.ZeroRecorder.selector, 1));
+        vm.expectRevert(abi.encodeWithSelector(PostActionHookCombinator.ZeroHook.selector, 1));
         new PostActionHookCombinator(recs);
     }
 
@@ -238,12 +244,12 @@ contract PostActionHookCoverageTest is Test {
 
     // ============ Helpers ============
 
-    function _deployWithRecorder(address recorder) internal returns (PaymentOperator) {
+    function _deployWithPostActionHook(address hook) internal returns (PaymentOperator) {
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
             authorizePreActionCondition: address(0),
-            authorizePostActionHook: recorder,
+            authorizePostActionHook: hook,
             chargePreActionCondition: address(0),
             chargePostActionHook: address(0),
             capturePreActionCondition: address(0),

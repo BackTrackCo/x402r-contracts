@@ -27,7 +27,7 @@ import {RefundRequestEvidence} from "../../src/evidence/RefundRequestEvidence.so
  * @title GasBenchmark
  * @notice Gas measurements for documentation. Compares:
  *         1. Bare ERC-20 transfer
- *         2. Commerce Payments (no conditions/recorders)
+ *         2. Commerce Payments (no conditions/hooks)
  *         3. x402r happy path (EscrowPeriod + Freeze conditions)
  *         4. x402r unhappy path (freeze, refund request, evidence, refund)
  *
@@ -54,8 +54,8 @@ contract GasBenchmark is Test {
     // ============ Operators ============
     PaymentOperatorFactory public operatorFactory;
     PaymentOperatorFactory public bareOperatorFactory; // No protocol fees
-    PaymentOperator public bareOperator; // No conditions/recorders/fees
-    PaymentOperator public feesOnlyOperator; // Fees, no conditions/recorders
+    PaymentOperator public bareOperator; // No conditions/hooks/fees
+    PaymentOperator public feesOnlyOperator; // Fees, no conditions/hooks
     PaymentOperator public simpleOperator; // Fees + ReceiverPreActionCondition on release
     PaymentOperator public escrowOnlyOperator; // Fees + EscrowPeriod (no Freeze)
     PaymentOperator public fullOperator; // EscrowPeriod + Freeze + fees
@@ -124,7 +124,7 @@ contract GasBenchmark is Test {
         ProtocolFeeConfig bareProtocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
         bareOperatorFactory = new PaymentOperatorFactory(address(escrow), address(bareProtocolFeeConfig));
 
-        // --- BARE OPERATOR (no conditions, no recorders, no fees) ---
+        // --- BARE OPERATOR (no conditions, no hooks, no fees) ---
         PaymentOperatorFactory.OperatorConfig memory bareConfig = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: operatorFeeRecipient,
             feeCalculator: address(0),
@@ -141,7 +141,7 @@ contract GasBenchmark is Test {
         });
         bareOperator = PaymentOperator(bareOperatorFactory.deployOperator(bareConfig));
 
-        // --- FEES-ONLY OPERATOR (fees, no conditions/recorders) ---
+        // --- FEES-ONLY OPERATOR (fees, no conditions/hooks) ---
         PaymentOperatorFactory.OperatorConfig memory feesOnlyConfig = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: operatorFeeRecipient,
             feeCalculator: address(operatorCalc),
@@ -176,7 +176,7 @@ contract GasBenchmark is Test {
         });
         simpleOperator = PaymentOperator(operatorFactory.deployOperator(simpleConfig));
 
-        // --- ESCROW-ONLY OPERATOR (fees + EscrowPeriod recorder + EscrowPeriod release condition, no Freeze) ---
+        // --- ESCROW-ONLY OPERATOR (fees + EscrowPeriod hook + EscrowPeriod release condition, no Freeze) ---
         PaymentOperatorFactory.OperatorConfig memory escrowOnlyConfig = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: operatorFeeRecipient,
             feeCalculator: address(operatorCalc),
@@ -193,7 +193,7 @@ contract GasBenchmark is Test {
         });
         escrowOnlyOperator = PaymentOperator(operatorFactory.deployOperator(escrowOnlyConfig));
 
-        // --- FULL OPERATOR (EscrowPeriod recorder, EscrowPeriod+Freeze release condition, fees) ---
+        // --- FULL OPERATOR (EscrowPeriod hook, EscrowPeriod+Freeze release condition, fees) ---
         PaymentOperatorFactory.OperatorConfig memory fullConfig = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: operatorFeeRecipient,
             feeCalculator: address(operatorCalc),
@@ -258,7 +258,7 @@ contract GasBenchmark is Test {
     }
 
     // ================================================================
-    //  2. BARE COMMERCE PAYMENTS (no conditions, no recorders, no fees)
+    //  2. BARE COMMERCE PAYMENTS (no conditions, no hooks, no fees)
     // ================================================================
 
     function test_gas_bareAuthorize() public {
@@ -272,7 +272,7 @@ contract GasBenchmark is Test {
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== BARE COMMERCE PAYMENTS ===");
-        console.log("authorize (no conditions/recorders):", gasUsed);
+        console.log("authorize (no conditions/hooks):", gasUsed);
     }
 
     function test_gas_bareRelease() public {
@@ -288,7 +288,7 @@ contract GasBenchmark is Test {
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== BARE COMMERCE PAYMENTS ===");
-        console.log("release (no conditions/recorders):", gasUsed);
+        console.log("release (no conditions/hooks):", gasUsed);
     }
 
     function test_gas_bareCharge() public {
@@ -302,11 +302,11 @@ contract GasBenchmark is Test {
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== BARE COMMERCE PAYMENTS ===");
-        console.log("charge (no conditions/recorders):", gasUsed);
+        console.log("charge (no conditions/hooks):", gasUsed);
     }
 
     // ================================================================
-    //  2b. FEES ONLY (no conditions, no recorders)
+    //  2b. FEES ONLY (no conditions, no hooks)
     // ================================================================
 
     function test_gas_feesOnlyAuthorize() public {
@@ -320,7 +320,7 @@ contract GasBenchmark is Test {
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== FEES ONLY ===");
-        console.log("authorize (fees, no conditions/recorders):", gasUsed);
+        console.log("authorize (fees, no conditions/hooks):", gasUsed);
     }
 
     function test_gas_feesOnlyRelease() public {
@@ -336,7 +336,7 @@ contract GasBenchmark is Test {
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== FEES ONLY ===");
-        console.log("release (fees, no conditions/recorders):", gasUsed);
+        console.log("release (fees, no conditions/hooks):", gasUsed);
     }
 
     // ================================================================
@@ -354,7 +354,7 @@ contract GasBenchmark is Test {
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== SIMPLE CONDITIONS ===");
-        console.log("authorize (fees, no auth condition/recorder):", gasUsed);
+        console.log("authorize (fees, no auth condition/hook):", gasUsed);
     }
 
     function test_gas_simpleRelease() public {
@@ -435,10 +435,10 @@ contract GasBenchmark is Test {
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== x402r HAPPY PATH ===");
-        console.log("authorize (EscrowPeriod recorder + fees):", gasUsed);
+        console.log("authorize (EscrowPeriod hook + fees):", gasUsed);
     }
 
-    function test_gas_x402rRelease() public {
+    function test_gas_x402rCapture() public {
         AuthCaptureEscrow.PaymentInfo memory pi = _createPaymentInfo(address(fullOperator), TOTAL_BPS, 11);
 
         vm.prank(payer);
@@ -564,7 +564,7 @@ contract GasBenchmark is Test {
         console.log("void:", gasUsed);
     }
 
-    function test_gas_refundPostEscrow() public {
+    function test_gas_refund() public {
         AuthCaptureEscrow.PaymentInfo memory pi = _createPaymentInfo(address(fullOperator), TOTAL_BPS, 25);
 
         vm.prank(payer);
@@ -590,7 +590,7 @@ contract GasBenchmark is Test {
     //  4b. COLD vs WARM: RELEASE
     // ================================================================
 
-    function test_gas_x402rReleaseColdVsWarm() public {
+    function test_gas_x402rCaptureColdVsWarm() public {
         // Authorize two payments on the full operator
         AuthCaptureEscrow.PaymentInfo memory pi1 = _createPaymentInfo(address(fullOperator), TOTAL_BPS, 60);
         AuthCaptureEscrow.PaymentInfo memory pi2 = _createPaymentInfo(address(fullOperator), TOTAL_BPS, 61);
@@ -822,7 +822,7 @@ contract GasBenchmark is Test {
         console.log("savings:", coldGas - warmGas);
     }
 
-    function test_gas_refundPostEscrowColdVsWarm() public {
+    function test_gas_refundColdVsWarm() public {
         AuthCaptureEscrow.PaymentInfo memory pi1 = _createPaymentInfo(address(fullOperator), TOTAL_BPS, 74);
         AuthCaptureEscrow.PaymentInfo memory pi2 = _createPaymentInfo(address(fullOperator), TOTAL_BPS, 75);
 
@@ -1061,7 +1061,7 @@ contract GasBenchmark is Test {
         bareOperator.authorize(piBare, PAYMENT_AMOUNT, address(collector), "");
         uint256 bareGas = g1 - gasleft();
 
-        // Fees only (no conditions, no recorders)
+        // Fees only (no conditions, no hooks)
         AuthCaptureEscrow.PaymentInfo memory piFees = _createPaymentInfo(address(feesOnlyOperator), TOTAL_BPS, 31);
         vm.prank(payer);
         collector.preApprove(piFees);
@@ -1069,7 +1069,7 @@ contract GasBenchmark is Test {
         feesOnlyOperator.authorize(piFees, PAYMENT_AMOUNT, address(collector), "");
         uint256 feesGas = g2 - gasleft();
 
-        // Escrow-only (fees + EscrowPeriod recorder)
+        // Escrow-only (fees + EscrowPeriod hook)
         AuthCaptureEscrow.PaymentInfo memory piEscrow = _createPaymentInfo(address(escrowOnlyOperator), TOTAL_BPS, 32);
         vm.prank(payer);
         collector.preApprove(piEscrow);
@@ -1077,7 +1077,7 @@ contract GasBenchmark is Test {
         escrowOnlyOperator.authorize(piEscrow, PAYMENT_AMOUNT, address(collector), "");
         uint256 escrowGas = g3 - gasleft();
 
-        // Full (fees + EscrowPeriod recorder — same as escrow-only for authorize)
+        // Full (fees + EscrowPeriod hook — same as escrow-only for authorize)
         AuthCaptureEscrow.PaymentInfo memory piFull = _createPaymentInfo(address(fullOperator), TOTAL_BPS, 33);
         vm.prank(payer);
         collector.preApprove(piFull);
@@ -1086,13 +1086,13 @@ contract GasBenchmark is Test {
         uint256 fullGas = g4 - gasleft();
 
         console.log("=== AUTHORIZE OVERHEAD ===");
-        console.log("bare (no fees/conditions/recorders):", bareGas);
+        console.log("bare (no fees/conditions/hooks):", bareGas);
         console.log("+ fees:", feesGas);
-        console.log("+ fees + EscrowPeriod recorder:", escrowGas);
-        console.log("+ fees + EscrowPeriod recorder (full):", fullGas);
+        console.log("+ fees + EscrowPeriod hook:", escrowGas);
+        console.log("+ fees + EscrowPeriod hook (full):", fullGas);
         console.log("--- marginal costs ---");
         console.log("fee calculation:", feesGas - bareGas);
-        console.log("EscrowPeriod recorder:", escrowGas - feesGas);
+        console.log("EscrowPeriod hook:", escrowGas - feesGas);
     }
 
     function test_gas_overhead_release() public {

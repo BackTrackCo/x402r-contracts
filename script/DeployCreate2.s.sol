@@ -190,10 +190,10 @@ contract DeployCreate2 is Create2Deployer {
         );
         console.log("NotPreActionConditionFactory:", notFactory);
 
-        address recorderCombFactory = _deploy2(
+        address hookCombFactory = _deploy2(
             "x402r-canonical-v1::PostActionHookCombinatorFactory", type(PostActionHookCombinatorFactory).creationCode
         );
-        console.log("PostActionHookCombinatorFactory:", recorderCombFactory);
+        console.log("PostActionHookCombinatorFactory:", hookCombFactory);
 
         address staticFeeCalcFactory =
             _deploy2("x402r-canonical-v1::StaticFeeCalculatorFactory", type(StaticFeeCalculatorFactory).creationCode);
@@ -263,7 +263,7 @@ contract DeployCreate2 is Create2Deployer {
         console.log("    AndPreActionConditionFactory:", andFactory);
         console.log("    OrPreActionConditionFactory:", orFactory);
         console.log("    NotPreActionConditionFactory:", notFactory);
-        console.log("    PostActionHookCombinatorFactory:", recorderCombFactory);
+        console.log("    PostActionHookCombinatorFactory:", hookCombFactory);
         console.log("    StaticFeeCalculatorFactory:", staticFeeCalcFactory);
         console.log("    EscrowPeriodFactory:", escrowPeriodFactory);
         console.log("    FreezeFactory:", freezeFactory);

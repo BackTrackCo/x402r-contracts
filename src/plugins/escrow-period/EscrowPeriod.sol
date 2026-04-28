@@ -9,7 +9,7 @@ import {InvalidEscrowPeriod} from "./types/Errors.sol";
 
 /**
  * @title EscrowPeriod
- * @notice Combined escrow period recorder and condition. Extends AuthorizationTimePostActionHook
+ * @notice Combined escrow period hook and condition. Extends AuthorizationTimePostActionHook
  *         with escrow period enforcement and IPreActionCondition implementation.
  *
  * @dev Implements both IPostActionHook (via AuthorizationTimePostActionHook inheritance) and IPreActionCondition.

@@ -7,7 +7,7 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
 /**
  * @title MaliciousPostActionHook
- * @notice Mock recorder that attempts reentrancy attacks for testing
+ * @notice Mock hook that attempts reentrancy attacks for testing
  * @dev Used to verify reentrancy protection in operators
  */
 contract MaliciousPostActionHook is IPostActionHook {

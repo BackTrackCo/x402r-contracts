@@ -27,11 +27,11 @@ import {ProtocolFeeConfig} from "../../plugins/fees/ProtocolFeeConfig.sol";
  *         Supports marketplace escrow, subscriptions, streaming, grants, and any custom payment flow.
  *
  * @dev Plugin Architecture:
- *      - Operator controls flow, conditions and recorders are composable plugins
- *      - 10 slots: 5 conditions (before checks) + 5 recorders (after state updates)
- *      - address(0) = default behavior (allow for conditions, no-op for recorders)
+ *      - Operator controls flow, conditions and hooks are composable plugins
+ *      - 10 slots: 5 conditions (before checks) + 5 hooks (after state updates)
+ *      - address(0) = default behavior (allow for conditions, no-op for hooks)
  *      - Conditions implement IPreActionCondition.check() -> returns bool (true = allowed)
- *      - Recorders implement IPostActionHook.run() -> updates state after action
+ *      - Hooks implement IPostActionHook.run() -> updates state after action
  *      - Conditions can be composed using combinators (Or, And, Not)
  *
  *      Slots (one per action):
@@ -42,7 +42,7 @@ import {ProtocolFeeConfig} from "../../plugins/fees/ProtocolFeeConfig.sol";
  *      - REFUND_PRE_ACTION_CONDITION / REFUND_POST_ACTION_HOOK
  *
  *      Flow for each action:
- *      User -> operator.action() -> [condition.check()?] -> escrow -> [recorder.run()?]
+ *      User -> operator.action() -> [condition.check()?] -> escrow -> [hook.run()?]
  *
  * FEE SYSTEM (Modular, Additive):
  *      - Protocol fees come from shared ProtocolFeeConfig (timelocked swappable IFeeCalculator)
@@ -59,7 +59,7 @@ import {ProtocolFeeConfig} from "../../plugins/fees/ProtocolFeeConfig.sol";
  *        User -> operator.refund()    -> escrow.refund()
  */
 contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
-    /// @notice Configuration struct for condition/recorder slots
+    /// @notice Configuration struct for condition/hook slots
     struct PluginConfig {
         address authorizePreActionCondition;
         address authorizePostActionHook;
@@ -99,7 +99,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
     IPreActionCondition public immutable VOID_PRE_ACTION_CONDITION;
     IPreActionCondition public immutable REFUND_PRE_ACTION_CONDITION;
 
-    // ============ Recorder Slots (after-action state updates) ============
+    // ============ PostActionHook Slots (after-action state updates) ============
     // address(0) = no-op (default behavior)
     IPostActionHook public immutable AUTHORIZE_POST_ACTION_HOOK;
     IPostActionHook public immutable CHARGE_POST_ACTION_HOOK;
@@ -130,7 +130,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         VOID_PRE_ACTION_CONDITION = IPreActionCondition(_conditions.voidPreActionCondition);
         REFUND_PRE_ACTION_CONDITION = IPreActionCondition(_conditions.refundPreActionCondition);
 
-        // Set recorder slots (address(0) = no-op)
+        // Set hook slots (address(0) = no-op)
         AUTHORIZE_POST_ACTION_HOOK = IPostActionHook(_conditions.authorizePostActionHook);
         CHARGE_POST_ACTION_HOOK = IPostActionHook(_conditions.chargePostActionHook);
         CAPTURE_POST_ACTION_HOOK = IPostActionHook(_conditions.capturePostActionHook);
@@ -286,7 +286,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
     /**
      * @notice Void an authorization, returning held funds to payer
      * @dev Checks VOID_PRE_ACTION_CONDITION, performs escrow.void, then calls VOID_POST_ACTION_HOOK.
-     *      Reads the capturable amount before voiding so the recorder can know how much was returned.
+     *      Reads the capturable amount before voiding so the hook can know how much was returned.
      * @param paymentInfo PaymentInfo struct
      * @param data Arbitrary data forwarded to VOID_PRE_ACTION_CONDITION.check() and VOID_POST_ACTION_HOOK.run()
      */

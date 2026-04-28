@@ -27,9 +27,9 @@ import {PaymentFrozen, PaymentUnfrozen} from "./types/Events.sol";
  *      and post-expiry freezes in one call.
  *
  * COMPOSITION PATTERN:
- *      - Escrow period only:  releaseCondition = escrowPeriod
- *      - Freeze only:         releaseCondition = freeze
- *      - Both:                releaseCondition = AndPreActionCondition([escrowPeriod, freeze])
+ *      - Escrow period only:  capturePreActionCondition = escrowPeriod
+ *      - Freeze only:         capturePreActionCondition = freeze
+ *      - Both:                capturePreActionCondition = AndPreActionCondition([escrowPeriod, freeze])
  *
  * EXAMPLE CONFIGURATIONS:
  *      - Payer freeze/unfreeze (3 days): (PayerPreActionCondition, PayerPreActionCondition, 3 days)

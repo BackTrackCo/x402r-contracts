@@ -8,70 +8,70 @@ import {OnlyOperator} from "../../../types/Errors.sol";
 
 /**
  * @title PostActionHookCombinator
- * @notice Combinator that calls multiple recorders sequentially
- * @dev Similar to AndPreActionCondition/OrPreActionCondition but for recorders.
- *      Allows combining multiple recorder behaviors in a single slot.
+ * @notice Combinator that calls multiple hooks sequentially
+ * @dev Similar to AndPreActionCondition/OrPreActionCondition but for hooks.
+ *      Allows combining multiple hook behaviors in a single slot.
  *
  * USE CASES:
- *   - EscrowPeriodRecorder + PaymentIndexPostActionHook
- *   - Multiple analytics/logging recorders
+ *   - EscrowPeriodPostActionHook + PaymentIndexPostActionHook
+ *   - Multiple analytics/logging hooks
  *   - Custom business logic + indexing
  *
  * PATTERN: Composition over inheritance
- *          - Recorders are independent, reusable components
- *          - No order dependencies (all recorders get called)
- *          - If any recorder reverts, entire transaction reverts
+ *          - Hooks are independent, reusable components
+ *          - No order dependencies (all hooks get called)
+ *          - If any hook reverts, entire transaction reverts
  *
- * GAS COST: ~1k per additional recorder (external call overhead)
- *           Base cost: first recorder cost
- *           Each additional: +1k for CALL + recorder logic
+ * GAS COST: ~1k per additional hook (external call overhead)
+ *           Base cost: first hook cost
+ *           Each additional: +1k for CALL + hook logic
  *
  * EXAMPLE:
- *   IPostActionHook[] memory recorders = new IPostActionHook[](2);
- *   recorders[0] = escrowPeriodRecorder;
- *   recorders[1] = paymentIndexRecorder;
- *   PostActionHookCombinator combinator = new PostActionHookCombinator(recorders);
+ *   IPostActionHook[] memory hooks = new IPostActionHook[](2);
+ *   hooks[0] = escrowPeriodRecorder;
+ *   hooks[1] = paymentIndexRecorder;
+ *   PostActionHookCombinator combinator = new PostActionHookCombinator(hooks);
  *
  *   operator = factory.deploy({
- *       AUTHORIZE_POST_ACTION_HOOK: address(combinator), // Both recorders!
+ *       AUTHORIZE_POST_ACTION_HOOK: address(combinator), // Both hooks!
  *       ...
  *   });
  */
 contract PostActionHookCombinator is IPostActionHook {
-    /// @notice Array of recorders to call
-    IPostActionHook[] public recorders;
+    /// @notice Array of hooks to call
+    IPostActionHook[] public hooks;
 
-    /// @notice Maximum number of recorders to prevent excessive gas costs
+    /// @notice Maximum number of hooks to prevent excessive gas costs
     uint256 public constant MAX_POST_ACTION_HOOKS = 10;
 
-    error EmptyRecorders();
-    error TooManyRecorders(uint256 count, uint256 max);
-    error ZeroRecorder(uint256 index);
+    error EmptyHooks();
+    error TooManyHooks(uint256 count, uint256 max);
+    error ZeroHook(uint256 index);
 
     /**
-     * @notice Creates a combinator with multiple recorders
-     * @param _recorders Array of recorder addresses to call
+     * @notice Creates a combinator with multiple hooks
+     * @param _hooks Array of hook addresses to call
      */
-    constructor(IPostActionHook[] memory _recorders) {
-        if (_recorders.length == 0) revert EmptyRecorders();
-        if (_recorders.length > MAX_POST_ACTION_HOOKS) {
-            revert TooManyRecorders(_recorders.length, MAX_POST_ACTION_HOOKS);
+    constructor(IPostActionHook[] memory _hooks) {
+        if (_hooks.length == 0) revert EmptyHooks();
+        if (_hooks.length > MAX_POST_ACTION_HOOKS) {
+            revert TooManyHooks(_hooks.length, MAX_POST_ACTION_HOOKS);
         }
 
         // Validate no zero addresses
-        for (uint256 i = 0; i < _recorders.length; i++) {
-            if (address(_recorders[i]) == address(0)) revert ZeroRecorder(i);
+        for (uint256 i = 0; i < _hooks.length; i++) {
+            if (address(_hooks[i]) == address(0)) revert ZeroHook(i);
         }
 
-        recorders = _recorders;
+        hooks = _hooks;
     }
 
     /**
-     * @notice Calls record() on all configured recorders sequentially
+     * @notice Calls record() on all configured hooks sequentially
      * @param paymentInfo Payment information to record
      * @param amount Amount involved in the action
      * @param caller Address that executed the action
-     * @dev Reverts if any recorder reverts
+     * @dev Reverts if any hook reverts
      */
     function run(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
@@ -81,25 +81,25 @@ contract PostActionHookCombinator is IPostActionHook {
     ) external override {
         if (msg.sender != paymentInfo.operator) revert OnlyOperator();
 
-        uint256 length = recorders.length;
+        uint256 length = hooks.length;
         for (uint256 i = 0; i < length; i++) {
-            recorders[i].run(paymentInfo, amount, caller, data);
+            hooks[i].run(paymentInfo, amount, caller, data);
         }
     }
 
     /**
-     * @notice Returns the array of recorders
-     * @return Array of recorder addresses
+     * @notice Returns the array of hooks
+     * @return Array of hook addresses
      */
-    function getRecorders() external view returns (IPostActionHook[] memory) {
-        return recorders;
+    function getHooks() external view returns (IPostActionHook[] memory) {
+        return hooks;
     }
 
     /**
-     * @notice Returns the number of recorders
-     * @return Number of recorders in this combinator
+     * @notice Returns the number of hooks
+     * @return Number of hooks in this combinator
      */
-    function getRecorderCount() external view returns (uint256) {
-        return recorders.length;
+    function getHookCount() external view returns (uint256) {
+        return hooks.length;
     }
 }

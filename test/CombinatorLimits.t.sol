@@ -269,34 +269,34 @@ contract CombinatorLimitsTest is Test {
 
     // ============ PostActionHookCombinator Limit Tests ============
 
-    function test_PostActionHookCombinator_AcceptsMaxRecorders() public {
+    function test_PostActionHookCombinator_AcceptsMaxHooks() public {
         IPostActionHook[] memory recs = new IPostActionHook[](10);
         for (uint256 i = 0; i < 10; i++) {
             recs[i] = IPostActionHook(address(new AuthorizationTimePostActionHook(address(escrow), bytes32(0))));
         }
 
         PostActionHookCombinator combinator = new PostActionHookCombinator(recs);
-        assertEq(combinator.getRecorderCount(), 10, "Should accept exactly MAX_POST_ACTION_HOOKS (10)");
+        assertEq(combinator.getHookCount(), 10, "Should accept exactly MAX_POST_ACTION_HOOKS (10)");
     }
 
-    function test_PostActionHookCombinator_RevertsOnTooManyRecorders() public {
+    function test_PostActionHookCombinator_RevertsOnTooManyHooks() public {
         IPostActionHook[] memory recs = new IPostActionHook[](11);
         for (uint256 i = 0; i < 11; i++) {
             recs[i] = IPostActionHook(address(new AuthorizationTimePostActionHook(address(escrow), bytes32(0))));
         }
 
-        vm.expectRevert(abi.encodeWithSelector(PostActionHookCombinator.TooManyRecorders.selector, 11, 10));
+        vm.expectRevert(abi.encodeWithSelector(PostActionHookCombinator.TooManyHooks.selector, 11, 10));
         new PostActionHookCombinator(recs);
     }
 
-    function test_PostActionHookCombinator_RevertsOnEmptyRecorders() public {
+    function test_PostActionHookCombinator_RevertsOnEmptyHooks() public {
         IPostActionHook[] memory recs = new IPostActionHook[](0);
 
-        vm.expectRevert(PostActionHookCombinator.EmptyRecorders.selector);
+        vm.expectRevert(PostActionHookCombinator.EmptyHooks.selector);
         new PostActionHookCombinator(recs);
     }
 
-    function test_PostActionHookCombinator_MaxRecordersConstant() public {
+    function test_PostActionHookCombinator_MaxHooksConstant() public {
         IPostActionHook[] memory recs = new IPostActionHook[](1);
         recs[0] = IPostActionHook(address(new AuthorizationTimePostActionHook(address(escrow), bytes32(0))));
 

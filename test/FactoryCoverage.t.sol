@@ -483,7 +483,7 @@ contract FactoryCoverageTest is Test {
 
         address deployed = factory.deploy(recs);
         assertTrue(deployed != address(0), "PostActionHookCombinator should be deployed");
-        assertEq(PostActionHookCombinator(deployed).getRecorderCount(), 2, "Should have 2 recorders");
+        assertEq(PostActionHookCombinator(deployed).getHookCount(), 2, "Should have 2 hooks");
     }
 
     function test_PostActionHookCombinatorFactory_IdempotentDeploy() public {
@@ -494,7 +494,7 @@ contract FactoryCoverageTest is Test {
 
         address first = factory.deploy(recs);
         address second = factory.deploy(recs);
-        assertEq(first, second, "Same recorders should return same address");
+        assertEq(first, second, "Same hooks should return same address");
     }
 
     function test_PostActionHookCombinatorFactory_ComputeAddress() public {
@@ -517,20 +517,20 @@ contract FactoryCoverageTest is Test {
         assertEq(factory.getDeployed(recs), deployed, "Should return deployed address");
     }
 
-    function test_PostActionHookCombinatorFactory_EmptyRecorders_Reverts() public {
+    function test_PostActionHookCombinatorFactory_EmptyHooks_Reverts() public {
         PostActionHookCombinatorFactory factory = new PostActionHookCombinatorFactory();
         IPostActionHook[] memory recs = new IPostActionHook[](0);
-        vm.expectRevert(PostActionHookCombinatorFactory.EmptyRecorders.selector);
+        vm.expectRevert(PostActionHookCombinatorFactory.EmptyHooks.selector);
         factory.deploy(recs);
     }
 
-    function test_PostActionHookCombinatorFactory_TooManyRecorders_Reverts() public {
+    function test_PostActionHookCombinatorFactory_TooManyHooks_Reverts() public {
         PostActionHookCombinatorFactory factory = new PostActionHookCombinatorFactory();
         IPostActionHook[] memory recs = new IPostActionHook[](11);
         for (uint256 i = 0; i < 11; i++) {
             recs[i] = IPostActionHook(address(new AuthorizationTimePostActionHook(address(escrow), bytes32(0))));
         }
-        vm.expectRevert(PostActionHookCombinatorFactory.TooManyRecorders.selector);
+        vm.expectRevert(PostActionHookCombinatorFactory.TooManyHooks.selector);
         factory.deploy(recs);
     }
 
@@ -547,7 +547,7 @@ contract FactoryCoverageTest is Test {
 
         bytes32 key1 = factory.getKey(recs1);
         bytes32 key2 = factory.getKey(recs2);
-        assertTrue(key1 != key2, "Different recorders should produce different keys");
+        assertTrue(key1 != key2, "Different hooks should produce different keys");
     }
 
     // ============ PaymentOperatorFactory ============

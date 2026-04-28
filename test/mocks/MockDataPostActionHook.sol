@@ -6,9 +6,9 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
 /**
  * @title MockDataPostActionHook
- * @notice Mock recorder that stores the last `data` it received for test assertions.
+ * @notice Mock hook that stores the last `data` it received for test assertions.
  *         Used to verify that the `data` parameter is correctly forwarded end-to-end
- *         through PaymentOperator to recorders.
+ *         through PaymentOperator to hooks.
  */
 contract MockDataPostActionHook is IPostActionHook {
     /// @notice The last data received by record()

@@ -17,7 +17,7 @@ contract ReentrancyAttackTest is Test {
     MockERC20 public token;
     AuthCaptureEscrow public escrow;
     PreApprovalPaymentCollector public collector;
-    MaliciousPostActionHook public maliciousRecorder;
+    MaliciousPostActionHook public maliciousPostActionHook;
 
     address public owner;
     address public protocolFeeRecipient;
@@ -46,25 +46,25 @@ contract ReentrancyAttackTest is Test {
         token.approve(address(collector), type(uint256).max);
     }
 
-    function _deployOperatorWithMaliciousPostActionHook(
-        MaliciousPostActionHook.AttackType attackType,
-        uint8 recorderSlot
-    ) internal returns (PaymentOperator) {
-        maliciousRecorder = new MaliciousPostActionHook(attackType);
+    function _deployOperatorWithMaliciousPostActionHook(MaliciousPostActionHook.AttackType attackType, uint8 hookSlot)
+        internal
+        returns (PaymentOperator)
+    {
+        maliciousPostActionHook = new MaliciousPostActionHook(attackType);
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
             authorizePreActionCondition: address(0),
-            authorizePostActionHook: recorderSlot == 0 ? address(maliciousRecorder) : address(0),
+            authorizePostActionHook: hookSlot == 0 ? address(maliciousPostActionHook) : address(0),
             chargePreActionCondition: address(0),
-            chargePostActionHook: recorderSlot == 1 ? address(maliciousRecorder) : address(0),
+            chargePostActionHook: hookSlot == 1 ? address(maliciousPostActionHook) : address(0),
             capturePreActionCondition: address(0),
-            capturePostActionHook: recorderSlot == 2 ? address(maliciousRecorder) : address(0),
+            capturePostActionHook: hookSlot == 2 ? address(maliciousPostActionHook) : address(0),
             voidPreActionCondition: address(0),
-            voidPostActionHook: recorderSlot == 3 ? address(maliciousRecorder) : address(0),
+            voidPostActionHook: hookSlot == 3 ? address(maliciousPostActionHook) : address(0),
             refundPreActionCondition: address(0),
-            refundPostActionHook: recorderSlot == 4 ? address(maliciousRecorder) : address(0)
+            refundPostActionHook: hookSlot == 4 ? address(maliciousPostActionHook) : address(0)
         });
 
         return PaymentOperator(factory.deployOperator(config));
@@ -100,16 +100,16 @@ contract ReentrancyAttackTest is Test {
         bytes32 hash = escrow.getHash(paymentInfo);
         (bool hasCollected, uint256 capturableAmount, uint256 refundableAmount) = escrow.paymentState(hash);
 
-        // FIXED: Malicious recorder attack is now BLOCKED
+        // FIXED: Malicious hook attack is now BLOCKED
         // PaymentOperator now has nonReentrant guards on all functions
-        // The recorder attempted to call release() but was blocked by reentrancy guard
+        // The hook attempted to call release() but was blocked by reentrancy guard
         assertTrue(hasCollected);
         assertEq(capturableAmount, PAYMENT_AMOUNT); // Attack blocked, still capturable
         assertEq(refundableAmount, 0); // Not refundable
-        assertEq(maliciousRecorder.reentrancyCount(), 1); // Recorder still executed
+        assertEq(maliciousPostActionHook.reentrancyCount(), 1); // PostActionHook still executed
     }
 
-    function test_ReentrancyOnRelease_SameFunction() public {
+    function test_ReentrancyOnCapture_SameFunction() public {
         operator =
             _deployOperatorWithMaliciousPostActionHook(MaliciousPostActionHook.AttackType.REENTER_SAME_FUNCTION, 2);
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(operator));
@@ -128,6 +128,6 @@ contract ReentrancyAttackTest is Test {
         uint256 expectedReceiverAmount = PAYMENT_AMOUNT;
 
         assertEq(receiverBalanceAfter - receiverBalanceBefore, expectedReceiverAmount);
-        assertEq(maliciousRecorder.reentrancyCount(), 1);
+        assertEq(maliciousPostActionHook.reentrancyCount(), 1);
     }
 }

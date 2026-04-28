@@ -4,11 +4,9 @@ pragma solidity ^0.8.28;
 
 // ============ Operator-Specific Errors ============
 error ZeroEscrow();
-error CaptureLocked();
 
 // ============ PaymentInfo Validation Errors ============
 error InvalidFeeReceiver();
-error UnauthorizedCaller();
 
 // ============ Fee Errors ============
 error FeeTooHigh();

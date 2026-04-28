@@ -21,8 +21,8 @@ import {
     StaticAddressPreActionConditionFactory
 } from "../src/plugins/pre-action-conditions/access/static-address/StaticAddressPreActionConditionFactory.sol";
 
-/// @notice Mock recorder for testing PostActionHookCombinator
-contract MockRecorder is IPostActionHook {
+/// @notice Mock hook for testing PostActionHookCombinator
+contract MockPostActionHook is IPostActionHook {
     uint256 public recordCount;
     AuthCaptureEscrow.PaymentInfo public lastPaymentInfo;
 
@@ -134,88 +134,88 @@ contract PreActionConditionsCoverageTest is Test {
 
     // ============ PostActionHookCombinator Tests ============
 
-    function test_PostActionHookCombinator_CallsAllRecorders() public {
-        MockRecorder recorder1 = new MockRecorder();
-        MockRecorder recorder2 = new MockRecorder();
+    function test_PostActionHookCombinator_CallsAllHooks() public {
+        MockPostActionHook hook1 = new MockPostActionHook();
+        MockPostActionHook hook2 = new MockPostActionHook();
 
-        IPostActionHook[] memory recorders = new IPostActionHook[](2);
-        recorders[0] = recorder1;
-        recorders[1] = recorder2;
+        IPostActionHook[] memory hooks = new IPostActionHook[](2);
+        hooks[0] = hook1;
+        hooks[1] = hook2;
 
-        PostActionHookCombinator combinator = new PostActionHookCombinator(recorders);
+        PostActionHookCombinator combinator = new PostActionHookCombinator(hooks);
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
         vm.prank(operator);
         combinator.run(paymentInfo, 500, payer, "");
 
-        assertEq(recorder1.recordCount(), 1);
-        assertEq(recorder2.recordCount(), 1);
+        assertEq(hook1.recordCount(), 1);
+        assertEq(hook2.recordCount(), 1);
     }
 
-    function test_PostActionHookCombinator_RevertsOnEmptyRecorders() public {
-        IPostActionHook[] memory recorders = new IPostActionHook[](0);
+    function test_PostActionHookCombinator_RevertsOnEmptyHooks() public {
+        IPostActionHook[] memory hooks = new IPostActionHook[](0);
 
-        vm.expectRevert(PostActionHookCombinator.EmptyRecorders.selector);
-        new PostActionHookCombinator(recorders);
+        vm.expectRevert(PostActionHookCombinator.EmptyHooks.selector);
+        new PostActionHookCombinator(hooks);
     }
 
-    function test_PostActionHookCombinator_RevertsOnTooManyRecorders() public {
-        IPostActionHook[] memory recorders = new IPostActionHook[](11);
+    function test_PostActionHookCombinator_RevertsOnTooManyHooks() public {
+        IPostActionHook[] memory hooks = new IPostActionHook[](11);
         for (uint256 i = 0; i < 11; i++) {
-            recorders[i] = new MockRecorder();
+            hooks[i] = new MockPostActionHook();
         }
 
-        vm.expectRevert(abi.encodeWithSelector(PostActionHookCombinator.TooManyRecorders.selector, 11, 10));
-        new PostActionHookCombinator(recorders);
+        vm.expectRevert(abi.encodeWithSelector(PostActionHookCombinator.TooManyHooks.selector, 11, 10));
+        new PostActionHookCombinator(hooks);
     }
 
-    function test_PostActionHookCombinator_RevertsOnZeroRecorder() public {
-        IPostActionHook[] memory recorders = new IPostActionHook[](2);
-        recorders[0] = new MockRecorder();
-        recorders[1] = IPostActionHook(address(0));
+    function test_PostActionHookCombinator_RevertsOnZeroHook() public {
+        IPostActionHook[] memory hooks = new IPostActionHook[](2);
+        hooks[0] = new MockPostActionHook();
+        hooks[1] = IPostActionHook(address(0));
 
-        vm.expectRevert(abi.encodeWithSelector(PostActionHookCombinator.ZeroRecorder.selector, 1));
-        new PostActionHookCombinator(recorders);
+        vm.expectRevert(abi.encodeWithSelector(PostActionHookCombinator.ZeroHook.selector, 1));
+        new PostActionHookCombinator(hooks);
     }
 
-    function test_PostActionHookCombinator_GetRecorders() public {
-        MockRecorder recorder1 = new MockRecorder();
-        MockRecorder recorder2 = new MockRecorder();
+    function test_PostActionHookCombinator_GetHooks() public {
+        MockPostActionHook hook1 = new MockPostActionHook();
+        MockPostActionHook hook2 = new MockPostActionHook();
 
-        IPostActionHook[] memory recorders = new IPostActionHook[](2);
-        recorders[0] = recorder1;
-        recorders[1] = recorder2;
+        IPostActionHook[] memory hooks = new IPostActionHook[](2);
+        hooks[0] = hook1;
+        hooks[1] = hook2;
 
-        PostActionHookCombinator combinator = new PostActionHookCombinator(recorders);
+        PostActionHookCombinator combinator = new PostActionHookCombinator(hooks);
 
-        IPostActionHook[] memory result = combinator.getRecorders();
+        IPostActionHook[] memory result = combinator.getHooks();
         assertEq(result.length, 2);
-        assertEq(address(result[0]), address(recorder1));
-        assertEq(address(result[1]), address(recorder2));
+        assertEq(address(result[0]), address(hook1));
+        assertEq(address(result[1]), address(hook2));
     }
 
     function test_PostActionHookCombinator_GetRecorderCount() public {
-        MockRecorder recorder1 = new MockRecorder();
+        MockPostActionHook hook1 = new MockPostActionHook();
 
-        IPostActionHook[] memory recorders = new IPostActionHook[](1);
-        recorders[0] = recorder1;
+        IPostActionHook[] memory hooks = new IPostActionHook[](1);
+        hooks[0] = hook1;
 
-        PostActionHookCombinator combinator = new PostActionHookCombinator(recorders);
-        assertEq(combinator.getRecorderCount(), 1);
+        PostActionHookCombinator combinator = new PostActionHookCombinator(hooks);
+        assertEq(combinator.getHookCount(), 1);
     }
 
-    function test_PostActionHookCombinator_AccessRecordersByIndex() public {
-        MockRecorder recorder1 = new MockRecorder();
-        MockRecorder recorder2 = new MockRecorder();
+    function test_PostActionHookCombinator_AccessHooksByIndex() public {
+        MockPostActionHook hook1 = new MockPostActionHook();
+        MockPostActionHook hook2 = new MockPostActionHook();
 
-        IPostActionHook[] memory recorders = new IPostActionHook[](2);
-        recorders[0] = recorder1;
-        recorders[1] = recorder2;
+        IPostActionHook[] memory hooks = new IPostActionHook[](2);
+        hooks[0] = hook1;
+        hooks[1] = hook2;
 
-        PostActionHookCombinator combinator = new PostActionHookCombinator(recorders);
+        PostActionHookCombinator combinator = new PostActionHookCombinator(hooks);
 
-        assertEq(address(combinator.recorders(0)), address(recorder1));
-        assertEq(address(combinator.recorders(1)), address(recorder2));
+        assertEq(address(combinator.hooks(0)), address(hook1));
+        assertEq(address(combinator.hooks(1)), address(hook2));
     }
 
     // ============ StaticAddressPreActionConditionFactory Tests ============

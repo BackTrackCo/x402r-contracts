@@ -14,7 +14,7 @@ import {MockDataPostActionHook} from "./mocks/MockDataPostActionHook.sol";
 /**
  * @title HookDataForwardingTest
  * @notice Verifies that non-empty `data` is forwarded end-to-end from callers
- *         through PaymentOperator to conditions and recorders.
+ *         through PaymentOperator to conditions and hooks.
  */
 contract HookDataForwardingTest is Test {
     AuthCaptureEscrow public escrow;
@@ -76,7 +76,7 @@ contract HookDataForwardingTest is Test {
     function test_void_nonEmptyData_reachesCondition() public {
         // Deploy MockDataPreActionCondition that requires MAGIC in data
         MockDataPreActionCondition dataCondition = new MockDataPreActionCondition(MAGIC);
-        MockDataPostActionHook dataRecorder = new MockDataPostActionHook();
+        MockDataPostActionHook dataPostActionHook = new MockDataPostActionHook();
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
@@ -88,7 +88,7 @@ contract HookDataForwardingTest is Test {
             capturePreActionCondition: address(0),
             capturePostActionHook: address(0),
             voidPreActionCondition: address(dataCondition),
-            voidPostActionHook: address(dataRecorder),
+            voidPostActionHook: address(dataPostActionHook),
             refundPreActionCondition: address(0),
             refundPostActionHook: address(0)
         });
@@ -118,9 +118,9 @@ contract HookDataForwardingTest is Test {
         // Verify funds returned (full void returns the entire authorized amount)
         assertEq(payerAfter - payerBefore, PAYMENT_AMOUNT, "Payer should receive refund");
 
-        // Verify recorder received the data
-        assertEq(dataRecorder.recordCount(), 1, "Recorder should be called once");
-        assertEq(dataRecorder.lastReceivedData(), hookData, "Recorder should receive the hook data");
+        // Verify hook received the data
+        assertEq(dataPostActionHook.recordCount(), 1, "PostActionHook should be called once");
+        assertEq(dataPostActionHook.lastReceivedData(), hookData, "PostActionHook should receive the hook data");
     }
 
     // ============ authorize: dual-purpose collectorData reaches condition AND collector ============
@@ -128,13 +128,13 @@ contract HookDataForwardingTest is Test {
     function test_authorize_collectorData_reachesConditionAndRecorder() public {
         // Deploy MockDataPreActionCondition on the AUTHORIZE_PRE_ACTION_CONDITION slot
         MockDataPreActionCondition dataCondition = new MockDataPreActionCondition(MAGIC);
-        MockDataPostActionHook dataRecorder = new MockDataPostActionHook();
+        MockDataPostActionHook dataPostActionHook = new MockDataPostActionHook();
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
             authorizePreActionCondition: address(dataCondition),
-            authorizePostActionHook: address(dataRecorder),
+            authorizePostActionHook: address(dataPostActionHook),
             chargePreActionCondition: address(0),
             chargePostActionHook: address(0),
             capturePreActionCondition: address(0),
@@ -171,16 +171,18 @@ contract HookDataForwardingTest is Test {
         (bool exists,,) = escrow.paymentState(paymentInfoHash);
         assertTrue(exists, "Payment should be authorized");
 
-        // Verify recorder received the collectorData as hook data
-        assertEq(dataRecorder.recordCount(), 1, "Recorder should be called once");
-        assertEq(dataRecorder.lastReceivedData(), hookData, "Recorder should receive collectorData as hook data");
+        // Verify hook received the collectorData as hook data
+        assertEq(dataPostActionHook.recordCount(), 1, "PostActionHook should be called once");
+        assertEq(
+            dataPostActionHook.lastReceivedData(), hookData, "PostActionHook should receive collectorData as hook data"
+        );
     }
 
-    // ============ release: data forwarded to condition and recorder ============
+    // ============ release: data forwarded to condition and hook ============
 
     function test_release_nonEmptyData_reachesConditionAndRecorder() public {
         MockDataPreActionCondition dataCondition = new MockDataPreActionCondition(MAGIC);
-        MockDataPostActionHook dataRecorder = new MockDataPostActionHook();
+        MockDataPostActionHook dataPostActionHook = new MockDataPostActionHook();
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
@@ -190,7 +192,7 @@ contract HookDataForwardingTest is Test {
             chargePreActionCondition: address(0),
             chargePostActionHook: address(0),
             capturePreActionCondition: address(dataCondition),
-            capturePostActionHook: address(dataRecorder),
+            capturePostActionHook: address(dataPostActionHook),
             voidPreActionCondition: address(0),
             voidPostActionHook: address(0),
             refundPreActionCondition: address(0),
@@ -213,7 +215,7 @@ contract HookDataForwardingTest is Test {
         bytes memory hookData = abi.encode(MAGIC);
         operator.capture(paymentInfo, PAYMENT_AMOUNT, hookData);
 
-        assertEq(dataRecorder.recordCount(), 1, "Recorder called on release");
-        assertEq(dataRecorder.lastReceivedData(), hookData, "Recorder receives release data");
+        assertEq(dataPostActionHook.recordCount(), 1, "PostActionHook called on release");
+        assertEq(dataPostActionHook.lastReceivedData(), hookData, "PostActionHook receives release data");
     }
 }

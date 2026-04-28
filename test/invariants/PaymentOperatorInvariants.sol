@@ -25,7 +25,7 @@ contract PaymentOperatorInvariants is Test {
     PreApprovalPaymentCollector public collector;
     ProtocolFeeConfig public protocolFeeConfig;
     MockERC20 public token;
-    MaliciousPostActionHook public maliciousRecorder;
+    MaliciousPostActionHook public maliciousPostActionHook;
     PaymentOperator public reentrancyTestOperator;
 
     address public owner;
@@ -93,13 +93,13 @@ contract PaymentOperatorInvariants is Test {
 
         operator = PaymentOperator(factory.deployOperator(config));
 
-        // Deploy operator with malicious recorder to verify reentrancy protection
-        maliciousRecorder = new MaliciousPostActionHook(MaliciousPostActionHook.AttackType.REENTER_WITHDRAW_FEES);
+        // Deploy operator with malicious hook to verify reentrancy protection
+        maliciousPostActionHook = new MaliciousPostActionHook(MaliciousPostActionHook.AttackType.REENTER_WITHDRAW_FEES);
         PaymentOperatorFactory.OperatorConfig memory reentrancyConfig = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: operatorFeeRecipient,
             feeCalculator: address(operatorCalc),
             authorizePreActionCondition: address(0),
-            authorizePostActionHook: address(maliciousRecorder),
+            authorizePostActionHook: address(maliciousPostActionHook),
             chargePreActionCondition: address(0),
             chargePostActionHook: address(0),
             capturePreActionCondition: address(0),
@@ -259,7 +259,7 @@ contract PaymentOperatorInvariants is Test {
 
     /// @notice Token store balance ≥ sum of all capturable amounts (tokens still in escrow)
     /// @dev refundableAmount is excluded because those tokens have already been released
-    ///      to the receiver and are only recoverable via refundPostEscrow()
+    ///      to the receiver and are only recoverable via refund()
     function echidna_solvency() public view returns (bool) {
         address tokenStore = escrow.getTokenStore(address(operator));
         uint256 actualBalance = token.balanceOf(tokenStore);
@@ -340,7 +340,7 @@ contract PaymentOperatorInvariants is Test {
     function echidna_reentrancy_protected() public view returns (bool) {
         // MaliciousPostActionHook attempted distributeFees() during authorize() callback.
         // nonReentrant must have blocked it.
-        return maliciousRecorder.reentrancyBlocked();
+        return maliciousPostActionHook.reentrancyBlocked();
     }
 
     /// @notice Payment hash uniqueness

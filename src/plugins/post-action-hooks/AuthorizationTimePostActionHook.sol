@@ -25,9 +25,9 @@ import {AuthorizationRecorded} from "../escrow-period/types/Events.sol";
  *
  * USAGE:
  *   // Standalone: just timestamp tracking
- *   AuthorizationTimePostActionHook recorder = new AuthorizationTimePostActionHook(address(escrow), bytes32(0));
+ *   AuthorizationTimePostActionHook hook = new AuthorizationTimePostActionHook(address(escrow), bytes32(0));
  *   operator = factory.deployOperator({
- *       authorizePostActionHook: address(recorder),
+ *       authorizePostActionHook: address(hook),
  *       ...
  *   });
  */

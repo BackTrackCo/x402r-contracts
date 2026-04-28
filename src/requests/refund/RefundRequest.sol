@@ -14,21 +14,26 @@ import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} fro
  * @title RefundRequest
  * @notice Refund request lifecycle as an IPostActionHook plugin for PaymentOperator.
  * @dev ARBITER is an immutable address for deny/refuse gating. Approval happens via
- *      operator.void() which triggers record() on this contract as the
- *      REFUND_IN_ESCROW_POST_ACTION_HOOK.
+ *      operator.void() which triggers run() on this contract as the
+ *      VOID_POST_ACTION_HOOK.
  *
  *      State machine:
- *        Pending  -> Approved  (operator calls record() after void)
- *        Approved -> Approved  (cumulative top-up via subsequent record() calls)
+ *        Pending  -> Approved  (operator calls run() after void)
  *        Pending  -> Denied    (onlyArbiter)
  *        Pending  -> Refused   (onlyArbiter)
  *        Pending  -> Cancelled (payer only)
  *
+ *      Note: void() empties the entire authorization in one shot, so a request goes
+ *      from Pending -> Approved on the first run() call and the authorization is
+ *      gone after that. Subsequent run() invocations would revert at the escrow
+ *      level (no capturable funds left), so the cumulative-top-up branch present in
+ *      this contract's accounting is unreachable in practice. Kept for forward
+ *      compatibility if partial-void is ever reintroduced upstream.
+ *
  *      Keying: paymentInfoHash only (no nonce). One active request per payment.
  *
- *      record() behavior: Called by operator after refund. No-op if no request exists
- *      or not approvable. Caps approved amount at requested amount. Never reverts on
- *      state mismatches.
+ *      run() behavior: No-op if no request exists or request is not approvable.
+ *      Caps approved amount at requested amount. Never reverts on state mismatches.
  */
 contract RefundRequest is IPostActionHook {
     /// @notice The arbiter address that can deny and refuse refund requests
@@ -114,6 +119,7 @@ contract RefundRequest is IPostActionHook {
     /// @param paymentInfo PaymentInfo struct
     /// @param amount Amount that was refunded
     /// @param caller The address that called operator.void()
+    /// @dev Only the operator in the paymentInfo is allowed to invoke run().
     function run(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint256 amount,
@@ -122,7 +128,7 @@ contract RefundRequest is IPostActionHook {
     )
         external
     {
-        // Only the operator in the paymentInfo can call record()
+        // Only the operator in the paymentInfo can call run()
         if (msg.sender != paymentInfo.operator) return;
 
         PaymentOperator op = PaymentOperator(paymentInfo.operator);

@@ -1,80 +1,43 @@
 # Makefile for x402r-contracts deployment and management
 
-.PHONY: help deploy-testnet deploy-mainnet deploy-optimism verify-owner test coverage clean
+.PHONY: help deploy verify-owner test coverage clean format slither fuzz gas-snapshot gas-check
 
 # Default target
 help:
 	@echo "x402r-contracts Makefile"
 	@echo ""
 	@echo "Available targets:"
-	@echo "  deploy-testnet    - Deploy to testnet (allows EOA owner)"
-	@echo "  deploy-mainnet    - Deploy to mainnet (requires multisig)"
+	@echo "  deploy            - Deploy canonical addresses via CREATE2 (CreateX guarded)"
 	@echo "  verify-owner      - Verify owner address is multisig"
 	@echo "  test              - Run test suite"
 	@echo "  coverage          - Generate test coverage report"
+	@echo "  format            - Run forge fmt"
+	@echo "  slither           - Run Slither analysis"
+	@echo "  fuzz              - Run Echidna fuzzing"
+	@echo "  gas-snapshot      - Update gas snapshot"
+	@echo "  gas-check         - Check for gas regressions"
 	@echo "  clean             - Clean build artifacts"
 	@echo ""
 	@echo "Example usage:"
-	@echo "  make deploy-testnet"
-	@echo "  make deploy-mainnet OWNER_ADDRESS=0x1234..."
+	@echo "  make deploy RPC_URL=https://sepolia.base.org"
 
-# Testnet deployment (Base Sepolia)
-deploy-testnet:
-	@echo "🧪 Deploying to testnet (Base Sepolia)..."
-	@echo ""
-	forge script script/DeployTestnet.s.sol \
-		--rpc-url base-sepolia \
-		--broadcast \
-		--verify \
-		-vvv
-
-# Mainnet deployment (Base)
-deploy-mainnet:
-	@echo "⚠️  MAINNET DEPLOYMENT"
-	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-	@echo ""
-	@if [ -z "$$OWNER_ADDRESS" ]; then \
-		echo "❌ ERROR: OWNER_ADDRESS not set"; \
-		echo ""; \
-		echo "Usage: make deploy-mainnet OWNER_ADDRESS=0x..."; \
+# Canonical CREATE2 deploy (single script for all chains).
+# Set CANONICAL_OWNER and CANONICAL_FEE_RECIPIENT in script/DeployCreate2.s.sol
+# before running. The script require()-guards both at runtime.
+deploy:
+	@if [ -z "$$RPC_URL" ]; then \
+		echo "❌ ERROR: RPC_URL not set"; \
+		echo "Usage: make deploy RPC_URL=https://..."; \
 		exit 1; \
 	fi
-	@echo "Owner address: $$OWNER_ADDRESS"
+	@echo "🚀 Running CREATE2 canonical deploy against $$RPC_URL"
 	@echo ""
-	@echo "🔍 Verify this is a multisig on Basescan:"
-	@echo "   https://basescan.org/address/$$OWNER_ADDRESS"
-	@echo ""
-	@read -p "⚠️  Confirm owner is multisig contract [y/N]: " confirm && [ "$$confirm" = "y" ] || (echo "Deployment cancelled" && exit 1)
-	@echo ""
-	@echo "🚀 Starting mainnet deployment..."
-	@echo ""
-	forge script script/DeployProduction.s.sol \
-		--rpc-url base \
+	forge script script/DeployCreate2.s.sol \
+		--rpc-url $$RPC_URL \
 		--broadcast \
 		--verify \
 		--slow \
 		-vvv
-
-# Optimism deployment (full chain)
-deploy-optimism:
-	@echo "⚠️  OPTIMISM MAINNET DEPLOYMENT"
-	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-	@echo ""
-	@echo "🔍 Verify deployer has ETH on Optimism"
-	@echo "   https://optimistic.etherscan.io"
-	@echo ""
-	@read -p "⚠️  Confirm deployment to Optimism mainnet [y/N]: " confirm && [ "$$confirm" = "y" ] || (echo "Deployment cancelled" && exit 1)
-	@echo ""
-	@echo "🚀 Starting Optimism deployment..."
-	@echo ""
-	USDC_ADDRESS=0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85 \
-	TVL_LIMIT=100000000000 \
-	forge script script/DeployAllChain.s.sol \
-		--rpc-url optimism \
-		--broadcast \
-		--verify \
-		--slow \
-		-vvvv
 
 # Verify owner address is a contract
 verify-owner:

@@ -201,7 +201,7 @@ contract ArithmeticEdgeCasesTest is Test {
      * @dev Escrow REJECTS zero amount releases with ZeroAmount error
      *      This prevents gas waste on no-op releases
      */
-    function test_Release_ZeroAmount_Reverts() public {
+    function test_Capture_ZeroAmount_Reverts() public {
         uint120 authorizeAmount = 1000 ether;
         uint120 releaseAmount = 0;
 
