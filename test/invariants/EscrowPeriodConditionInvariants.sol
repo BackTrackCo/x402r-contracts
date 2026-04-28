@@ -7,9 +7,9 @@ import {PaymentOperatorFactory} from "../../src/operator/PaymentOperatorFactory.
 import {EscrowPeriodFactory} from "../../src/plugins/escrow-period/EscrowPeriodFactory.sol";
 import {EscrowPeriod} from "../../src/plugins/escrow-period/EscrowPeriod.sol";
 import {Freeze} from "../../src/plugins/freeze/Freeze.sol";
-import {ICondition} from "../../src/plugins/conditions/ICondition.sol";
-import {AndCondition} from "../../src/plugins/conditions/combinators/AndCondition.sol";
-import {PayerCondition} from "../../src/plugins/conditions/access/PayerCondition.sol";
+import {IPreActionCondition} from "../../src/plugins/pre-action-conditions/IPreActionCondition.sol";
+import {AndPreActionCondition} from "../../src/plugins/pre-action-conditions/combinators/AndPreActionCondition.sol";
+import {PayerPreActionCondition} from "../../src/plugins/pre-action-conditions/access/PayerPreActionCondition.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
@@ -50,7 +50,7 @@ contract EscrowPeriodConditionInvariants is Test {
         collector = new PreApprovalPaymentCollector(address(escrow));
 
         EscrowPeriodFactory escrowPeriodFactory = new EscrowPeriodFactory(address(escrow));
-        PayerCondition payerCondition = new PayerCondition();
+        PayerPreActionCondition payerCondition = new PayerPreActionCondition();
         address escrowPeriodAddr = escrowPeriodFactory.deploy(ESCROW_PERIOD, bytes32(0));
         escrowPeriod = EscrowPeriod(escrowPeriodAddr);
 
@@ -60,10 +60,10 @@ contract EscrowPeriodConditionInvariants is Test {
         );
 
         // Compose escrow period + freeze into release condition
-        ICondition[] memory conditions = new ICondition[](2);
-        conditions[0] = ICondition(address(escrowPeriod));
-        conditions[1] = ICondition(address(freeze));
-        AndCondition captureCondition = new AndCondition(conditions);
+        IPreActionCondition[] memory conditions = new IPreActionCondition[](2);
+        conditions[0] = IPreActionCondition(address(escrowPeriod));
+        conditions[1] = IPreActionCondition(address(freeze));
+        AndPreActionCondition capturePreActionCondition = new AndPreActionCondition(conditions);
 
         ProtocolFeeConfig protocolFeeConfig = new ProtocolFeeConfig(address(0), address(this), address(this));
 
@@ -72,16 +72,16 @@ contract EscrowPeriodConditionInvariants is Test {
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: address(this),
             feeCalculator: address(0),
-            authorizeCondition: address(0),
-            authorizeRecorder: address(escrowPeriod),
-            chargeCondition: address(0),
-            chargeRecorder: address(0),
-            captureCondition: address(captureCondition),
-            captureRecorder: address(0),
-            voidCondition: address(0),
-            voidRecorder: address(0),
-            refundCondition: address(0),
-            refundRecorder: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(escrowPeriod),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(0),
+            capturePreActionCondition: address(capturePreActionCondition),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(0),
+            voidPostActionHook: address(0),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
 
@@ -217,7 +217,7 @@ contract EscrowPeriodConditionInvariants is Test {
             uint256 authTime = authTimes[hash];
             // If a payment was released, the escrow period must have passed at that point
             if (releasedByUs[hash] && authTime > 0) {
-                // The release succeeded, which means the AndCondition check returned true
+                // The release succeeded, which means the AndPreActionCondition check returned true
                 // This is enforced by the condition slot on the operator
             }
         }

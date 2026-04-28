@@ -4,10 +4,14 @@ pragma solidity ^0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {RefundRequest} from "../../../src/requests/refund/RefundRequest.sol";
 import {RefundRequestFactory} from "../../../src/requests/refund/RefundRequestFactory.sol";
-import {ICondition} from "../../../src/plugins/conditions/ICondition.sol";
-import {StaticAddressCondition} from "../../../src/plugins/conditions/access/static-address/StaticAddressCondition.sol";
-import {ReceiverCondition} from "../../../src/plugins/conditions/access/ReceiverCondition.sol";
-import {OrCondition} from "../../../src/plugins/conditions/combinators/OrCondition.sol";
+import {IPreActionCondition} from "../../../src/plugins/pre-action-conditions/IPreActionCondition.sol";
+import {
+    StaticAddressPreActionCondition
+} from "../../../src/plugins/pre-action-conditions/access/static-address/StaticAddressPreActionCondition.sol";
+import {
+    ReceiverPreActionCondition
+} from "../../../src/plugins/pre-action-conditions/access/ReceiverPreActionCondition.sol";
+import {OrPreActionCondition} from "../../../src/plugins/pre-action-conditions/combinators/OrPreActionCondition.sol";
 import {PaymentOperator} from "../../../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../../../src/operator/PaymentOperatorFactory.sol";
 import {ProtocolFeeConfig} from "../../../src/plugins/fees/ProtocolFeeConfig.sol";
@@ -19,9 +23,9 @@ import {MockERC20} from "../../mocks/MockERC20.sol";
 
 contract RefundRequestTest is Test {
     RefundRequest public refundRequest;
-    OrCondition public voidCondition;
-    StaticAddressCondition public arbiterCondition;
-    ReceiverCondition public receiverCondition;
+    OrPreActionCondition public voidPreActionCondition;
+    StaticAddressPreActionCondition public arbiterCondition;
+    ReceiverPreActionCondition public receiverCondition;
     PaymentOperator public operator;
     PaymentOperatorFactory public operatorFactory;
     ProtocolFeeConfig public protocolFeeConfig;
@@ -54,30 +58,30 @@ contract RefundRequestTest is Test {
         refundRequest = new RefundRequest(arbiter);
 
         // Build condition tree:
-        // VOID_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)
-        arbiterCondition = new StaticAddressCondition(arbiter);
-        receiverCondition = new ReceiverCondition();
-        ICondition[] memory refundConditions = new ICondition[](2);
-        refundConditions[0] = ICondition(address(arbiterCondition));
-        refundConditions[1] = ICondition(address(receiverCondition));
-        voidCondition = new OrCondition(refundConditions);
+        // VOID_PRE_ACTION_CONDITION = Or(StaticAddressPreActionCondition(arbiter), ReceiverPreActionCondition)
+        arbiterCondition = new StaticAddressPreActionCondition(arbiter);
+        receiverCondition = new ReceiverPreActionCondition();
+        IPreActionCondition[] memory refundPreActionConditions = new IPreActionCondition[](2);
+        refundPreActionConditions[0] = IPreActionCondition(address(arbiterCondition));
+        refundPreActionConditions[1] = IPreActionCondition(address(receiverCondition));
+        voidPreActionCondition = new OrPreActionCondition(refundPreActionConditions);
 
-        // Deploy operator with refundRequest as VOID_RECORDER
+        // Deploy operator with refundRequest as VOID_POST_ACTION_HOOK
         protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
         operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
-            authorizeCondition: address(0),
-            authorizeRecorder: address(0),
-            chargeCondition: address(0),
-            chargeRecorder: address(0),
-            captureCondition: address(0),
-            captureRecorder: address(0),
-            voidCondition: address(voidCondition),
-            voidRecorder: address(refundRequest),
-            refundCondition: address(0),
-            refundRecorder: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(0),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(0),
+            capturePreActionCondition: address(0),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(voidPreActionCondition),
+            voidPostActionHook: address(refundRequest),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
 
@@ -246,7 +250,7 @@ contract RefundRequestTest is Test {
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT));
 
-        // Payer cannot call void (not in VOID_CONDITION)
+        // Payer cannot call void (not in VOID_PRE_ACTION_CONDITION)
         vm.prank(payer);
         vm.expectRevert();
         operator.void(paymentInfo, "");
@@ -484,13 +488,13 @@ contract RefundRequestTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
 
         // Calling operator.void directly from a non-permitted caller should revert
-        // because OrCondition(arbiter, receiver) only allows arbiter and receiver
+        // because OrPreActionCondition(arbiter, receiver) only allows arbiter and receiver
         address random = makeAddr("random");
         vm.prank(random);
         vm.expectRevert();
         operator.void(paymentInfo, "");
 
-        // Payer calling directly also blocked (not in VOID_CONDITION)
+        // Payer calling directly also blocked (not in VOID_PRE_ACTION_CONDITION)
         vm.prank(payer);
         vm.expectRevert();
         operator.void(paymentInfo, "");
@@ -632,7 +636,7 @@ contract RefundRequestTest is Test {
 
         // Call record() directly from non-operator — should be a no-op
         vm.prank(arbiter);
-        refundRequest.record(paymentInfo, PAYMENT_AMOUNT, arbiter, "");
+        refundRequest.run(paymentInfo, PAYMENT_AMOUNT, arbiter, "");
 
         // Status should still be Pending
         RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);

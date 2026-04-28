@@ -8,7 +8,7 @@ import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
-import {MaliciousRecorder} from "./mocks/MaliciousRecorder.sol";
+import {MaliciousPostActionHook} from "./mocks/MaliciousPostActionHook.sol";
 
 contract ReentrancyAttackTest is Test {
     PaymentOperator public operator;
@@ -17,7 +17,7 @@ contract ReentrancyAttackTest is Test {
     MockERC20 public token;
     AuthCaptureEscrow public escrow;
     PreApprovalPaymentCollector public collector;
-    MaliciousRecorder public maliciousRecorder;
+    MaliciousPostActionHook public maliciousRecorder;
 
     address public owner;
     address public protocolFeeRecipient;
@@ -46,25 +46,25 @@ contract ReentrancyAttackTest is Test {
         token.approve(address(collector), type(uint256).max);
     }
 
-    function _deployOperatorWithMaliciousRecorder(MaliciousRecorder.AttackType attackType, uint8 recorderSlot)
-        internal
-        returns (PaymentOperator)
-    {
-        maliciousRecorder = new MaliciousRecorder(attackType);
+    function _deployOperatorWithMaliciousPostActionHook(
+        MaliciousPostActionHook.AttackType attackType,
+        uint8 recorderSlot
+    ) internal returns (PaymentOperator) {
+        maliciousRecorder = new MaliciousPostActionHook(attackType);
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
-            authorizeCondition: address(0),
-            authorizeRecorder: recorderSlot == 0 ? address(maliciousRecorder) : address(0),
-            chargeCondition: address(0),
-            chargeRecorder: recorderSlot == 1 ? address(maliciousRecorder) : address(0),
-            captureCondition: address(0),
-            captureRecorder: recorderSlot == 2 ? address(maliciousRecorder) : address(0),
-            voidCondition: address(0),
-            voidRecorder: recorderSlot == 3 ? address(maliciousRecorder) : address(0),
-            refundCondition: address(0),
-            refundRecorder: recorderSlot == 4 ? address(maliciousRecorder) : address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: recorderSlot == 0 ? address(maliciousRecorder) : address(0),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: recorderSlot == 1 ? address(maliciousRecorder) : address(0),
+            capturePreActionCondition: address(0),
+            capturePostActionHook: recorderSlot == 2 ? address(maliciousRecorder) : address(0),
+            voidPreActionCondition: address(0),
+            voidPostActionHook: recorderSlot == 3 ? address(maliciousRecorder) : address(0),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: recorderSlot == 4 ? address(maliciousRecorder) : address(0)
         });
 
         return PaymentOperator(factory.deployOperator(config));
@@ -88,7 +88,8 @@ contract ReentrancyAttackTest is Test {
     }
 
     function test_ReentrancyOnAuthorize_SameFunction() public {
-        operator = _deployOperatorWithMaliciousRecorder(MaliciousRecorder.AttackType.REENTER_SAME_FUNCTION, 0);
+        operator =
+            _deployOperatorWithMaliciousPostActionHook(MaliciousPostActionHook.AttackType.REENTER_SAME_FUNCTION, 0);
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(operator));
 
         vm.prank(payer);
@@ -109,7 +110,8 @@ contract ReentrancyAttackTest is Test {
     }
 
     function test_ReentrancyOnRelease_SameFunction() public {
-        operator = _deployOperatorWithMaliciousRecorder(MaliciousRecorder.AttackType.REENTER_SAME_FUNCTION, 2);
+        operator =
+            _deployOperatorWithMaliciousPostActionHook(MaliciousPostActionHook.AttackType.REENTER_SAME_FUNCTION, 2);
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(operator));
 
         vm.prank(payer);

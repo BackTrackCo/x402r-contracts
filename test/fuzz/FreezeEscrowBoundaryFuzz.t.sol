@@ -8,9 +8,9 @@ import {ProtocolFeeConfig} from "../../src/plugins/fees/ProtocolFeeConfig.sol";
 import {EscrowPeriod} from "../../src/plugins/escrow-period/EscrowPeriod.sol";
 import {EscrowPeriodFactory} from "../../src/plugins/escrow-period/EscrowPeriodFactory.sol";
 import {Freeze} from "../../src/plugins/freeze/Freeze.sol";
-import {ICondition} from "../../src/plugins/conditions/ICondition.sol";
-import {AndCondition} from "../../src/plugins/conditions/combinators/AndCondition.sol";
-import {PayerCondition} from "../../src/plugins/conditions/access/PayerCondition.sol";
+import {IPreActionCondition} from "../../src/plugins/pre-action-conditions/IPreActionCondition.sol";
+import {AndPreActionCondition} from "../../src/plugins/pre-action-conditions/combinators/AndPreActionCondition.sol";
+import {PayerPreActionCondition} from "../../src/plugins/pre-action-conditions/access/PayerPreActionCondition.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
@@ -31,9 +31,9 @@ contract FreezeEscrowBoundaryFuzzTest is Test {
     EscrowPeriod public escrowPeriod;
     Freeze public freeze;
     Freeze public permanentFreeze;
-    AndCondition public captureCondition;
+    AndPreActionCondition public capturePreActionCondition;
     MockERC20 public token;
-    PayerCondition public payerCondition;
+    PayerPreActionCondition public payerCondition;
 
     address public owner;
     address public protocolFeeRecipient;
@@ -60,16 +60,16 @@ contract FreezeEscrowBoundaryFuzzTest is Test {
         escrowPeriod = EscrowPeriod(escrowPeriodAddr);
 
         // Deploy freeze with escrow period constraint
-        payerCondition = new PayerCondition();
+        payerCondition = new PayerPreActionCondition();
         freeze = new Freeze(
             address(payerCondition), address(payerCondition), FREEZE_DURATION, address(escrowPeriod), address(escrow)
         );
 
-        // Compose both conditions with AndCondition
-        ICondition[] memory conditions = new ICondition[](2);
-        conditions[0] = ICondition(address(escrowPeriod));
-        conditions[1] = ICondition(address(freeze));
-        captureCondition = new AndCondition(conditions);
+        // Compose both conditions with AndPreActionCondition
+        IPreActionCondition[] memory conditions = new IPreActionCondition[](2);
+        conditions[0] = IPreActionCondition(address(escrowPeriod));
+        conditions[1] = IPreActionCondition(address(freeze));
+        capturePreActionCondition = new AndPreActionCondition(conditions);
 
         protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
         operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
@@ -77,16 +77,16 @@ contract FreezeEscrowBoundaryFuzzTest is Test {
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
-            authorizeCondition: address(0),
-            authorizeRecorder: address(escrowPeriod),
-            chargeCondition: address(0),
-            chargeRecorder: address(0),
-            captureCondition: address(captureCondition),
-            captureRecorder: address(0),
-            voidCondition: address(0),
-            voidRecorder: address(0),
-            refundCondition: address(0),
-            refundRecorder: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(escrowPeriod),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(0),
+            capturePreActionCondition: address(capturePreActionCondition),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(0),
+            voidPostActionHook: address(0),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
 
@@ -195,10 +195,10 @@ contract FreezeEscrowBoundaryFuzzTest is Test {
         Freeze permFreeze =
             new Freeze(address(payerCondition), address(payerCondition), 0, address(escrowPeriod), address(escrow));
 
-        ICondition[] memory conds = new ICondition[](2);
-        conds[0] = ICondition(address(escrowPeriod));
-        conds[1] = ICondition(address(permFreeze));
-        AndCondition relCond = new AndCondition(conds);
+        IPreActionCondition[] memory conds = new IPreActionCondition[](2);
+        conds[0] = IPreActionCondition(address(escrowPeriod));
+        conds[1] = IPreActionCondition(address(permFreeze));
+        AndPreActionCondition relCond = new AndPreActionCondition(conds);
 
         // Deploy separate escrow period for independent recording
         EscrowPeriodFactory epFactory = new EscrowPeriodFactory(address(escrow));
@@ -209,10 +209,10 @@ contract FreezeEscrowBoundaryFuzzTest is Test {
         Freeze permFreeze2 =
             new Freeze(address(payerCondition), address(payerCondition), 0, address(ep2), address(escrow));
 
-        ICondition[] memory conds2 = new ICondition[](2);
-        conds2[0] = ICondition(address(ep2));
-        conds2[1] = ICondition(address(permFreeze2));
-        AndCondition relCond2 = new AndCondition(conds2);
+        IPreActionCondition[] memory conds2 = new IPreActionCondition[](2);
+        conds2[0] = IPreActionCondition(address(ep2));
+        conds2[1] = IPreActionCondition(address(permFreeze2));
+        AndPreActionCondition relCond2 = new AndPreActionCondition(conds2);
 
         ProtocolFeeConfig pfc2 = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
         PaymentOperatorFactory opFactory2 = new PaymentOperatorFactory(address(escrow), address(pfc2));
@@ -220,16 +220,16 @@ contract FreezeEscrowBoundaryFuzzTest is Test {
         PaymentOperatorFactory.OperatorConfig memory config2 = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
-            authorizeCondition: address(0),
-            authorizeRecorder: address(ep2),
-            chargeCondition: address(0),
-            chargeRecorder: address(0),
-            captureCondition: address(relCond2),
-            captureRecorder: address(0),
-            voidCondition: address(0),
-            voidRecorder: address(0),
-            refundCondition: address(0),
-            refundRecorder: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(ep2),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(0),
+            capturePreActionCondition: address(relCond2),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(0),
+            voidPostActionHook: address(0),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
         PaymentOperator op2 = PaymentOperator(opFactory2.deployOperator(config2));
 

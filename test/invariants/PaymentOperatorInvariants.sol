@@ -9,7 +9,7 @@ import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreAppro
 import {ProtocolFeeConfig} from "../../src/plugins/fees/ProtocolFeeConfig.sol";
 import {StaticFeeCalculator} from "../../src/plugins/fees/static-fee-calculator/StaticFeeCalculator.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
-import {MaliciousRecorder} from "../mocks/MaliciousRecorder.sol";
+import {MaliciousPostActionHook} from "../mocks/MaliciousPostActionHook.sol";
 
 /**
  * @title PaymentOperatorInvariants
@@ -25,7 +25,7 @@ contract PaymentOperatorInvariants is Test {
     PreApprovalPaymentCollector public collector;
     ProtocolFeeConfig public protocolFeeConfig;
     MockERC20 public token;
-    MaliciousRecorder public maliciousRecorder;
+    MaliciousPostActionHook public maliciousRecorder;
     PaymentOperator public reentrancyTestOperator;
 
     address public owner;
@@ -79,35 +79,35 @@ contract PaymentOperatorInvariants is Test {
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: operatorFeeRecipient,
             feeCalculator: address(operatorCalc),
-            authorizeCondition: address(0),
-            authorizeRecorder: address(0),
-            chargeCondition: address(0),
-            chargeRecorder: address(0),
-            captureCondition: address(0),
-            captureRecorder: address(0),
-            voidCondition: address(0),
-            voidRecorder: address(0),
-            refundCondition: address(0),
-            refundRecorder: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(0),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(0),
+            capturePreActionCondition: address(0),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(0),
+            voidPostActionHook: address(0),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
 
         operator = PaymentOperator(factory.deployOperator(config));
 
         // Deploy operator with malicious recorder to verify reentrancy protection
-        maliciousRecorder = new MaliciousRecorder(MaliciousRecorder.AttackType.REENTER_WITHDRAW_FEES);
+        maliciousRecorder = new MaliciousPostActionHook(MaliciousPostActionHook.AttackType.REENTER_WITHDRAW_FEES);
         PaymentOperatorFactory.OperatorConfig memory reentrancyConfig = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: operatorFeeRecipient,
             feeCalculator: address(operatorCalc),
-            authorizeCondition: address(0),
-            authorizeRecorder: address(maliciousRecorder),
-            chargeCondition: address(0),
-            chargeRecorder: address(0),
-            captureCondition: address(0),
-            captureRecorder: address(0),
-            voidCondition: address(0),
-            voidRecorder: address(0),
-            refundCondition: address(0),
-            refundRecorder: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(maliciousRecorder),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(0),
+            capturePreActionCondition: address(0),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(0),
+            voidPostActionHook: address(0),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
         reentrancyTestOperator = PaymentOperator(factory.deployOperator(reentrancyConfig));
 
@@ -338,7 +338,7 @@ contract PaymentOperatorInvariants is Test {
 
     /// @notice Reentrancy protection prevents callback attacks
     function echidna_reentrancy_protected() public view returns (bool) {
-        // MaliciousRecorder attempted distributeFees() during authorize() callback.
+        // MaliciousPostActionHook attempted distributeFees() during authorize() callback.
         // nonReentrant must have blocked it.
         return maliciousRecorder.reentrancyBlocked();
     }

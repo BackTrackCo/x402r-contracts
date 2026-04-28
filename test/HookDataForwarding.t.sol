@@ -8,8 +8,8 @@ import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
-import {MockDataCondition} from "./mocks/MockDataCondition.sol";
-import {MockDataRecorder} from "./mocks/MockDataRecorder.sol";
+import {MockDataPreActionCondition} from "./mocks/MockDataPreActionCondition.sol";
+import {MockDataPostActionHook} from "./mocks/MockDataPostActionHook.sol";
 
 /**
  * @title HookDataForwardingTest
@@ -74,23 +74,23 @@ contract HookDataForwardingTest is Test {
     // ============ void: data forwarded to condition ============
 
     function test_void_nonEmptyData_reachesCondition() public {
-        // Deploy MockDataCondition that requires MAGIC in data
-        MockDataCondition dataCondition = new MockDataCondition(MAGIC);
-        MockDataRecorder dataRecorder = new MockDataRecorder();
+        // Deploy MockDataPreActionCondition that requires MAGIC in data
+        MockDataPreActionCondition dataCondition = new MockDataPreActionCondition(MAGIC);
+        MockDataPostActionHook dataRecorder = new MockDataPostActionHook();
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
-            authorizeCondition: address(0),
-            authorizeRecorder: address(0),
-            chargeCondition: address(0),
-            chargeRecorder: address(0),
-            captureCondition: address(0),
-            captureRecorder: address(0),
-            voidCondition: address(dataCondition),
-            voidRecorder: address(dataRecorder),
-            refundCondition: address(0),
-            refundRecorder: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(0),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(0),
+            capturePreActionCondition: address(0),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(dataCondition),
+            voidPostActionHook: address(dataRecorder),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
         PaymentOperator operator = PaymentOperator(operatorFactory.deployOperator(config));
 
@@ -126,23 +126,23 @@ contract HookDataForwardingTest is Test {
     // ============ authorize: dual-purpose collectorData reaches condition AND collector ============
 
     function test_authorize_collectorData_reachesConditionAndRecorder() public {
-        // Deploy MockDataCondition on the AUTHORIZE_CONDITION slot
-        MockDataCondition dataCondition = new MockDataCondition(MAGIC);
-        MockDataRecorder dataRecorder = new MockDataRecorder();
+        // Deploy MockDataPreActionCondition on the AUTHORIZE_PRE_ACTION_CONDITION slot
+        MockDataPreActionCondition dataCondition = new MockDataPreActionCondition(MAGIC);
+        MockDataPostActionHook dataRecorder = new MockDataPostActionHook();
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
-            authorizeCondition: address(dataCondition),
-            authorizeRecorder: address(dataRecorder),
-            chargeCondition: address(0),
-            chargeRecorder: address(0),
-            captureCondition: address(0),
-            captureRecorder: address(0),
-            voidCondition: address(0),
-            voidRecorder: address(0),
-            refundCondition: address(0),
-            refundRecorder: address(0)
+            authorizePreActionCondition: address(dataCondition),
+            authorizePostActionHook: address(dataRecorder),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(0),
+            capturePreActionCondition: address(0),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(0),
+            voidPostActionHook: address(0),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
         PaymentOperator operator = PaymentOperator(operatorFactory.deployOperator(config));
 
@@ -179,22 +179,22 @@ contract HookDataForwardingTest is Test {
     // ============ release: data forwarded to condition and recorder ============
 
     function test_release_nonEmptyData_reachesConditionAndRecorder() public {
-        MockDataCondition dataCondition = new MockDataCondition(MAGIC);
-        MockDataRecorder dataRecorder = new MockDataRecorder();
+        MockDataPreActionCondition dataCondition = new MockDataPreActionCondition(MAGIC);
+        MockDataPostActionHook dataRecorder = new MockDataPostActionHook();
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
-            authorizeCondition: address(0),
-            authorizeRecorder: address(0),
-            chargeCondition: address(0),
-            chargeRecorder: address(0),
-            captureCondition: address(dataCondition),
-            captureRecorder: address(dataRecorder),
-            voidCondition: address(0),
-            voidRecorder: address(0),
-            refundCondition: address(0),
-            refundRecorder: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(0),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(0),
+            capturePreActionCondition: address(dataCondition),
+            capturePostActionHook: address(dataRecorder),
+            voidPreActionCondition: address(0),
+            voidPostActionHook: address(0),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
         PaymentOperator operator = PaymentOperator(operatorFactory.deployOperator(config));
 

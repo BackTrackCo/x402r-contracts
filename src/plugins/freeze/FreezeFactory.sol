@@ -20,9 +20,9 @@ import {ZeroAddress} from "../../types/Errors.sol";
  *      ESCROW is factory-level (immutable), not per-config.
  *
  *      Example configurations:
- *      - Payer freeze/unfreeze (3 days): deploy(PayerCondition, PayerCondition, 3 days, escrowPeriod)
- *      - Payer freeze, Arbiter unfreeze: deploy(PayerCondition, StaticAddressCondition, 0, escrowPeriod)
- *      - Anyone freeze, Receiver unfreeze: deploy(AlwaysTrueCondition, ReceiverCondition, 7 days, escrowPeriod)
+ *      - Payer freeze/unfreeze (3 days): deploy(PayerPreActionCondition, PayerPreActionCondition, 3 days, escrowPeriod)
+ *      - Payer freeze, Arbiter unfreeze: deploy(PayerPreActionCondition, StaticAddressPreActionCondition, 0, escrowPeriod)
+ *      - Anyone freeze, Receiver unfreeze: deploy(AlwaysTruePreActionCondition, ReceiverPreActionCondition, 7 days, escrowPeriod)
  */
 contract FreezeFactory {
     /// @notice Escrow contract shared by all deployments
@@ -39,13 +39,13 @@ contract FreezeFactory {
 
     /**
      * @notice Deploy a new Freeze condition contract
-     * @param freezeCondition ICondition that authorizes freeze calls (required)
-     * @param unfreezeCondition ICondition that authorizes unfreeze calls (required)
+     * @param freezeCondition IPreActionCondition that authorizes freeze calls (required)
+     * @param unfreezeCondition IPreActionCondition that authorizes unfreeze calls (required)
      * @param freezeDuration Duration that freezes last (0 = permanent until unfrozen)
      * @param escrowPeriodContract Address of the EscrowPeriod contract (address(0) = unconstrained)
      * @return freezeAddr Address of the deployed Freeze contract
      * @custom:security RACE CONDITION: When the deployed Freeze is composed with EscrowPeriod via
-     *         AndCondition, a race exists at the escrow period boundary — freeze() reverts
+     *         AndPreActionCondition, a race exists at the escrow period boundary — freeze() reverts
      *         (FreezeWindowExpired) at the exact moment release becomes possible. Deploy with
      *         sufficient FREEZE_DURATION margin relative to ESCROW_PERIOD to mitigate.
      */
@@ -90,8 +90,8 @@ contract FreezeFactory {
 
     /**
      * @notice Get deployed address for a configuration
-     * @param freezeCondition ICondition that authorizes freeze calls
-     * @param unfreezeCondition ICondition that authorizes unfreeze calls
+     * @param freezeCondition IPreActionCondition that authorizes freeze calls
+     * @param unfreezeCondition IPreActionCondition that authorizes unfreeze calls
      * @param freezeDuration Duration that freezes last
      * @param escrowPeriodContract Address of the EscrowPeriod contract
      * @return Address of the deployed Freeze contract (address(0) if not deployed)
@@ -107,8 +107,8 @@ contract FreezeFactory {
 
     /**
      * @notice Compute the deterministic address for a configuration (before deployment)
-     * @param freezeCondition ICondition that authorizes freeze calls
-     * @param unfreezeCondition ICondition that authorizes unfreeze calls
+     * @param freezeCondition IPreActionCondition that authorizes freeze calls
+     * @param unfreezeCondition IPreActionCondition that authorizes unfreeze calls
      * @param freezeDuration Duration that freezes last
      * @param escrowPeriodContract Address of the EscrowPeriod contract
      * @return Predicted address of the Freeze contract
@@ -131,8 +131,8 @@ contract FreezeFactory {
 
     /**
      * @notice Get the key for a configuration
-     * @param freezeCondition ICondition that authorizes freeze calls
-     * @param unfreezeCondition ICondition that authorizes unfreeze calls
+     * @param freezeCondition IPreActionCondition that authorizes freeze calls
+     * @param unfreezeCondition IPreActionCondition that authorizes unfreeze calls
      * @param freezeDuration Duration that freezes last
      * @param escrowPeriodContract Address of the EscrowPeriod contract
      * @return The mapping key

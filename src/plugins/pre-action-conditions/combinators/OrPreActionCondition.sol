@@ -1,0 +1,60 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright 2025-2026 Ali Abdoli and Vrajang Parikh
+pragma solidity ^0.8.28;
+
+import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
+import {IPreActionCondition} from "../IPreActionCondition.sol";
+
+/// @title OrPreActionCondition
+/// @notice Combines multiple conditions with OR logic
+/// @dev Returns true if ANY condition returns true
+/// @dev Short-circuits on first true result for gas efficiency
+contract OrPreActionCondition is IPreActionCondition {
+    /// @notice Maximum number of conditions allowed to prevent gas griefing
+    uint256 public constant MAX_PRE_ACTION_CONDITIONS = 10;
+
+    /// @notice The conditions to check (OR logic)
+    IPreActionCondition[] public conditions;
+
+    /// @notice Error when no conditions are provided
+    error NoConditions();
+
+    /// @notice Error when too many conditions are provided
+    error TooManyConditions();
+
+    /// @notice Create an OR combinator with multiple conditions
+    /// @param _conditions Array of conditions to combine with OR logic
+    constructor(IPreActionCondition[] memory _conditions) {
+        if (_conditions.length == 0) revert NoConditions();
+        if (_conditions.length > MAX_PRE_ACTION_CONDITIONS) revert TooManyConditions();
+        for (uint256 i = 0; i < _conditions.length; i++) {
+            conditions.push(_conditions[i]);
+        }
+    }
+
+    /// @notice Check if ANY condition passes
+    /// @param paymentInfo The payment information
+    /// @param amount The amount involved in the action
+    /// @param caller The address attempting the action
+    /// @return allowed True if any condition returns true
+    function check(
+        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
+        uint256 amount,
+        address caller,
+        bytes calldata data
+    ) external view override returns (bool allowed) {
+        uint256 len = conditions.length;
+        for (uint256 i = 0; i < len; i++) {
+            if (conditions[i].check(paymentInfo, amount, caller, data)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// @notice Get the number of conditions
+    /// @return The number of conditions in this combinator
+    function conditionCount() external view returns (uint256) {
+        return conditions.length;
+    }
+}

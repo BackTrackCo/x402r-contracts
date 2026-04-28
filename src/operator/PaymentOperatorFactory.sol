@@ -14,8 +14,8 @@ import {OperatorDeployed} from "./types/Events.sol";
  * @dev Condition Combinator Architecture:
  *      - Operators have 10 slots: 5 conditions (before checks) + 5 recorders (after state updates)
  *      - address(0) = default behavior (allow for conditions, no-op for recorders)
- *      - Conditions implement ICondition.check() -> returns bool (true = allowed)
- *      - Recorders implement IRecorder.record() -> updates state after action
+ *      - Conditions implement IPreActionCondition.check() -> returns bool (true = allowed)
+ *      - Recorders implement IPostActionHook.run() -> updates state after action
  *      - Conditions can be composed using combinators (Or, And, Not)
  *      - Client signs ERC-3009 with operator in PaymentInfo, committing to all conditions
  *      - Factory deploys deterministic operator instances via CREATE2
@@ -27,16 +27,16 @@ contract PaymentOperatorFactory {
     struct OperatorConfig {
         address feeReceiver;
         address feeCalculator;
-        address authorizeCondition;
-        address authorizeRecorder;
-        address chargeCondition;
-        address chargeRecorder;
-        address captureCondition;
-        address captureRecorder;
-        address voidCondition;
-        address voidRecorder;
-        address refundCondition;
-        address refundRecorder;
+        address authorizePreActionCondition;
+        address authorizePostActionHook;
+        address chargePreActionCondition;
+        address chargePostActionHook;
+        address capturePreActionCondition;
+        address capturePostActionHook;
+        address voidPreActionCondition;
+        address voidPostActionHook;
+        address refundPreActionCondition;
+        address refundPostActionHook;
     }
 
     // Immutable configuration shared by all deployed operators
@@ -82,9 +82,9 @@ contract PaymentOperatorFactory {
      *      Uses CREATE2 for deterministic addresses.
      * @param config The operator configuration
      * @return operator The operator address
-     * @custom:security ARBITER LOCKOUT: If captureCondition is address(0), the receiver can
+     * @custom:security ARBITER LOCKOUT: If capturePreActionCondition is address(0), the receiver can
      *         front-run an arbiter's updateStatus() by calling capture() to drain capturableAmount,
-     *         locking out the arbiter (post-capture = receiver only). Always set a captureCondition
+     *         locking out the arbiter (post-capture = receiver only). Always set a capturePreActionCondition
      *         (e.g., EscrowPeriod) when using freeze or refund dispute flows.
      */
     function deployOperator(OperatorConfig calldata config) external returns (address operator) {
@@ -112,17 +112,17 @@ contract PaymentOperatorFactory {
 
         // ============ INTERACTIONS ============
         // Deploy new operator - address is deterministic via CREATE2
-        PaymentOperator.ConditionConfig memory conditions = PaymentOperator.ConditionConfig({
-            authorizeCondition: config.authorizeCondition,
-            authorizeRecorder: config.authorizeRecorder,
-            chargeCondition: config.chargeCondition,
-            chargeRecorder: config.chargeRecorder,
-            captureCondition: config.captureCondition,
-            captureRecorder: config.captureRecorder,
-            voidCondition: config.voidCondition,
-            voidRecorder: config.voidRecorder,
-            refundCondition: config.refundCondition,
-            refundRecorder: config.refundRecorder
+        PaymentOperator.PluginConfig memory conditions = PaymentOperator.PluginConfig({
+            authorizePreActionCondition: config.authorizePreActionCondition,
+            authorizePostActionHook: config.authorizePostActionHook,
+            chargePreActionCondition: config.chargePreActionCondition,
+            chargePostActionHook: config.chargePostActionHook,
+            capturePreActionCondition: config.capturePreActionCondition,
+            capturePostActionHook: config.capturePostActionHook,
+            voidPreActionCondition: config.voidPreActionCondition,
+            voidPostActionHook: config.voidPostActionHook,
+            refundPreActionCondition: config.refundPreActionCondition,
+            refundPostActionHook: config.refundPostActionHook
         });
         address deployed = address(
             new PaymentOperator{salt: key}(
@@ -143,33 +143,33 @@ contract PaymentOperatorFactory {
             abi.encodePacked(
                 config.feeReceiver,
                 config.feeCalculator,
-                config.authorizeCondition,
-                config.authorizeRecorder,
-                config.chargeCondition,
-                config.chargeRecorder,
-                config.captureCondition,
-                config.captureRecorder,
-                config.voidCondition,
-                config.voidRecorder,
-                config.refundCondition,
-                config.refundRecorder
+                config.authorizePreActionCondition,
+                config.authorizePostActionHook,
+                config.chargePreActionCondition,
+                config.chargePostActionHook,
+                config.capturePreActionCondition,
+                config.capturePostActionHook,
+                config.voidPreActionCondition,
+                config.voidPostActionHook,
+                config.refundPreActionCondition,
+                config.refundPostActionHook
             )
         );
     }
 
     function _getBytecode(OperatorConfig memory config) internal view returns (bytes memory) {
-        // Create the ConditionConfig struct for encoding
-        PaymentOperator.ConditionConfig memory conditions = PaymentOperator.ConditionConfig({
-            authorizeCondition: config.authorizeCondition,
-            authorizeRecorder: config.authorizeRecorder,
-            chargeCondition: config.chargeCondition,
-            chargeRecorder: config.chargeRecorder,
-            captureCondition: config.captureCondition,
-            captureRecorder: config.captureRecorder,
-            voidCondition: config.voidCondition,
-            voidRecorder: config.voidRecorder,
-            refundCondition: config.refundCondition,
-            refundRecorder: config.refundRecorder
+        // Create the PluginConfig struct for encoding
+        PaymentOperator.PluginConfig memory conditions = PaymentOperator.PluginConfig({
+            authorizePreActionCondition: config.authorizePreActionCondition,
+            authorizePostActionHook: config.authorizePostActionHook,
+            chargePreActionCondition: config.chargePreActionCondition,
+            chargePostActionHook: config.chargePostActionHook,
+            capturePreActionCondition: config.capturePreActionCondition,
+            capturePostActionHook: config.capturePostActionHook,
+            voidPreActionCondition: config.voidPreActionCondition,
+            voidPostActionHook: config.voidPostActionHook,
+            refundPreActionCondition: config.refundPreActionCondition,
+            refundPostActionHook: config.refundPostActionHook
         });
 
         return abi.encodePacked(

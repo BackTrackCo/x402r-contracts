@@ -8,11 +8,15 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {ProtocolFeeConfig} from "../../src/plugins/fees/ProtocolFeeConfig.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
-import {ICondition} from "../../src/plugins/conditions/ICondition.sol";
-import {StaticAddressCondition} from "../../src/plugins/conditions/access/static-address/StaticAddressCondition.sol";
-import {ReceiverCondition} from "../../src/plugins/conditions/access/ReceiverCondition.sol";
-import {PayerCondition} from "../../src/plugins/conditions/access/PayerCondition.sol";
-import {OrCondition} from "../../src/plugins/conditions/combinators/OrCondition.sol";
+import {IPreActionCondition} from "../../src/plugins/pre-action-conditions/IPreActionCondition.sol";
+import {
+    StaticAddressPreActionCondition
+} from "../../src/plugins/pre-action-conditions/access/static-address/StaticAddressPreActionCondition.sol";
+import {
+    ReceiverPreActionCondition
+} from "../../src/plugins/pre-action-conditions/access/ReceiverPreActionCondition.sol";
+import {PayerPreActionCondition} from "../../src/plugins/pre-action-conditions/access/PayerPreActionCondition.sol";
+import {OrPreActionCondition} from "../../src/plugins/pre-action-conditions/combinators/OrPreActionCondition.sol";
 import {RefundRequest} from "../../src/requests/refund/RefundRequest.sol";
 import {RequestStatus} from "../../src/requests/types/Types.sol";
 
@@ -56,36 +60,36 @@ contract RefundRequestInvariants is Test {
 
         refundRequest = new RefundRequest(arbiter);
 
-        // Build VOID_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)
-        StaticAddressCondition arbiterCondition = new StaticAddressCondition(arbiter);
-        ReceiverCondition receiverCondition = new ReceiverCondition();
-        ICondition[] memory refundConditions = new ICondition[](2);
-        refundConditions[0] = ICondition(address(arbiterCondition));
-        refundConditions[1] = ICondition(address(receiverCondition));
-        OrCondition voidCondition = new OrCondition(refundConditions);
+        // Build VOID_PRE_ACTION_CONDITION = Or(StaticAddressPreActionCondition(arbiter), ReceiverPreActionCondition)
+        StaticAddressPreActionCondition arbiterCondition = new StaticAddressPreActionCondition(arbiter);
+        ReceiverPreActionCondition receiverCondition = new ReceiverPreActionCondition();
+        IPreActionCondition[] memory refundPreActionConditions = new IPreActionCondition[](2);
+        refundPreActionConditions[0] = IPreActionCondition(address(arbiterCondition));
+        refundPreActionConditions[1] = IPreActionCondition(address(receiverCondition));
+        OrPreActionCondition voidPreActionCondition = new OrPreActionCondition(refundPreActionConditions);
 
-        // Build CAPTURE_CONDITION = Or(StaticAddressCondition(arbiter), PayerCondition)
-        PayerCondition payerCondition = new PayerCondition();
-        ICondition[] memory captureConditions = new ICondition[](2);
-        captureConditions[0] = ICondition(address(arbiterCondition));
-        captureConditions[1] = ICondition(address(payerCondition));
-        OrCondition captureCondition = new OrCondition(captureConditions);
+        // Build CAPTURE_PRE_ACTION_CONDITION = Or(StaticAddressPreActionCondition(arbiter), PayerPreActionCondition)
+        PayerPreActionCondition payerCondition = new PayerPreActionCondition();
+        IPreActionCondition[] memory capturePreActionConditions = new IPreActionCondition[](2);
+        capturePreActionConditions[0] = IPreActionCondition(address(arbiterCondition));
+        capturePreActionConditions[1] = IPreActionCondition(address(payerCondition));
+        OrPreActionCondition capturePreActionCondition = new OrPreActionCondition(capturePreActionConditions);
 
         PaymentOperatorFactory operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: address(this),
             feeCalculator: address(0),
-            authorizeCondition: address(0),
-            authorizeRecorder: address(0),
-            chargeCondition: address(0),
-            chargeRecorder: address(0),
-            captureCondition: address(captureCondition),
-            captureRecorder: address(0),
-            voidCondition: address(voidCondition),
-            voidRecorder: address(refundRequest),
-            refundCondition: address(0),
-            refundRecorder: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(0),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(0),
+            capturePreActionCondition: address(capturePreActionCondition),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(voidPreActionCondition),
+            voidPostActionHook: address(refundRequest),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
 

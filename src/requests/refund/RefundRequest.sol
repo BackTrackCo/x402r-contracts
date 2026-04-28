@@ -3,7 +3,7 @@
 pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {IRecorder} from "../../plugins/recorders/IRecorder.sol";
+import {IPostActionHook} from "../../plugins/post-action-hooks/IPostActionHook.sol";
 import {PaymentOperator} from "../../operator/payment/PaymentOperator.sol";
 import {InvalidOperator, NotPayer} from "../../types/Errors.sol";
 import {RequestStatus} from "../types/Types.sol";
@@ -12,10 +12,10 @@ import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} fro
 
 /**
  * @title RefundRequest
- * @notice Refund request lifecycle as an IRecorder plugin for PaymentOperator.
+ * @notice Refund request lifecycle as an IPostActionHook plugin for PaymentOperator.
  * @dev ARBITER is an immutable address for deny/refuse gating. Approval happens via
  *      operator.void() which triggers record() on this contract as the
- *      REFUND_IN_ESCROW_RECORDER.
+ *      REFUND_IN_ESCROW_POST_ACTION_HOOK.
  *
  *      State machine:
  *        Pending  -> Approved  (operator calls record() after void)
@@ -30,7 +30,7 @@ import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} fro
  *      or not approvable. Caps approved amount at requested amount. Never reverts on
  *      state mismatches.
  */
-contract RefundRequest is IRecorder {
+contract RefundRequest is IPostActionHook {
     /// @notice The arbiter address that can deny and refuse refund requests
     address public immutable ARBITER;
 
@@ -106,7 +106,7 @@ contract RefundRequest is IRecorder {
         ARBITER = _arbiter;
     }
 
-    // ============ IRecorder Implementation ============
+    // ============ IPostActionHook Implementation ============
 
     /// @notice Called by PaymentOperator after void succeeds.
     ///         No-op if no request exists or request is not approvable.
@@ -114,7 +114,7 @@ contract RefundRequest is IRecorder {
     /// @param paymentInfo PaymentInfo struct
     /// @param amount Amount that was refunded
     /// @param caller The address that called operator.void()
-    function record(
+    function run(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint256 amount,
         address caller,

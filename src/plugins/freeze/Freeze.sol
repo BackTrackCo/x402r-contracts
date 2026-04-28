@@ -3,7 +3,7 @@
 pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {ICondition} from "../conditions/ICondition.sol";
+import {IPreActionCondition} from "../pre-action-conditions/IPreActionCondition.sol";
 import {EscrowPeriod} from "../escrow-period/EscrowPeriod.sol";
 import {ZeroAddress} from "../../types/Errors.sol";
 import {FreezeWindowExpired, UnauthorizedFreeze, AlreadyFrozen, NotFrozen} from "./types/Errors.sol";
@@ -11,14 +11,14 @@ import {PaymentFrozen, PaymentUnfrozen} from "./types/Events.sol";
 
 /**
  * @title Freeze
- * @notice Standalone ICondition that blocks release when a payment is frozen.
+ * @notice Standalone IPreActionCondition that blocks release when a payment is frozen.
  *         Manages freeze/unfreeze state with optional escrow period time constraint.
  *
- * @dev Implements ICondition: check() returns false when frozen (blocks release).
- *      Does NOT inherit BaseRecorder — uses ESCROW.getHash() directly for payment hash computation.
+ * @dev Implements IPreActionCondition: check() returns false when frozen (blocks release).
+ *      Does NOT inherit BasePostActionHook — uses ESCROW.getHash() directly for payment hash computation.
  *
- *      FREEZE_CONDITION and UNFREEZE_CONDITION are required (constructor reverts on address(0))
- *      — these ICondition contracts define WHO can freeze/unfreeze.
+ *      FREEZE_PRE_ACTION_CONDITION and UNFREEZE_PRE_ACTION_CONDITION are required (constructor reverts on address(0))
+ *      — these IPreActionCondition contracts define WHO can freeze/unfreeze.
  *      FREEZE_DURATION defines HOW LONG freezes last (0 = permanent until unfrozen).
  *
  *      ESCROW_PERIOD_CONTRACT is optional (address(0) = freeze is unconstrained by time).
@@ -29,15 +29,15 @@ import {PaymentFrozen, PaymentUnfrozen} from "./types/Events.sol";
  * COMPOSITION PATTERN:
  *      - Escrow period only:  releaseCondition = escrowPeriod
  *      - Freeze only:         releaseCondition = freeze
- *      - Both:                releaseCondition = AndCondition([escrowPeriod, freeze])
+ *      - Both:                releaseCondition = AndPreActionCondition([escrowPeriod, freeze])
  *
  * EXAMPLE CONFIGURATIONS:
- *      - Payer freeze/unfreeze (3 days): (PayerCondition, PayerCondition, 3 days)
- *      - Payer freeze, Arbiter unfreeze: (PayerCondition, StaticAddressCondition, 0)
- *      - Anyone freeze, Receiver unfreeze: (AlwaysTrueCondition, ReceiverCondition, 7 days)
+ *      - Payer freeze/unfreeze (3 days): (PayerPreActionCondition, PayerPreActionCondition, 3 days)
+ *      - Payer freeze, Arbiter unfreeze: (PayerPreActionCondition, StaticAddressPreActionCondition, 0)
+ *      - Anyone freeze, Receiver unfreeze: (AlwaysTruePreActionCondition, ReceiverPreActionCondition, 7 days)
  *
  * SECURITY NOTE - Freeze/Release Race Condition:
- *      When composed with EscrowPeriod via AndCondition, at the exact moment the escrow
+ *      When composed with EscrowPeriod via AndPreActionCondition, at the exact moment the escrow
  *      period expires:
  *      - freeze() will revert with FreezeWindowExpired
  *      - EscrowPeriod.check() will return true (release allowed)
@@ -50,15 +50,15 @@ import {PaymentFrozen, PaymentUnfrozen} from "./types/Events.sol";
  *      2. PRIVATE MEMPOOL: Submit via Flashbots Protect or MEV Blocker near the deadline.
  *      3. MONITOR: Watch for release attempts and freeze proactively.
  */
-contract Freeze is ICondition {
+contract Freeze is IPreActionCondition {
     /// @notice Escrow contract for payment hash computation
     AuthCaptureEscrow public immutable ESCROW;
 
     /// @notice Condition that authorizes freeze calls
-    ICondition public immutable FREEZE_CONDITION;
+    IPreActionCondition public immutable FREEZE_PRE_ACTION_CONDITION;
 
     /// @notice Condition that authorizes unfreeze calls
-    ICondition public immutable UNFREEZE_CONDITION;
+    IPreActionCondition public immutable UNFREEZE_PRE_ACTION_CONDITION;
 
     /// @notice Duration that freezes last (0 = permanent until unfrozen)
     uint256 public immutable FREEZE_DURATION;
@@ -80,14 +80,14 @@ contract Freeze is ICondition {
         if (_freezeCondition == address(0)) revert ZeroAddress();
         if (_unfreezeCondition == address(0)) revert ZeroAddress();
         if (_escrow == address(0)) revert ZeroAddress();
-        FREEZE_CONDITION = ICondition(_freezeCondition);
-        UNFREEZE_CONDITION = ICondition(_unfreezeCondition);
+        FREEZE_PRE_ACTION_CONDITION = IPreActionCondition(_freezeCondition);
+        UNFREEZE_PRE_ACTION_CONDITION = IPreActionCondition(_unfreezeCondition);
         FREEZE_DURATION = _freezeDuration;
         ESCROW_PERIOD_CONTRACT = EscrowPeriod(_escrowPeriodContract);
         ESCROW = AuthCaptureEscrow(_escrow);
     }
 
-    // ============ ICondition Implementation ============
+    // ============ IPreActionCondition Implementation ============
 
     /**
      * @notice Check if release is allowed (not frozen)
@@ -97,7 +97,7 @@ contract Freeze is ICondition {
     function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address, bytes calldata)
         external
         view
-        override(ICondition)
+        override(IPreActionCondition)
         returns (bool allowed)
     {
         return !_isFrozen(paymentInfo);
@@ -108,15 +108,15 @@ contract Freeze is ICondition {
     /**
      * @notice Freeze a payment to block release
      * @dev When ESCROW_PERIOD_CONTRACT is set, only callable during the escrow period.
-     *      Authorization checked via FREEZE_CONDITION.
+     *      Authorization checked via FREEZE_PRE_ACTION_CONDITION.
      *
      *      BREAKING CHANGE: Signature changed from `freeze(PaymentInfo)` to
      *      `freeze(PaymentInfo, bytes)` to support forwarding arbitrary data to
-     *      FREEZE_CONDITION. SDK callers must update to pass the new `data` parameter
+     *      FREEZE_PRE_ACTION_CONDITION. SDK callers must update to pass the new `data` parameter
      *      (use `""` / `"0x"` for no data).
      *
      * @param paymentInfo PaymentInfo struct for the payment to freeze
-     * @param data Arbitrary data forwarded to FREEZE_CONDITION.check()
+     * @param data Arbitrary data forwarded to FREEZE_PRE_ACTION_CONDITION.check()
      *        (e.g. signatures, proofs, attestations)
      * @custom:security MEV RISK: A block builder can censor this transaction until after the
      *         escrow period expires, rendering the freeze ineffective. Submit via private mempool
@@ -124,7 +124,7 @@ contract Freeze is ICondition {
      */
     function freeze(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, bytes calldata data) external {
         // Check authorization via condition
-        if (!FREEZE_CONDITION.check(paymentInfo, 0, msg.sender, data)) revert UnauthorizedFreeze();
+        if (!FREEZE_PRE_ACTION_CONDITION.check(paymentInfo, 0, msg.sender, data)) revert UnauthorizedFreeze();
 
         bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
 
@@ -153,20 +153,20 @@ contract Freeze is ICondition {
     /**
      * @notice Unfreeze a payment to allow release
      * @dev No escrow period check — unfreezing should always be allowed.
-     *      Authorization checked via UNFREEZE_CONDITION.
+     *      Authorization checked via UNFREEZE_PRE_ACTION_CONDITION.
      *
      *      BREAKING CHANGE: Signature changed from `unfreeze(PaymentInfo)` to
      *      `unfreeze(PaymentInfo, bytes)` to support forwarding arbitrary data to
-     *      UNFREEZE_CONDITION. SDK callers must update to pass the new `data` parameter
+     *      UNFREEZE_PRE_ACTION_CONDITION. SDK callers must update to pass the new `data` parameter
      *      (use `""` / `"0x"` for no data).
      *
      * @param paymentInfo PaymentInfo struct for the payment to unfreeze
-     * @param data Arbitrary data forwarded to UNFREEZE_CONDITION.check()
+     * @param data Arbitrary data forwarded to UNFREEZE_PRE_ACTION_CONDITION.check()
      *        (e.g. signatures, proofs, attestations)
      */
     function unfreeze(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, bytes calldata data) external {
         // Check authorization via condition
-        if (!UNFREEZE_CONDITION.check(paymentInfo, 0, msg.sender, data)) revert UnauthorizedFreeze();
+        if (!UNFREEZE_PRE_ACTION_CONDITION.check(paymentInfo, 0, msg.sender, data)) revert UnauthorizedFreeze();
 
         bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
 

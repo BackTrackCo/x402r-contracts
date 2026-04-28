@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 import {Test, console} from "forge-std/Test.sol";
 import {PaymentOperator} from "../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
-import {PaymentIndexRecorder} from "../src/plugins/recorders/PaymentIndexRecorder.sol";
+import {PaymentIndexPostActionHook} from "../src/plugins/post-action-hooks/PaymentIndexPostActionHook.sol";
 import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
@@ -18,7 +18,7 @@ import {MockERC20} from "./mocks/MockERC20.sol";
 contract PaymentIndexingTest is Test {
     PaymentOperator public operator;
     PaymentOperatorFactory public operatorFactory;
-    PaymentIndexRecorder public indexRecorder;
+    PaymentIndexPostActionHook public indexRecorder;
     ProtocolFeeConfig public protocolFeeConfig;
     AuthCaptureEscrow public escrow;
     PreApprovalPaymentCollector public collector;
@@ -49,22 +49,22 @@ contract PaymentIndexingTest is Test {
         operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         // Deploy payment index recorder
-        indexRecorder = new PaymentIndexRecorder(address(escrow), bytes32(0));
+        indexRecorder = new PaymentIndexPostActionHook(address(escrow), bytes32(0));
 
         // Deploy operator with index recorder
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
-            authorizeCondition: address(0),
-            authorizeRecorder: address(indexRecorder), // Use index recorder
-            chargeCondition: address(0),
-            chargeRecorder: address(indexRecorder), // Use index recorder
-            captureCondition: address(0),
-            captureRecorder: address(0),
-            voidCondition: address(0),
-            voidRecorder: address(0),
-            refundCondition: address(0),
-            refundRecorder: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(indexRecorder), // Use index recorder
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(indexRecorder), // Use index recorder
+            capturePreActionCondition: address(0),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(0),
+            voidPostActionHook: address(0),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
 
@@ -214,7 +214,7 @@ contract PaymentIndexingTest is Test {
         _authorizePayment(payer, receiver, PAYMENT_AMOUNT, 1);
 
         // Should revert when accessing index 1 (only index 0 exists)
-        vm.expectRevert(PaymentIndexRecorder.IndexOutOfBounds.selector);
+        vm.expectRevert(PaymentIndexPostActionHook.IndexOutOfBounds.selector);
         indexRecorder.getPayerPayment(payer, 1);
     }
 
@@ -225,7 +225,7 @@ contract PaymentIndexingTest is Test {
         _authorizePayment(payer, receiver, PAYMENT_AMOUNT, 1);
 
         // Should revert when accessing index 1 (only index 0 exists)
-        vm.expectRevert(PaymentIndexRecorder.IndexOutOfBounds.selector);
+        vm.expectRevert(PaymentIndexPostActionHook.IndexOutOfBounds.selector);
         indexRecorder.getReceiverPayment(receiver, 1);
     }
 

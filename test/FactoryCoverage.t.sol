@@ -10,18 +10,26 @@ import {StaticFeeCalculatorFactory} from "../src/plugins/fees/static-fee-calcula
 import {EscrowPeriodFactory} from "../src/plugins/escrow-period/EscrowPeriodFactory.sol";
 import {FreezeFactory} from "../src/plugins/freeze/FreezeFactory.sol";
 import {Freeze} from "../src/plugins/freeze/Freeze.sol";
-import {PayerCondition} from "../src/plugins/conditions/access/PayerCondition.sol";
-import {ReceiverCondition} from "../src/plugins/conditions/access/ReceiverCondition.sol";
-import {ICondition} from "../src/plugins/conditions/ICondition.sol";
-import {AndCondition} from "../src/plugins/conditions/combinators/AndCondition.sol";
-import {AndConditionFactory} from "../src/plugins/conditions/combinators/AndConditionFactory.sol";
-import {NotConditionFactory} from "../src/plugins/conditions/combinators/NotConditionFactory.sol";
-import {OrCondition} from "../src/plugins/conditions/combinators/OrCondition.sol";
-import {OrConditionFactory} from "../src/plugins/conditions/combinators/OrConditionFactory.sol";
-import {IRecorder} from "../src/plugins/recorders/IRecorder.sol";
-import {AuthorizationTimeRecorder} from "../src/plugins/recorders/AuthorizationTimeRecorder.sol";
-import {RecorderCombinator} from "../src/plugins/recorders/combinators/RecorderCombinator.sol";
-import {RecorderCombinatorFactory} from "../src/plugins/recorders/combinators/RecorderCombinatorFactory.sol";
+import {PayerPreActionCondition} from "../src/plugins/pre-action-conditions/access/PayerPreActionCondition.sol";
+import {ReceiverPreActionCondition} from "../src/plugins/pre-action-conditions/access/ReceiverPreActionCondition.sol";
+import {IPreActionCondition} from "../src/plugins/pre-action-conditions/IPreActionCondition.sol";
+import {AndPreActionCondition} from "../src/plugins/pre-action-conditions/combinators/AndPreActionCondition.sol";
+import {
+    AndPreActionConditionFactory
+} from "../src/plugins/pre-action-conditions/combinators/AndPreActionConditionFactory.sol";
+import {
+    NotPreActionConditionFactory
+} from "../src/plugins/pre-action-conditions/combinators/NotPreActionConditionFactory.sol";
+import {OrPreActionCondition} from "../src/plugins/pre-action-conditions/combinators/OrPreActionCondition.sol";
+import {
+    OrPreActionConditionFactory
+} from "../src/plugins/pre-action-conditions/combinators/OrPreActionConditionFactory.sol";
+import {IPostActionHook} from "../src/plugins/post-action-hooks/IPostActionHook.sol";
+import {AuthorizationTimePostActionHook} from "../src/plugins/post-action-hooks/AuthorizationTimePostActionHook.sol";
+import {PostActionHookCombinator} from "../src/plugins/post-action-hooks/combinators/PostActionHookCombinator.sol";
+import {
+    PostActionHookCombinatorFactory
+} from "../src/plugins/post-action-hooks/combinators/PostActionHookCombinatorFactory.sol";
 import {RefundRequestEvidenceFactory} from "../src/evidence/RefundRequestEvidenceFactory.sol";
 import {RefundRequestEvidence} from "../src/evidence/RefundRequestEvidence.sol";
 import {RefundRequest} from "../src/requests/refund/RefundRequest.sol";
@@ -162,7 +170,7 @@ contract FactoryCoverageTest is Test {
 
     function test_FreezeFactory_Deploy() public {
         FreezeFactory factory = new FreezeFactory(address(escrow));
-        PayerCondition payerCond = new PayerCondition();
+        PayerPreActionCondition payerCond = new PayerPreActionCondition();
 
         address freezeAddr = factory.deploy(address(payerCond), address(payerCond), 3 days, address(0));
         assertTrue(freezeAddr != address(0), "Freeze should be deployed");
@@ -170,7 +178,7 @@ contract FactoryCoverageTest is Test {
 
     function test_FreezeFactory_IdempotentDeploy() public {
         FreezeFactory factory = new FreezeFactory(address(escrow));
-        PayerCondition payerCond = new PayerCondition();
+        PayerPreActionCondition payerCond = new PayerPreActionCondition();
 
         address first = factory.deploy(address(payerCond), address(payerCond), 3 days, address(0));
         address second = factory.deploy(address(payerCond), address(payerCond), 3 days, address(0));
@@ -179,7 +187,7 @@ contract FactoryCoverageTest is Test {
 
     function test_FreezeFactory_GetDeployed() public {
         FreezeFactory factory = new FreezeFactory(address(escrow));
-        PayerCondition payerCond = new PayerCondition();
+        PayerPreActionCondition payerCond = new PayerPreActionCondition();
 
         assertEq(
             factory.getDeployed(address(payerCond), address(payerCond), 3 days, address(0)),
@@ -197,7 +205,7 @@ contract FactoryCoverageTest is Test {
 
     function test_FreezeFactory_ComputeAddress() public {
         FreezeFactory factory = new FreezeFactory(address(escrow));
-        PayerCondition payerCond = new PayerCondition();
+        PayerPreActionCondition payerCond = new PayerPreActionCondition();
 
         address predicted = factory.computeAddress(address(payerCond), address(payerCond), 3 days, address(0));
         address actual = factory.deploy(address(payerCond), address(payerCond), 3 days, address(0));
@@ -209,7 +217,7 @@ contract FactoryCoverageTest is Test {
         EscrowPeriodFactory epFactory = new EscrowPeriodFactory(address(escrow));
         address ep = epFactory.deploy(7 days, bytes32(0));
 
-        PayerCondition payerCond = new PayerCondition();
+        PayerPreActionCondition payerCond = new PayerPreActionCondition();
 
         address freezeAddr = factory.deploy(address(payerCond), address(payerCond), 3 days, ep);
         assertTrue(freezeAddr != address(0), "Freeze with escrow period should be deployed");
@@ -220,7 +228,7 @@ contract FactoryCoverageTest is Test {
 
     function test_FreezeFactory_DifferentConfigs() public {
         FreezeFactory factory = new FreezeFactory(address(escrow));
-        PayerCondition payerCond = new PayerCondition();
+        PayerPreActionCondition payerCond = new PayerPreActionCondition();
 
         address f1 = factory.deploy(address(payerCond), address(payerCond), 3 days, address(0));
         address f2 = factory.deploy(address(payerCond), address(payerCond), 7 days, address(0));
@@ -229,8 +237,8 @@ contract FactoryCoverageTest is Test {
 
     function test_FreezeFactory_DifferentConditions() public {
         FreezeFactory factory = new FreezeFactory(address(escrow));
-        PayerCondition payerCond = new PayerCondition();
-        ReceiverCondition receiverCond = new ReceiverCondition();
+        PayerPreActionCondition payerCond = new PayerPreActionCondition();
+        ReceiverPreActionCondition receiverCond = new ReceiverPreActionCondition();
 
         address f1 = factory.deploy(address(payerCond), address(payerCond), 3 days, address(0));
         address f2 = factory.deploy(address(payerCond), address(receiverCond), 3 days, address(0));
@@ -251,237 +259,237 @@ contract FactoryCoverageTest is Test {
 
     function test_FreezeFactory_ZeroDuration() public {
         FreezeFactory factory = new FreezeFactory(address(escrow));
-        PayerCondition payerCond = new PayerCondition();
+        PayerPreActionCondition payerCond = new PayerPreActionCondition();
         address freezeAddr = factory.deploy(address(payerCond), address(payerCond), 0, address(0));
         assertEq(Freeze(freezeAddr).FREEZE_DURATION(), 0, "Zero duration means permanent freeze");
     }
 
     function test_FreezeFactory_DeployedFreezeWorks() public {
         FreezeFactory factory = new FreezeFactory(address(escrow));
-        PayerCondition payerCond = new PayerCondition();
+        PayerPreActionCondition payerCond = new PayerPreActionCondition();
 
         address freezeAddr = factory.deploy(address(payerCond), address(payerCond), 3 days, address(0));
         Freeze freezeContract = Freeze(freezeAddr);
 
-        assertEq(address(freezeContract.FREEZE_CONDITION()), address(payerCond));
-        assertEq(address(freezeContract.UNFREEZE_CONDITION()), address(payerCond));
+        assertEq(address(freezeContract.FREEZE_PRE_ACTION_CONDITION()), address(payerCond));
+        assertEq(address(freezeContract.UNFREEZE_PRE_ACTION_CONDITION()), address(payerCond));
         assertEq(freezeContract.FREEZE_DURATION(), 3 days);
     }
 
-    // ============ AndConditionFactory ============
+    // ============ AndPreActionConditionFactory ============
 
-    function test_AndConditionFactory_Deploy() public {
-        AndConditionFactory factory = new AndConditionFactory();
-        ICondition[] memory conds = new ICondition[](2);
-        conds[0] = ICondition(address(new PayerCondition()));
-        conds[1] = ICondition(address(new ReceiverCondition()));
+    function test_AndPreActionConditionFactory_Deploy() public {
+        AndPreActionConditionFactory factory = new AndPreActionConditionFactory();
+        IPreActionCondition[] memory conds = new IPreActionCondition[](2);
+        conds[0] = IPreActionCondition(address(new PayerPreActionCondition()));
+        conds[1] = IPreActionCondition(address(new ReceiverPreActionCondition()));
 
         address deployed = factory.deploy(conds);
-        assertTrue(deployed != address(0), "AndCondition should be deployed");
-        assertEq(AndCondition(deployed).conditionCount(), 2, "Should have 2 conditions");
+        assertTrue(deployed != address(0), "AndPreActionCondition should be deployed");
+        assertEq(AndPreActionCondition(deployed).conditionCount(), 2, "Should have 2 conditions");
     }
 
-    function test_AndConditionFactory_IdempotentDeploy() public {
-        AndConditionFactory factory = new AndConditionFactory();
-        ICondition[] memory conds = new ICondition[](1);
-        conds[0] = ICondition(address(new PayerCondition()));
+    function test_AndPreActionConditionFactory_IdempotentDeploy() public {
+        AndPreActionConditionFactory factory = new AndPreActionConditionFactory();
+        IPreActionCondition[] memory conds = new IPreActionCondition[](1);
+        conds[0] = IPreActionCondition(address(new PayerPreActionCondition()));
 
         address first = factory.deploy(conds);
         address second = factory.deploy(conds);
         assertEq(first, second, "Same conditions should return same address");
     }
 
-    function test_AndConditionFactory_ComputeAddress() public {
-        AndConditionFactory factory = new AndConditionFactory();
-        ICondition[] memory conds = new ICondition[](1);
-        conds[0] = ICondition(address(new PayerCondition()));
+    function test_AndPreActionConditionFactory_ComputeAddress() public {
+        AndPreActionConditionFactory factory = new AndPreActionConditionFactory();
+        IPreActionCondition[] memory conds = new IPreActionCondition[](1);
+        conds[0] = IPreActionCondition(address(new PayerPreActionCondition()));
 
         address predicted = factory.computeAddress(conds);
         address actual = factory.deploy(conds);
         assertEq(predicted, actual, "Predicted address should match actual");
     }
 
-    function test_AndConditionFactory_GetDeployed() public {
-        AndConditionFactory factory = new AndConditionFactory();
-        ICondition[] memory conds = new ICondition[](1);
-        conds[0] = ICondition(address(new PayerCondition()));
+    function test_AndPreActionConditionFactory_GetDeployed() public {
+        AndPreActionConditionFactory factory = new AndPreActionConditionFactory();
+        IPreActionCondition[] memory conds = new IPreActionCondition[](1);
+        conds[0] = IPreActionCondition(address(new PayerPreActionCondition()));
 
         assertEq(factory.getDeployed(conds), address(0), "Should be zero before deployment");
         address deployed = factory.deploy(conds);
         assertEq(factory.getDeployed(conds), deployed, "Should return deployed address");
     }
 
-    function test_AndConditionFactory_NoConditions_Reverts() public {
-        AndConditionFactory factory = new AndConditionFactory();
-        ICondition[] memory conds = new ICondition[](0);
-        vm.expectRevert(AndConditionFactory.NoConditions.selector);
+    function test_AndPreActionConditionFactory_NoConditions_Reverts() public {
+        AndPreActionConditionFactory factory = new AndPreActionConditionFactory();
+        IPreActionCondition[] memory conds = new IPreActionCondition[](0);
+        vm.expectRevert(AndPreActionConditionFactory.NoConditions.selector);
         factory.deploy(conds);
     }
 
-    function test_AndConditionFactory_TooManyConditions_Reverts() public {
-        AndConditionFactory factory = new AndConditionFactory();
-        ICondition[] memory conds = new ICondition[](11);
+    function test_AndPreActionConditionFactory_TooManyConditions_Reverts() public {
+        AndPreActionConditionFactory factory = new AndPreActionConditionFactory();
+        IPreActionCondition[] memory conds = new IPreActionCondition[](11);
         for (uint256 i = 0; i < 11; i++) {
-            conds[i] = ICondition(address(new PayerCondition()));
+            conds[i] = IPreActionCondition(address(new PayerPreActionCondition()));
         }
-        vm.expectRevert(AndConditionFactory.TooManyConditions.selector);
+        vm.expectRevert(AndPreActionConditionFactory.TooManyConditions.selector);
         factory.deploy(conds);
     }
 
-    function test_AndConditionFactory_GetKey() public {
-        AndConditionFactory factory = new AndConditionFactory();
-        ICondition[] memory conds1 = new ICondition[](1);
-        conds1[0] = ICondition(address(new PayerCondition()));
-        ICondition[] memory conds2 = new ICondition[](1);
-        conds2[0] = ICondition(address(new ReceiverCondition()));
+    function test_AndPreActionConditionFactory_GetKey() public {
+        AndPreActionConditionFactory factory = new AndPreActionConditionFactory();
+        IPreActionCondition[] memory conds1 = new IPreActionCondition[](1);
+        conds1[0] = IPreActionCondition(address(new PayerPreActionCondition()));
+        IPreActionCondition[] memory conds2 = new IPreActionCondition[](1);
+        conds2[0] = IPreActionCondition(address(new ReceiverPreActionCondition()));
 
         bytes32 key1 = factory.getKey(conds1);
         bytes32 key2 = factory.getKey(conds2);
         assertTrue(key1 != key2, "Different conditions should produce different keys");
     }
 
-    // ============ NotConditionFactory ============
+    // ============ NotPreActionConditionFactory ============
 
-    function test_NotConditionFactory_Deploy() public {
-        NotConditionFactory factory = new NotConditionFactory();
-        ICondition cond = ICondition(address(new PayerCondition()));
+    function test_NotPreActionConditionFactory_Deploy() public {
+        NotPreActionConditionFactory factory = new NotPreActionConditionFactory();
+        IPreActionCondition cond = IPreActionCondition(address(new PayerPreActionCondition()));
 
         address deployed = factory.deploy(cond);
-        assertTrue(deployed != address(0), "NotCondition should be deployed");
+        assertTrue(deployed != address(0), "NotPreActionCondition should be deployed");
     }
 
-    function test_NotConditionFactory_IdempotentDeploy() public {
-        NotConditionFactory factory = new NotConditionFactory();
-        ICondition cond = ICondition(address(new PayerCondition()));
+    function test_NotPreActionConditionFactory_IdempotentDeploy() public {
+        NotPreActionConditionFactory factory = new NotPreActionConditionFactory();
+        IPreActionCondition cond = IPreActionCondition(address(new PayerPreActionCondition()));
 
         address first = factory.deploy(cond);
         address second = factory.deploy(cond);
         assertEq(first, second, "Same condition should return same address");
     }
 
-    function test_NotConditionFactory_ComputeAddress() public {
-        NotConditionFactory factory = new NotConditionFactory();
-        ICondition cond = ICondition(address(new PayerCondition()));
+    function test_NotPreActionConditionFactory_ComputeAddress() public {
+        NotPreActionConditionFactory factory = new NotPreActionConditionFactory();
+        IPreActionCondition cond = IPreActionCondition(address(new PayerPreActionCondition()));
 
         address predicted = factory.computeAddress(cond);
         address actual = factory.deploy(cond);
         assertEq(predicted, actual, "Predicted address should match actual");
     }
 
-    function test_NotConditionFactory_GetDeployed() public {
-        NotConditionFactory factory = new NotConditionFactory();
-        ICondition cond = ICondition(address(new PayerCondition()));
+    function test_NotPreActionConditionFactory_GetDeployed() public {
+        NotPreActionConditionFactory factory = new NotPreActionConditionFactory();
+        IPreActionCondition cond = IPreActionCondition(address(new PayerPreActionCondition()));
 
         assertEq(factory.getDeployed(cond), address(0), "Should be zero before deployment");
         address deployed = factory.deploy(cond);
         assertEq(factory.getDeployed(cond), deployed, "Should return deployed address");
     }
 
-    function test_NotConditionFactory_ZeroCondition_Reverts() public {
-        NotConditionFactory factory = new NotConditionFactory();
-        vm.expectRevert(NotConditionFactory.ZeroCondition.selector);
-        factory.deploy(ICondition(address(0)));
+    function test_NotPreActionConditionFactory_ZeroCondition_Reverts() public {
+        NotPreActionConditionFactory factory = new NotPreActionConditionFactory();
+        vm.expectRevert(NotPreActionConditionFactory.ZeroCondition.selector);
+        factory.deploy(IPreActionCondition(address(0)));
     }
 
-    function test_NotConditionFactory_GetKey() public {
-        NotConditionFactory factory = new NotConditionFactory();
-        ICondition cond1 = ICondition(address(new PayerCondition()));
-        ICondition cond2 = ICondition(address(new ReceiverCondition()));
+    function test_NotPreActionConditionFactory_GetKey() public {
+        NotPreActionConditionFactory factory = new NotPreActionConditionFactory();
+        IPreActionCondition cond1 = IPreActionCondition(address(new PayerPreActionCondition()));
+        IPreActionCondition cond2 = IPreActionCondition(address(new ReceiverPreActionCondition()));
 
         bytes32 key1 = factory.getKey(cond1);
         bytes32 key2 = factory.getKey(cond2);
         assertTrue(key1 != key2, "Different conditions should produce different keys");
     }
 
-    // ============ OrConditionFactory ============
+    // ============ OrPreActionConditionFactory ============
 
-    function test_OrConditionFactory_Deploy() public {
-        OrConditionFactory factory = new OrConditionFactory();
-        ICondition[] memory conds = new ICondition[](2);
-        conds[0] = ICondition(address(new PayerCondition()));
-        conds[1] = ICondition(address(new ReceiverCondition()));
+    function test_OrPreActionConditionFactory_Deploy() public {
+        OrPreActionConditionFactory factory = new OrPreActionConditionFactory();
+        IPreActionCondition[] memory conds = new IPreActionCondition[](2);
+        conds[0] = IPreActionCondition(address(new PayerPreActionCondition()));
+        conds[1] = IPreActionCondition(address(new ReceiverPreActionCondition()));
 
         address deployed = factory.deploy(conds);
-        assertTrue(deployed != address(0), "OrCondition should be deployed");
-        assertEq(OrCondition(deployed).conditionCount(), 2, "Should have 2 conditions");
+        assertTrue(deployed != address(0), "OrPreActionCondition should be deployed");
+        assertEq(OrPreActionCondition(deployed).conditionCount(), 2, "Should have 2 conditions");
     }
 
-    function test_OrConditionFactory_IdempotentDeploy() public {
-        OrConditionFactory factory = new OrConditionFactory();
-        ICondition[] memory conds = new ICondition[](1);
-        conds[0] = ICondition(address(new PayerCondition()));
+    function test_OrPreActionConditionFactory_IdempotentDeploy() public {
+        OrPreActionConditionFactory factory = new OrPreActionConditionFactory();
+        IPreActionCondition[] memory conds = new IPreActionCondition[](1);
+        conds[0] = IPreActionCondition(address(new PayerPreActionCondition()));
 
         address first = factory.deploy(conds);
         address second = factory.deploy(conds);
         assertEq(first, second, "Same conditions should return same address");
     }
 
-    function test_OrConditionFactory_ComputeAddress() public {
-        OrConditionFactory factory = new OrConditionFactory();
-        ICondition[] memory conds = new ICondition[](1);
-        conds[0] = ICondition(address(new PayerCondition()));
+    function test_OrPreActionConditionFactory_ComputeAddress() public {
+        OrPreActionConditionFactory factory = new OrPreActionConditionFactory();
+        IPreActionCondition[] memory conds = new IPreActionCondition[](1);
+        conds[0] = IPreActionCondition(address(new PayerPreActionCondition()));
 
         address predicted = factory.computeAddress(conds);
         address actual = factory.deploy(conds);
         assertEq(predicted, actual, "Predicted address should match actual");
     }
 
-    function test_OrConditionFactory_GetDeployed() public {
-        OrConditionFactory factory = new OrConditionFactory();
-        ICondition[] memory conds = new ICondition[](1);
-        conds[0] = ICondition(address(new PayerCondition()));
+    function test_OrPreActionConditionFactory_GetDeployed() public {
+        OrPreActionConditionFactory factory = new OrPreActionConditionFactory();
+        IPreActionCondition[] memory conds = new IPreActionCondition[](1);
+        conds[0] = IPreActionCondition(address(new PayerPreActionCondition()));
 
         assertEq(factory.getDeployed(conds), address(0), "Should be zero before deployment");
         address deployed = factory.deploy(conds);
         assertEq(factory.getDeployed(conds), deployed, "Should return deployed address");
     }
 
-    function test_OrConditionFactory_NoConditions_Reverts() public {
-        OrConditionFactory factory = new OrConditionFactory();
-        ICondition[] memory conds = new ICondition[](0);
-        vm.expectRevert(OrConditionFactory.NoConditions.selector);
+    function test_OrPreActionConditionFactory_NoConditions_Reverts() public {
+        OrPreActionConditionFactory factory = new OrPreActionConditionFactory();
+        IPreActionCondition[] memory conds = new IPreActionCondition[](0);
+        vm.expectRevert(OrPreActionConditionFactory.NoConditions.selector);
         factory.deploy(conds);
     }
 
-    function test_OrConditionFactory_TooManyConditions_Reverts() public {
-        OrConditionFactory factory = new OrConditionFactory();
-        ICondition[] memory conds = new ICondition[](11);
+    function test_OrPreActionConditionFactory_TooManyConditions_Reverts() public {
+        OrPreActionConditionFactory factory = new OrPreActionConditionFactory();
+        IPreActionCondition[] memory conds = new IPreActionCondition[](11);
         for (uint256 i = 0; i < 11; i++) {
-            conds[i] = ICondition(address(new PayerCondition()));
+            conds[i] = IPreActionCondition(address(new PayerPreActionCondition()));
         }
-        vm.expectRevert(OrConditionFactory.TooManyConditions.selector);
+        vm.expectRevert(OrPreActionConditionFactory.TooManyConditions.selector);
         factory.deploy(conds);
     }
 
-    function test_OrConditionFactory_GetKey() public {
-        OrConditionFactory factory = new OrConditionFactory();
-        ICondition[] memory conds1 = new ICondition[](1);
-        conds1[0] = ICondition(address(new PayerCondition()));
-        ICondition[] memory conds2 = new ICondition[](1);
-        conds2[0] = ICondition(address(new ReceiverCondition()));
+    function test_OrPreActionConditionFactory_GetKey() public {
+        OrPreActionConditionFactory factory = new OrPreActionConditionFactory();
+        IPreActionCondition[] memory conds1 = new IPreActionCondition[](1);
+        conds1[0] = IPreActionCondition(address(new PayerPreActionCondition()));
+        IPreActionCondition[] memory conds2 = new IPreActionCondition[](1);
+        conds2[0] = IPreActionCondition(address(new ReceiverPreActionCondition()));
 
         bytes32 key1 = factory.getKey(conds1);
         bytes32 key2 = factory.getKey(conds2);
         assertTrue(key1 != key2, "Different conditions should produce different keys");
     }
 
-    // ============ RecorderCombinatorFactory ============
+    // ============ PostActionHookCombinatorFactory ============
 
-    function test_RecorderCombinatorFactory_Deploy() public {
-        RecorderCombinatorFactory factory = new RecorderCombinatorFactory();
-        IRecorder[] memory recs = new IRecorder[](2);
-        recs[0] = IRecorder(address(new AuthorizationTimeRecorder(address(escrow), bytes32(0))));
-        recs[1] = IRecorder(address(new AuthorizationTimeRecorder(address(escrow), bytes32(0))));
+    function test_PostActionHookCombinatorFactory_Deploy() public {
+        PostActionHookCombinatorFactory factory = new PostActionHookCombinatorFactory();
+        IPostActionHook[] memory recs = new IPostActionHook[](2);
+        recs[0] = IPostActionHook(address(new AuthorizationTimePostActionHook(address(escrow), bytes32(0))));
+        recs[1] = IPostActionHook(address(new AuthorizationTimePostActionHook(address(escrow), bytes32(0))));
 
         address deployed = factory.deploy(recs);
-        assertTrue(deployed != address(0), "RecorderCombinator should be deployed");
-        assertEq(RecorderCombinator(deployed).getRecorderCount(), 2, "Should have 2 recorders");
+        assertTrue(deployed != address(0), "PostActionHookCombinator should be deployed");
+        assertEq(PostActionHookCombinator(deployed).getRecorderCount(), 2, "Should have 2 recorders");
     }
 
-    function test_RecorderCombinatorFactory_IdempotentDeploy() public {
-        RecorderCombinatorFactory factory = new RecorderCombinatorFactory();
-        IRecorder rec = IRecorder(address(new AuthorizationTimeRecorder(address(escrow), bytes32(0))));
-        IRecorder[] memory recs = new IRecorder[](1);
+    function test_PostActionHookCombinatorFactory_IdempotentDeploy() public {
+        PostActionHookCombinatorFactory factory = new PostActionHookCombinatorFactory();
+        IPostActionHook rec = IPostActionHook(address(new AuthorizationTimePostActionHook(address(escrow), bytes32(0))));
+        IPostActionHook[] memory recs = new IPostActionHook[](1);
         recs[0] = rec;
 
         address first = factory.deploy(recs);
@@ -489,50 +497,52 @@ contract FactoryCoverageTest is Test {
         assertEq(first, second, "Same recorders should return same address");
     }
 
-    function test_RecorderCombinatorFactory_ComputeAddress() public {
-        RecorderCombinatorFactory factory = new RecorderCombinatorFactory();
-        IRecorder[] memory recs = new IRecorder[](1);
-        recs[0] = IRecorder(address(new AuthorizationTimeRecorder(address(escrow), bytes32(0))));
+    function test_PostActionHookCombinatorFactory_ComputeAddress() public {
+        PostActionHookCombinatorFactory factory = new PostActionHookCombinatorFactory();
+        IPostActionHook[] memory recs = new IPostActionHook[](1);
+        recs[0] = IPostActionHook(address(new AuthorizationTimePostActionHook(address(escrow), bytes32(0))));
 
         address predicted = factory.computeAddress(recs);
         address actual = factory.deploy(recs);
         assertEq(predicted, actual, "Predicted address should match actual");
     }
 
-    function test_RecorderCombinatorFactory_GetDeployed() public {
-        RecorderCombinatorFactory factory = new RecorderCombinatorFactory();
-        IRecorder[] memory recs = new IRecorder[](1);
-        recs[0] = IRecorder(address(new AuthorizationTimeRecorder(address(escrow), bytes32(0))));
+    function test_PostActionHookCombinatorFactory_GetDeployed() public {
+        PostActionHookCombinatorFactory factory = new PostActionHookCombinatorFactory();
+        IPostActionHook[] memory recs = new IPostActionHook[](1);
+        recs[0] = IPostActionHook(address(new AuthorizationTimePostActionHook(address(escrow), bytes32(0))));
 
         assertEq(factory.getDeployed(recs), address(0), "Should be zero before deployment");
         address deployed = factory.deploy(recs);
         assertEq(factory.getDeployed(recs), deployed, "Should return deployed address");
     }
 
-    function test_RecorderCombinatorFactory_EmptyRecorders_Reverts() public {
-        RecorderCombinatorFactory factory = new RecorderCombinatorFactory();
-        IRecorder[] memory recs = new IRecorder[](0);
-        vm.expectRevert(RecorderCombinatorFactory.EmptyRecorders.selector);
+    function test_PostActionHookCombinatorFactory_EmptyRecorders_Reverts() public {
+        PostActionHookCombinatorFactory factory = new PostActionHookCombinatorFactory();
+        IPostActionHook[] memory recs = new IPostActionHook[](0);
+        vm.expectRevert(PostActionHookCombinatorFactory.EmptyRecorders.selector);
         factory.deploy(recs);
     }
 
-    function test_RecorderCombinatorFactory_TooManyRecorders_Reverts() public {
-        RecorderCombinatorFactory factory = new RecorderCombinatorFactory();
-        IRecorder[] memory recs = new IRecorder[](11);
+    function test_PostActionHookCombinatorFactory_TooManyRecorders_Reverts() public {
+        PostActionHookCombinatorFactory factory = new PostActionHookCombinatorFactory();
+        IPostActionHook[] memory recs = new IPostActionHook[](11);
         for (uint256 i = 0; i < 11; i++) {
-            recs[i] = IRecorder(address(new AuthorizationTimeRecorder(address(escrow), bytes32(0))));
+            recs[i] = IPostActionHook(address(new AuthorizationTimePostActionHook(address(escrow), bytes32(0))));
         }
-        vm.expectRevert(RecorderCombinatorFactory.TooManyRecorders.selector);
+        vm.expectRevert(PostActionHookCombinatorFactory.TooManyRecorders.selector);
         factory.deploy(recs);
     }
 
-    function test_RecorderCombinatorFactory_GetKey() public {
-        RecorderCombinatorFactory factory = new RecorderCombinatorFactory();
-        IRecorder rec1 = IRecorder(address(new AuthorizationTimeRecorder(address(escrow), bytes32(0))));
-        IRecorder rec2 = IRecorder(address(new AuthorizationTimeRecorder(address(escrow), bytes32(0))));
-        IRecorder[] memory recs1 = new IRecorder[](1);
+    function test_PostActionHookCombinatorFactory_GetKey() public {
+        PostActionHookCombinatorFactory factory = new PostActionHookCombinatorFactory();
+        IPostActionHook rec1 =
+            IPostActionHook(address(new AuthorizationTimePostActionHook(address(escrow), bytes32(0))));
+        IPostActionHook rec2 =
+            IPostActionHook(address(new AuthorizationTimePostActionHook(address(escrow), bytes32(0))));
+        IPostActionHook[] memory recs1 = new IPostActionHook[](1);
         recs1[0] = rec1;
-        IRecorder[] memory recs2 = new IRecorder[](1);
+        IPostActionHook[] memory recs2 = new IPostActionHook[](1);
         recs2[0] = rec2;
 
         bytes32 key1 = factory.getKey(recs1);
@@ -628,16 +638,16 @@ contract FactoryCoverageTest is Test {
         return PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
             feeCalculator: feeCalc,
-            authorizeCondition: address(0),
-            authorizeRecorder: address(0),
-            chargeCondition: address(0),
-            chargeRecorder: address(0),
-            captureCondition: address(0),
-            captureRecorder: address(0),
-            voidCondition: address(0),
-            voidRecorder: address(0),
-            refundCondition: address(0),
-            refundRecorder: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(0),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(0),
+            capturePreActionCondition: address(0),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(0),
+            voidPostActionHook: address(0),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
     }
 }
