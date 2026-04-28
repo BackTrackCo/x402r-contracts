@@ -24,6 +24,7 @@ import {
 } from "../../src/plugins/pre-action-conditions/access/static-address/StaticAddressPreActionCondition.sol";
 import {RefundRequest} from "../../src/requests/refund/RefundRequest.sol";
 import {RequestStatus} from "../../src/requests/types/Types.sol";
+import {ReceiverRefundCollector} from "../../src/collectors/ReceiverRefundCollector.sol";
 
 /**
  * @title FullLifecycleTest
@@ -267,6 +268,56 @@ contract FullLifecycleTest is Test {
 
         uint256 payerAfter = token.balanceOf(payer);
         assertEq(payerAfter - payerBefore, PAYMENT_AMOUNT, "Payer receives full authorized amount");
+    }
+
+    // ============ Capture-then-Refund Lifecycle ============
+
+    /// @notice Full E2E lifecycle: authorize -> capture (with fees) -> refund (via
+    ///         ReceiverRefundCollector pulling from receiver's wallet). Documents the
+    ///         replacement path for partial-void: capture first, then refund any portion.
+    function test_LifecycleCaptureThenRefund() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(77777);
+
+        // --- Authorize ---
+        vm.startPrank(payer);
+        collector.preApprove(paymentInfo);
+        vm.stopPrank();
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+
+        // --- Warp past escrow period so capture is allowed ---
+        vm.warp(block.timestamp + ESCROW_PERIOD + 1);
+
+        // --- Capture (fees taken at this stage) ---
+        uint256 receiverBefore = token.balanceOf(receiver);
+        vm.prank(receiver);
+        operator.capture(paymentInfo, PAYMENT_AMOUNT, "");
+
+        uint256 totalFee = (PAYMENT_AMOUNT * TOTAL_BPS) / 10000;
+        uint256 netToReceiver = PAYMENT_AMOUNT - totalFee;
+        assertEq(token.balanceOf(receiver) - receiverBefore, netToReceiver, "receiver gets net");
+
+        // --- Refund via ReceiverRefundCollector: pulls from receiver's allowance ---
+        ReceiverRefundCollector refundCollector = new ReceiverRefundCollector(address(escrow));
+        vm.prank(receiver);
+        token.approve(address(refundCollector), type(uint256).max);
+
+        // Partial refund (half), then another partial refund (quarter) — replacement path
+        // for partial-void: capture first, then refund any partial amount up to PAYMENT_AMOUNT.
+        uint256 firstRefund = PAYMENT_AMOUNT / 2;
+        uint256 secondRefund = PAYMENT_AMOUNT / 4;
+
+        uint256 payerBefore = token.balanceOf(payer);
+        operator.refund(paymentInfo, firstRefund, address(refundCollector), "");
+        assertEq(token.balanceOf(payer) - payerBefore, firstRefund, "first partial refund");
+
+        payerBefore = token.balanceOf(payer);
+        operator.refund(paymentInfo, secondRefund, address(refundCollector), "");
+        assertEq(token.balanceOf(payer) - payerBefore, secondRefund, "second partial refund");
+
+        // Total refunded so far = 3/4 of PAYMENT_AMOUNT. Remaining capacity = 1/4.
+        // Attempting to refund more than what's left should revert at the escrow level.
+        vm.expectRevert();
+        operator.refund(paymentInfo, PAYMENT_AMOUNT / 2, address(refundCollector), "");
     }
 
     // ============ Helper Functions ============

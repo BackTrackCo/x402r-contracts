@@ -10,6 +10,7 @@ import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreAppro
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockDataPreActionCondition} from "./mocks/MockDataPreActionCondition.sol";
 import {MockDataPostActionHook} from "./mocks/MockDataPostActionHook.sol";
+import {PreActionConditionNotMet} from "../src/operator/types/Errors.sol";
 
 /**
  * @title HookDataForwardingTest
@@ -102,11 +103,11 @@ contract HookDataForwardingTest is Test {
         operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
         // void with empty data should REVERT (condition requires magic)
-        vm.expectRevert();
+        vm.expectRevert(PreActionConditionNotMet.selector);
         operator.void(paymentInfo, "");
 
         // void with wrong magic should REVERT
-        vm.expectRevert();
+        vm.expectRevert(PreActionConditionNotMet.selector);
         operator.void(paymentInfo, abi.encode(bytes32(uint256(999))));
 
         // void with correct magic should SUCCEED
@@ -153,11 +154,11 @@ contract HookDataForwardingTest is Test {
         collector.preApprove(paymentInfo);
 
         // authorize with empty collectorData should REVERT (condition requires magic)
-        vm.expectRevert();
+        vm.expectRevert(PreActionConditionNotMet.selector);
         operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
         // authorize with wrong magic should REVERT
-        vm.expectRevert();
+        vm.expectRevert(PreActionConditionNotMet.selector);
         operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), abi.encode(bytes32(uint256(999))));
 
         // authorize with correct magic as collectorData — should SUCCEED
@@ -207,8 +208,8 @@ contract HookDataForwardingTest is Test {
         collector.preApprove(paymentInfo);
         operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
-        // Release with empty data — should REVERT
-        vm.expectRevert();
+        // Capture with empty data — should REVERT (condition requires magic)
+        vm.expectRevert(PreActionConditionNotMet.selector);
         operator.capture(paymentInfo, PAYMENT_AMOUNT, "");
 
         // Release with correct data — should SUCCEED

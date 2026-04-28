@@ -6,6 +6,7 @@ import {PaymentOperator} from "../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
 import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
 import {EscrowPeriod} from "../src/plugins/escrow-period/EscrowPeriod.sol";
+import {PreActionConditionNotMet} from "../src/operator/types/Errors.sol";
 import {EscrowPeriodFactory} from "../src/plugins/escrow-period/EscrowPeriodFactory.sol";
 import {Freeze} from "../src/plugins/freeze/Freeze.sol";
 import {IPreActionCondition} from "../src/plugins/pre-action-conditions/IPreActionCondition.sol";
@@ -192,7 +193,7 @@ contract FreezeConditionTest is Test {
         // Still frozen (permanent), release should revert
         assertTrue(freeze2.isFrozen(pi));
         vm.prank(receiver);
-        vm.expectRevert();
+        vm.expectRevert(PreActionConditionNotMet.selector);
         op2.capture(pi, PAYMENT_AMOUNT, "");
     }
 
@@ -432,7 +433,7 @@ contract FreezeConditionTest is Test {
 
         // Release should revert
         vm.prank(receiver);
-        vm.expectRevert();
+        vm.expectRevert(PreActionConditionNotMet.selector);
         op2.capture(pi, PAYMENT_AMOUNT, "");
     }
 

@@ -6,6 +6,7 @@ import {PaymentOperator} from "../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
 import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
 import {EscrowPeriod} from "../src/plugins/escrow-period/EscrowPeriod.sol";
+import {PreActionConditionNotMet} from "../src/operator/types/Errors.sol";
 import {EscrowPeriodFactory} from "../src/plugins/escrow-period/EscrowPeriodFactory.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
@@ -93,7 +94,7 @@ contract EscrowPeriodConditionTest is Test {
         operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
         vm.prank(receiver);
-        vm.expectRevert();
+        vm.expectRevert(PreActionConditionNotMet.selector);
         operator.capture(paymentInfo, PAYMENT_AMOUNT, "");
     }
 
