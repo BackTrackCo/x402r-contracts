@@ -107,7 +107,7 @@ contract FeeCalculationFuzzTest is Test {
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), totalBps, amount);
         _authorizePayment(op, paymentInfo, amount);
-        op.release(paymentInfo, amount, "");
+        op.capture(paymentInfo, amount, "");
 
         uint256 opBalance = token.balanceOf(address(op));
         uint256 protocolBefore = token.balanceOf(protocolFeeRecipient);
@@ -141,7 +141,7 @@ contract FeeCalculationFuzzTest is Test {
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), protocolBps, amount);
         _authorizePayment(op, paymentInfo, amount);
-        op.release(paymentInfo, amount, "");
+        op.capture(paymentInfo, amount, "");
 
         uint256 opBalance = token.balanceOf(address(op));
         uint256 accumulated = op.accumulatedProtocolFees(address(token));
@@ -162,18 +162,18 @@ contract FeeCalculationFuzzTest is Test {
         PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: operatorFeeRecipient,
+            feeReceiver: operatorFeeRecipient,
             feeCalculator: opCalcAddr,
             authorizeCondition: address(0),
             authorizeRecorder: address(0),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(0),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(0),
-            refundInEscrowRecorder: address(0),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            captureCondition: address(0),
+            captureRecorder: address(0),
+            voidCondition: address(0),
+            voidRecorder: address(0),
+            refundCondition: address(0),
+            refundRecorder: address(0)
         });
         op = PaymentOperator(factory.deployOperator(config));
     }

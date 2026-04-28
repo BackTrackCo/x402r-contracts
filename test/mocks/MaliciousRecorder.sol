@@ -56,7 +56,7 @@ contract MaliciousRecorder is IRecorder {
         if (attackType == AttackType.REENTER_SAME_FUNCTION && reentrancyCount <= maxReentrancy) {
             // Try to reenter the same function with same payment
             // This should fail because escrow rejects duplicate operations
-            try targetOperator.release(paymentInfo, amount, "") {
+            try targetOperator.capture(paymentInfo, amount, "") {
             // If this succeeds, it's a vulnerability!
             }
                 catch {
@@ -65,7 +65,7 @@ contract MaliciousRecorder is IRecorder {
         } else if (attackType == AttackType.REENTER_DIFFERENT_FUNCTION && reentrancyCount <= maxReentrancy) {
             // Try to call a different function during callback
             // Create a new payment for refund attempt
-            try targetOperator.refundPostEscrow(paymentInfo, uint120(amount), address(0), "") {
+            try targetOperator.refund(paymentInfo, uint120(amount), address(0), "") {
             // If this succeeds when it shouldn't, it's a vulnerability
             }
                 catch {
@@ -102,6 +102,6 @@ contract MaliciousRecorder is IRecorder {
      * @notice Manually trigger attack for testing
      */
     function triggerAttack() external {
-        targetOperator.release(storedPaymentInfo, storedPaymentInfo.maxAmount, "");
+        targetOperator.capture(storedPaymentInfo, storedPaymentInfo.maxAmount, "");
     }
 }

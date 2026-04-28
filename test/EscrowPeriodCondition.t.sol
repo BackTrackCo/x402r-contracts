@@ -47,18 +47,18 @@ contract EscrowPeriodConditionTest is Test {
         operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: protocolFeeRecipient,
+            feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
             authorizeCondition: address(0),
             authorizeRecorder: address(escrowPeriod),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(escrowPeriod),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(0),
-            refundInEscrowRecorder: address(0),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            captureCondition: address(escrowPeriod),
+            captureRecorder: address(0),
+            voidCondition: address(0),
+            voidRecorder: address(0),
+            refundCondition: address(0),
+            refundRecorder: address(0)
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
 
@@ -94,7 +94,7 @@ contract EscrowPeriodConditionTest is Test {
 
         vm.prank(receiver);
         vm.expectRevert();
-        operator.release(paymentInfo, PAYMENT_AMOUNT, "");
+        operator.capture(paymentInfo, PAYMENT_AMOUNT, "");
     }
 
     function test_ReleaseAllowedAfterEscrowPeriod() public {
@@ -108,7 +108,7 @@ contract EscrowPeriodConditionTest is Test {
         vm.warp(block.timestamp + ESCROW_PERIOD + 1);
 
         vm.prank(receiver);
-        operator.release(paymentInfo, PAYMENT_AMOUNT, "");
+        operator.capture(paymentInfo, PAYMENT_AMOUNT, "");
 
         assertTrue(token.balanceOf(receiver) > 0);
     }

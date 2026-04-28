@@ -70,7 +70,7 @@ contract DeployCreate3 is Create3Deployer {
         uint256 deployerPk = vm.envUint("PRIVATE_KEY");
         string memory salt = vm.envString("SALT");
         address owner = vm.envOr("OWNER_ADDRESS", msg.sender);
-        address protocolFeeRecipient = vm.envOr("PROTOCOL_FEE_RECIPIENT", msg.sender);
+        address protocolFeeRecipient = vm.envOr("PROTOCOL_FEE_RECEIVER", msg.sender);
         uint256 protocolFeeBps = vm.envOr("PROTOCOL_FEE_BPS", uint256(0));
         address usdcAddress = vm.envAddress("USDC_ADDRESS");
         uint256 tvlLimit = vm.envUint("TVL_LIMIT");

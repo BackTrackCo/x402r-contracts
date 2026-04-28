@@ -5,7 +5,7 @@ import {ICondition} from "../../src/plugins/conditions/ICondition.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
 /// @notice Release conditions are not met
-error ReleaseLocked();
+error CaptureLocked();
 
 /**
  * @title MockReleaseCondition

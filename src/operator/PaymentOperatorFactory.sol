@@ -25,18 +25,18 @@ import {OperatorDeployed} from "./types/Events.sol";
 contract PaymentOperatorFactory {
     /// @notice Configuration struct for deploying operators
     struct OperatorConfig {
-        address feeRecipient;
+        address feeReceiver;
         address feeCalculator;
         address authorizeCondition;
         address authorizeRecorder;
         address chargeCondition;
         address chargeRecorder;
-        address releaseCondition;
-        address releaseRecorder;
-        address refundInEscrowCondition;
-        address refundInEscrowRecorder;
-        address refundPostEscrowCondition;
-        address refundPostEscrowRecorder;
+        address captureCondition;
+        address captureRecorder;
+        address voidCondition;
+        address voidRecorder;
+        address refundCondition;
+        address refundRecorder;
     }
 
     // Immutable configuration shared by all deployed operators
@@ -82,14 +82,14 @@ contract PaymentOperatorFactory {
      *      Uses CREATE2 for deterministic addresses.
      * @param config The operator configuration
      * @return operator The operator address
-     * @custom:security ARBITER LOCKOUT: If releaseCondition is address(0), the receiver can
-     *         front-run an arbiter's updateStatus() by calling release() to drain capturableAmount,
-     *         locking out the arbiter (post-escrow = receiver only). Always set a releaseCondition
+     * @custom:security ARBITER LOCKOUT: If captureCondition is address(0), the receiver can
+     *         front-run an arbiter's updateStatus() by calling capture() to drain capturableAmount,
+     *         locking out the arbiter (post-capture = receiver only). Always set a captureCondition
      *         (e.g., EscrowPeriod) when using freeze or refund dispute flows.
      */
     function deployOperator(OperatorConfig calldata config) external returns (address operator) {
         // ============ CHECKS ============
-        if (config.feeRecipient == address(0)) revert ZeroAddress();
+        if (config.feeReceiver == address(0)) revert ZeroAddress();
 
         bytes32 key = _computeKey(config);
 
@@ -108,7 +108,7 @@ contract PaymentOperatorFactory {
         // Store before external interaction
         operators[key] = operator;
 
-        emit OperatorDeployed(operator, msg.sender, config.feeRecipient);
+        emit OperatorDeployed(operator, msg.sender, config.feeReceiver);
 
         // ============ INTERACTIONS ============
         // Deploy new operator - address is deterministic via CREATE2
@@ -117,16 +117,16 @@ contract PaymentOperatorFactory {
             authorizeRecorder: config.authorizeRecorder,
             chargeCondition: config.chargeCondition,
             chargeRecorder: config.chargeRecorder,
-            releaseCondition: config.releaseCondition,
-            releaseRecorder: config.releaseRecorder,
-            refundInEscrowCondition: config.refundInEscrowCondition,
-            refundInEscrowRecorder: config.refundInEscrowRecorder,
-            refundPostEscrowCondition: config.refundPostEscrowCondition,
-            refundPostEscrowRecorder: config.refundPostEscrowRecorder
+            captureCondition: config.captureCondition,
+            captureRecorder: config.captureRecorder,
+            voidCondition: config.voidCondition,
+            voidRecorder: config.voidRecorder,
+            refundCondition: config.refundCondition,
+            refundRecorder: config.refundRecorder
         });
         address deployed = address(
             new PaymentOperator{salt: key}(
-                ESCROW, PROTOCOL_FEE_CONFIG, config.feeRecipient, config.feeCalculator, conditions
+                ESCROW, PROTOCOL_FEE_CONFIG, config.feeReceiver, config.feeCalculator, conditions
             )
         );
 
@@ -141,18 +141,18 @@ contract PaymentOperatorFactory {
     function _computeKey(OperatorConfig memory config) internal pure returns (bytes32) {
         return keccak256(
             abi.encodePacked(
-                config.feeRecipient,
+                config.feeReceiver,
                 config.feeCalculator,
                 config.authorizeCondition,
                 config.authorizeRecorder,
                 config.chargeCondition,
                 config.chargeRecorder,
-                config.releaseCondition,
-                config.releaseRecorder,
-                config.refundInEscrowCondition,
-                config.refundInEscrowRecorder,
-                config.refundPostEscrowCondition,
-                config.refundPostEscrowRecorder
+                config.captureCondition,
+                config.captureRecorder,
+                config.voidCondition,
+                config.voidRecorder,
+                config.refundCondition,
+                config.refundRecorder
             )
         );
     }
@@ -164,17 +164,17 @@ contract PaymentOperatorFactory {
             authorizeRecorder: config.authorizeRecorder,
             chargeCondition: config.chargeCondition,
             chargeRecorder: config.chargeRecorder,
-            releaseCondition: config.releaseCondition,
-            releaseRecorder: config.releaseRecorder,
-            refundInEscrowCondition: config.refundInEscrowCondition,
-            refundInEscrowRecorder: config.refundInEscrowRecorder,
-            refundPostEscrowCondition: config.refundPostEscrowCondition,
-            refundPostEscrowRecorder: config.refundPostEscrowRecorder
+            captureCondition: config.captureCondition,
+            captureRecorder: config.captureRecorder,
+            voidCondition: config.voidCondition,
+            voidRecorder: config.voidRecorder,
+            refundCondition: config.refundCondition,
+            refundRecorder: config.refundRecorder
         });
 
         return abi.encodePacked(
             type(PaymentOperator).creationCode,
-            abi.encode(ESCROW, PROTOCOL_FEE_CONFIG, config.feeRecipient, config.feeCalculator, conditions)
+            abi.encode(ESCROW, PROTOCOL_FEE_CONFIG, config.feeReceiver, config.feeCalculator, conditions)
         );
     }
 }

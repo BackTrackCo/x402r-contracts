@@ -11,14 +11,14 @@ contract DeployProtocolFeeConfig is Create3Deployer {
         string memory label = vm.envString("LABEL");
         string memory salt = vm.envOr("SALT", string(""));
         address calculator = vm.envOr("CALCULATOR_ADDRESS", address(0));
-        address feeRecipient = vm.envAddress("PROTOCOL_FEE_RECIPIENT");
+        address feeReceiver = vm.envAddress("PROTOCOL_FEE_RECEIVER");
         address owner = vm.envAddress("OWNER_ADDRESS");
 
         vm.startBroadcast(deployerPk);
         address deployed = _deploy3(
             label,
             salt,
-            abi.encodePacked(type(ProtocolFeeConfig).creationCode, abi.encode(calculator, feeRecipient, owner))
+            abi.encodePacked(type(ProtocolFeeConfig).creationCode, abi.encode(calculator, feeReceiver, owner))
         );
         console.log("ProtocolFeeConfig:", deployed);
         vm.stopBroadcast();

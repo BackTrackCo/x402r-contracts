@@ -31,7 +31,7 @@ contract FreezeEscrowBoundaryFuzzTest is Test {
     EscrowPeriod public escrowPeriod;
     Freeze public freeze;
     Freeze public permanentFreeze;
-    AndCondition public releaseCondition;
+    AndCondition public captureCondition;
     MockERC20 public token;
     PayerCondition public payerCondition;
 
@@ -69,24 +69,24 @@ contract FreezeEscrowBoundaryFuzzTest is Test {
         ICondition[] memory conditions = new ICondition[](2);
         conditions[0] = ICondition(address(escrowPeriod));
         conditions[1] = ICondition(address(freeze));
-        releaseCondition = new AndCondition(conditions);
+        captureCondition = new AndCondition(conditions);
 
         protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
         operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: protocolFeeRecipient,
+            feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
             authorizeCondition: address(0),
             authorizeRecorder: address(escrowPeriod),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(releaseCondition),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(0),
-            refundInEscrowRecorder: address(0),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            captureCondition: address(captureCondition),
+            captureRecorder: address(0),
+            voidCondition: address(0),
+            voidRecorder: address(0),
+            refundCondition: address(0),
+            refundRecorder: address(0)
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
 
@@ -142,13 +142,13 @@ contract FreezeEscrowBoundaryFuzzTest is Test {
         if (escrowPeriodAllows && freezeAllows) {
             // Both conditions met: release should succeed
             vm.prank(receiver);
-            operator.release(paymentInfo, PAYMENT_AMOUNT, "");
+            operator.capture(paymentInfo, PAYMENT_AMOUNT, "");
             assertTrue(token.balanceOf(receiver) > 0, "Receiver should have tokens after release");
         } else {
             // At least one condition not met: release should revert
             vm.prank(receiver);
             vm.expectRevert();
-            operator.release(paymentInfo, PAYMENT_AMOUNT, "");
+            operator.capture(paymentInfo, PAYMENT_AMOUNT, "");
         }
     }
 
@@ -169,7 +169,7 @@ contract FreezeEscrowBoundaryFuzzTest is Test {
         // Release should fail (still in escrow period AND frozen)
         vm.prank(receiver);
         vm.expectRevert();
-        operator.release(paymentInfo, PAYMENT_AMOUNT, "");
+        operator.capture(paymentInfo, PAYMENT_AMOUNT, "");
 
         // Unfreeze so we can test the boundary release
         vm.prank(payer);
@@ -184,7 +184,7 @@ contract FreezeEscrowBoundaryFuzzTest is Test {
 
         // Release should succeed (escrow period passed, not frozen)
         vm.prank(receiver);
-        operator.release(paymentInfo, PAYMENT_AMOUNT, "");
+        operator.capture(paymentInfo, PAYMENT_AMOUNT, "");
         assertTrue(token.balanceOf(receiver) > 0, "Receiver should have tokens at boundary");
     }
 
@@ -218,18 +218,18 @@ contract FreezeEscrowBoundaryFuzzTest is Test {
         PaymentOperatorFactory opFactory2 = new PaymentOperatorFactory(address(escrow), address(pfc2));
 
         PaymentOperatorFactory.OperatorConfig memory config2 = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: protocolFeeRecipient,
+            feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
             authorizeCondition: address(0),
             authorizeRecorder: address(ep2),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(relCond2),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(0),
-            refundInEscrowRecorder: address(0),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            captureCondition: address(relCond2),
+            captureRecorder: address(0),
+            voidCondition: address(0),
+            voidRecorder: address(0),
+            refundCondition: address(0),
+            refundRecorder: address(0)
         });
         PaymentOperator op2 = PaymentOperator(opFactory2.deployOperator(config2));
 
@@ -266,7 +266,7 @@ contract FreezeEscrowBoundaryFuzzTest is Test {
         // Release should always revert
         vm.prank(receiver);
         vm.expectRevert();
-        op2.release(pi, PAYMENT_AMOUNT, "");
+        op2.capture(pi, PAYMENT_AMOUNT, "");
     }
 
     // ============ Helpers ============

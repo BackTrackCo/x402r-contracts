@@ -46,7 +46,7 @@ contract GasBenchmark is Test {
     // ============ Plugins ============
     EscrowPeriod public escrowPeriod;
     Freeze public freeze;
-    AndCondition public releaseCondition;
+    AndCondition public captureCondition;
     PayerCondition public payerCondition;
 
     // ============ Operators ============
@@ -113,7 +113,7 @@ contract GasBenchmark is Test {
         ICondition[] memory conditions = new ICondition[](2);
         conditions[0] = ICondition(address(escrowPeriod));
         conditions[1] = ICondition(address(freeze));
-        releaseCondition = new AndCondition(conditions);
+        captureCondition = new AndCondition(conditions);
 
         // Deploy operator factories
         operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
@@ -124,87 +124,87 @@ contract GasBenchmark is Test {
 
         // --- BARE OPERATOR (no conditions, no recorders, no fees) ---
         PaymentOperatorFactory.OperatorConfig memory bareConfig = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: operatorFeeRecipient,
+            feeReceiver: operatorFeeRecipient,
             feeCalculator: address(0),
             authorizeCondition: address(0),
             authorizeRecorder: address(0),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(0),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(0),
-            refundInEscrowRecorder: address(0),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            captureCondition: address(0),
+            captureRecorder: address(0),
+            voidCondition: address(0),
+            voidRecorder: address(0),
+            refundCondition: address(0),
+            refundRecorder: address(0)
         });
         bareOperator = PaymentOperator(bareOperatorFactory.deployOperator(bareConfig));
 
         // --- FEES-ONLY OPERATOR (fees, no conditions/recorders) ---
         PaymentOperatorFactory.OperatorConfig memory feesOnlyConfig = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: operatorFeeRecipient,
+            feeReceiver: operatorFeeRecipient,
             feeCalculator: address(operatorCalc),
             authorizeCondition: address(0),
             authorizeRecorder: address(0),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(0),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(0),
-            refundInEscrowRecorder: address(0),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            captureCondition: address(0),
+            captureRecorder: address(0),
+            voidCondition: address(0),
+            voidRecorder: address(0),
+            refundCondition: address(0),
+            refundRecorder: address(0)
         });
         feesOnlyOperator = PaymentOperator(operatorFactory.deployOperator(feesOnlyConfig));
 
         // --- SIMPLE OPERATOR (fees + ReceiverCondition on release) ---
         ReceiverCondition receiverCondition = new ReceiverCondition();
         PaymentOperatorFactory.OperatorConfig memory simpleConfig = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: operatorFeeRecipient,
+            feeReceiver: operatorFeeRecipient,
             feeCalculator: address(operatorCalc),
             authorizeCondition: address(0),
             authorizeRecorder: address(0),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(receiverCondition),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(0),
-            refundInEscrowRecorder: address(0),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            captureCondition: address(receiverCondition),
+            captureRecorder: address(0),
+            voidCondition: address(0),
+            voidRecorder: address(0),
+            refundCondition: address(0),
+            refundRecorder: address(0)
         });
         simpleOperator = PaymentOperator(operatorFactory.deployOperator(simpleConfig));
 
         // --- ESCROW-ONLY OPERATOR (fees + EscrowPeriod recorder + EscrowPeriod release condition, no Freeze) ---
         PaymentOperatorFactory.OperatorConfig memory escrowOnlyConfig = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: operatorFeeRecipient,
+            feeReceiver: operatorFeeRecipient,
             feeCalculator: address(operatorCalc),
             authorizeCondition: address(0),
             authorizeRecorder: address(escrowPeriod),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(escrowPeriod),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(0),
-            refundInEscrowRecorder: address(0),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            captureCondition: address(escrowPeriod),
+            captureRecorder: address(0),
+            voidCondition: address(0),
+            voidRecorder: address(0),
+            refundCondition: address(0),
+            refundRecorder: address(0)
         });
         escrowOnlyOperator = PaymentOperator(operatorFactory.deployOperator(escrowOnlyConfig));
 
         // --- FULL OPERATOR (EscrowPeriod recorder, EscrowPeriod+Freeze release condition, fees) ---
         PaymentOperatorFactory.OperatorConfig memory fullConfig = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: operatorFeeRecipient,
+            feeReceiver: operatorFeeRecipient,
             feeCalculator: address(operatorCalc),
             authorizeCondition: address(0),
             authorizeRecorder: address(escrowPeriod),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(releaseCondition),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(0),
-            refundInEscrowRecorder: address(0),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            captureCondition: address(captureCondition),
+            captureRecorder: address(0),
+            voidCondition: address(0),
+            voidRecorder: address(0),
+            refundCondition: address(0),
+            refundRecorder: address(0)
         });
         fullOperator = PaymentOperator(operatorFactory.deployOperator(fullConfig));
 
@@ -282,7 +282,7 @@ contract GasBenchmark is Test {
 
         vm.prank(receiver);
         uint256 gasBefore = gasleft();
-        bareOperator.release(pi, PAYMENT_AMOUNT, "");
+        bareOperator.capture(pi, PAYMENT_AMOUNT, "");
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== BARE COMMERCE PAYMENTS ===");
@@ -330,7 +330,7 @@ contract GasBenchmark is Test {
 
         vm.prank(receiver);
         uint256 gasBefore = gasleft();
-        feesOnlyOperator.release(pi, PAYMENT_AMOUNT, "");
+        feesOnlyOperator.capture(pi, PAYMENT_AMOUNT, "");
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== FEES ONLY ===");
@@ -364,7 +364,7 @@ contract GasBenchmark is Test {
 
         vm.prank(receiver);
         uint256 gasBefore = gasleft();
-        simpleOperator.release(pi, PAYMENT_AMOUNT, "");
+        simpleOperator.capture(pi, PAYMENT_AMOUNT, "");
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== SIMPLE CONDITIONS ===");
@@ -448,7 +448,7 @@ contract GasBenchmark is Test {
 
         vm.prank(receiver);
         uint256 gasBefore = gasleft();
-        fullOperator.release(pi, PAYMENT_AMOUNT, "");
+        fullOperator.capture(pi, PAYMENT_AMOUNT, "");
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== x402r HAPPY PATH ===");
@@ -463,7 +463,7 @@ contract GasBenchmark is Test {
         fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
         vm.warp(block.timestamp + ESCROW_PERIOD_DURATION + 1);
         vm.prank(receiver);
-        fullOperator.release(pi, PAYMENT_AMOUNT, "");
+        fullOperator.capture(pi, PAYMENT_AMOUNT, "");
 
         uint256 gasBefore = gasleft();
         fullOperator.distributeFees(address(token));
@@ -521,7 +521,7 @@ contract GasBenchmark is Test {
 
         vm.prank(arbiter);
         uint256 gasBefore = gasleft();
-        fullOperator.refundInEscrow(pi, uint120(PAYMENT_AMOUNT), "");
+        fullOperator.void(pi, "");
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== x402r UNHAPPY PATH ===");
@@ -547,7 +547,7 @@ contract GasBenchmark is Test {
         console.log("submitEvidence:", gasUsed);
     }
 
-    function test_gas_refundInEscrow() public {
+    function test_gas_void() public {
         AuthCaptureEscrow.PaymentInfo memory pi = _createPaymentInfo(address(fullOperator), TOTAL_BPS, 24);
 
         vm.prank(payer);
@@ -555,11 +555,11 @@ contract GasBenchmark is Test {
         fullOperator.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
 
         uint256 gasBefore = gasleft();
-        fullOperator.refundInEscrow(pi, uint120(PAYMENT_AMOUNT), "");
+        fullOperator.void(pi, "");
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== x402r UNHAPPY PATH ===");
-        console.log("refundInEscrow:", gasUsed);
+        console.log("void:", gasUsed);
     }
 
     function test_gas_refundPostEscrow() public {
@@ -571,13 +571,13 @@ contract GasBenchmark is Test {
 
         vm.warp(block.timestamp + ESCROW_PERIOD_DURATION + 1);
         vm.prank(receiver);
-        fullOperator.release(pi, PAYMENT_AMOUNT, "");
+        fullOperator.capture(pi, PAYMENT_AMOUNT, "");
 
         // Receiver already approved refundCollector in setUp()
         uint256 netAmount = PAYMENT_AMOUNT - (PAYMENT_AMOUNT * TOTAL_BPS) / 10000;
 
         uint256 gasBefore = gasleft();
-        fullOperator.refundPostEscrow(pi, netAmount, address(refundCollector), "");
+        fullOperator.refund(pi, netAmount, address(refundCollector), "");
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== x402r UNHAPPY PATH ===");
@@ -606,13 +606,13 @@ contract GasBenchmark is Test {
         // Cold release: first release in this transaction
         vm.prank(receiver);
         uint256 g1 = gasleft();
-        fullOperator.release(pi1, PAYMENT_AMOUNT, "");
+        fullOperator.capture(pi1, PAYMENT_AMOUNT, "");
         uint256 coldGas = g1 - gasleft();
 
         // Warm release: second release, contracts cached
         vm.prank(receiver);
         uint256 g2 = gasleft();
-        fullOperator.release(pi2, PAYMENT_AMOUNT, "");
+        fullOperator.capture(pi2, PAYMENT_AMOUNT, "");
         uint256 warmGas = g2 - gasleft();
 
         console.log("=== RELEASE COLD vs WARM ===");
@@ -640,9 +640,9 @@ contract GasBenchmark is Test {
         vm.warp(block.timestamp + ESCROW_PERIOD_DURATION + 1);
 
         vm.prank(receiver);
-        fullOperator.release(pi1, PAYMENT_AMOUNT, "");
+        fullOperator.capture(pi1, PAYMENT_AMOUNT, "");
         vm.prank(receiver);
-        escrowOnlyOperator.release(pi2, PAYMENT_AMOUNT, "");
+        escrowOnlyOperator.capture(pi2, PAYMENT_AMOUNT, "");
 
         // Cold distributeFees
         uint256 g1 = gasleft();
@@ -777,13 +777,13 @@ contract GasBenchmark is Test {
         // Cold approve
         vm.prank(arbiter);
         uint256 g1 = gasleft();
-        fullOperator.refundInEscrow(pi1, uint120(PAYMENT_AMOUNT), "");
+        fullOperator.void(pi1, "");
         uint256 coldGas = g1 - gasleft();
 
         // Warm approve
         vm.prank(arbiter);
         uint256 g2 = gasleft();
-        fullOperator.refundInEscrow(pi2, uint120(PAYMENT_AMOUNT), "");
+        fullOperator.void(pi2, "");
         uint256 warmGas = g2 - gasleft();
 
         console.log("=== APPROVE REFUND COLD vs WARM ===");
@@ -792,7 +792,7 @@ contract GasBenchmark is Test {
         console.log("savings:", coldGas - warmGas);
     }
 
-    function test_gas_refundInEscrowColdVsWarm() public {
+    function test_gas_voidColdVsWarm() public {
         AuthCaptureEscrow.PaymentInfo memory pi1 = _createPaymentInfo(address(fullOperator), TOTAL_BPS, 72);
         AuthCaptureEscrow.PaymentInfo memory pi2 = _createPaymentInfo(address(fullOperator), TOTAL_BPS, 73);
 
@@ -804,14 +804,14 @@ contract GasBenchmark is Test {
         collector.preApprove(pi2);
         fullOperator.authorize(pi2, PAYMENT_AMOUNT, address(collector), "");
 
-        // Cold refundInEscrow
+        // Cold void
         uint256 g1 = gasleft();
-        fullOperator.refundInEscrow(pi1, uint120(PAYMENT_AMOUNT), "");
+        fullOperator.void(pi1, "");
         uint256 coldGas = g1 - gasleft();
 
-        // Warm refundInEscrow
+        // Warm void
         uint256 g2 = gasleft();
-        fullOperator.refundInEscrow(pi2, uint120(PAYMENT_AMOUNT), "");
+        fullOperator.void(pi2, "");
         uint256 warmGas = g2 - gasleft();
 
         console.log("=== REFUND IN ESCROW COLD vs WARM ===");
@@ -835,20 +835,20 @@ contract GasBenchmark is Test {
         vm.warp(block.timestamp + ESCROW_PERIOD_DURATION + 1);
 
         vm.prank(receiver);
-        fullOperator.release(pi1, PAYMENT_AMOUNT, "");
+        fullOperator.capture(pi1, PAYMENT_AMOUNT, "");
         vm.prank(receiver);
-        fullOperator.release(pi2, PAYMENT_AMOUNT, "");
+        fullOperator.capture(pi2, PAYMENT_AMOUNT, "");
 
         uint256 netAmount = PAYMENT_AMOUNT - (PAYMENT_AMOUNT * TOTAL_BPS) / 10000;
 
         // Cold refundPostEscrow
         uint256 g1 = gasleft();
-        fullOperator.refundPostEscrow(pi1, netAmount, address(refundCollector), "");
+        fullOperator.refund(pi1, netAmount, address(refundCollector), "");
         uint256 coldGas = g1 - gasleft();
 
         // Warm refundPostEscrow
         uint256 g2 = gasleft();
-        fullOperator.refundPostEscrow(pi2, netAmount, address(refundCollector), "");
+        fullOperator.refund(pi2, netAmount, address(refundCollector), "");
         uint256 warmGas = g2 - gasleft();
 
         console.log("=== REFUND POST ESCROW COLD vs WARM ===");
@@ -984,53 +984,53 @@ contract GasBenchmark is Test {
         // --- COLD PASS ---
         vm.prank(receiver);
         uint256 g1 = gasleft();
-        bareOperator.release(piBare1, PAYMENT_AMOUNT, "");
+        bareOperator.capture(piBare1, PAYMENT_AMOUNT, "");
         uint256 bareCold = g1 - gasleft();
 
         vm.prank(receiver);
         uint256 g2 = gasleft();
-        feesOnlyOperator.release(piFees1, PAYMENT_AMOUNT, "");
+        feesOnlyOperator.capture(piFees1, PAYMENT_AMOUNT, "");
         uint256 feesCold = g2 - gasleft();
 
         vm.prank(receiver);
         uint256 g3 = gasleft();
-        simpleOperator.release(piSimple1, PAYMENT_AMOUNT, "");
+        simpleOperator.capture(piSimple1, PAYMENT_AMOUNT, "");
         uint256 simpleCold = g3 - gasleft();
 
         vm.prank(receiver);
         uint256 g4 = gasleft();
-        escrowOnlyOperator.release(piEscrow1, PAYMENT_AMOUNT, "");
+        escrowOnlyOperator.capture(piEscrow1, PAYMENT_AMOUNT, "");
         uint256 escrowCold = g4 - gasleft();
 
         vm.prank(receiver);
         uint256 g5 = gasleft();
-        fullOperator.release(piFull1, PAYMENT_AMOUNT, "");
+        fullOperator.capture(piFull1, PAYMENT_AMOUNT, "");
         uint256 fullCold = g5 - gasleft();
 
         // --- WARM PASS ---
         vm.prank(receiver);
         uint256 g6 = gasleft();
-        bareOperator.release(piBare2, PAYMENT_AMOUNT, "");
+        bareOperator.capture(piBare2, PAYMENT_AMOUNT, "");
         uint256 bareWarm = g6 - gasleft();
 
         vm.prank(receiver);
         uint256 g7 = gasleft();
-        feesOnlyOperator.release(piFees2, PAYMENT_AMOUNT, "");
+        feesOnlyOperator.capture(piFees2, PAYMENT_AMOUNT, "");
         uint256 feesWarm = g7 - gasleft();
 
         vm.prank(receiver);
         uint256 g8 = gasleft();
-        simpleOperator.release(piSimple2, PAYMENT_AMOUNT, "");
+        simpleOperator.capture(piSimple2, PAYMENT_AMOUNT, "");
         uint256 simpleWarm = g8 - gasleft();
 
         vm.prank(receiver);
         uint256 g9 = gasleft();
-        escrowOnlyOperator.release(piEscrow2, PAYMENT_AMOUNT, "");
+        escrowOnlyOperator.capture(piEscrow2, PAYMENT_AMOUNT, "");
         uint256 escrowWarm = g9 - gasleft();
 
         vm.prank(receiver);
         uint256 g10 = gasleft();
-        fullOperator.release(piFull2, PAYMENT_AMOUNT, "");
+        fullOperator.capture(piFull2, PAYMENT_AMOUNT, "");
         uint256 fullWarm = g10 - gasleft();
 
         console.log("=== RELEASE OVERHEAD COLD vs WARM ===");
@@ -1133,31 +1133,31 @@ contract GasBenchmark is Test {
         // Release: bare
         vm.prank(receiver);
         uint256 g1 = gasleft();
-        bareOperator.release(piBare, PAYMENT_AMOUNT, "");
+        bareOperator.capture(piBare, PAYMENT_AMOUNT, "");
         uint256 bareGas = g1 - gasleft();
 
         // Release: fees only
         vm.prank(receiver);
         uint256 g2 = gasleft();
-        feesOnlyOperator.release(piFees, PAYMENT_AMOUNT, "");
+        feesOnlyOperator.capture(piFees, PAYMENT_AMOUNT, "");
         uint256 feesGas = g2 - gasleft();
 
         // Release: simple
         vm.prank(receiver);
         uint256 g3 = gasleft();
-        simpleOperator.release(piSimple, PAYMENT_AMOUNT, "");
+        simpleOperator.capture(piSimple, PAYMENT_AMOUNT, "");
         uint256 simpleGas = g3 - gasleft();
 
         // Release: escrow-only
         vm.prank(receiver);
         uint256 g4 = gasleft();
-        escrowOnlyOperator.release(piEscrow, PAYMENT_AMOUNT, "");
+        escrowOnlyOperator.capture(piEscrow, PAYMENT_AMOUNT, "");
         uint256 escrowGas = g4 - gasleft();
 
         // Release: full
         vm.prank(receiver);
         uint256 g5 = gasleft();
-        fullOperator.release(piFull, PAYMENT_AMOUNT, "");
+        fullOperator.capture(piFull, PAYMENT_AMOUNT, "");
         uint256 fullGas = g5 - gasleft();
 
         console.log("=== RELEASE OVERHEAD ===");
@@ -1193,7 +1193,7 @@ contract GasBenchmark is Test {
         vm.warp(block.timestamp + ESCROW_PERIOD_DURATION + 1);
         vm.prank(receiver);
         uint256 g2 = gasleft();
-        fullOperator.release(pi, PAYMENT_AMOUNT, "");
+        fullOperator.capture(pi, PAYMENT_AMOUNT, "");
         uint256 releaseGas = g2 - gasleft();
 
         // distributeFees
@@ -1230,7 +1230,7 @@ contract GasBenchmark is Test {
         vm.warp(block.timestamp + ESCROW_PERIOD_DURATION + 1);
         vm.prank(receiver);
         uint256 g3 = gasleft();
-        fullOperator.release(pi, PAYMENT_AMOUNT, "");
+        fullOperator.capture(pi, PAYMENT_AMOUNT, "");
         uint256 releaseGas = g3 - gasleft();
 
         // requestRefund
@@ -1245,8 +1245,8 @@ contract GasBenchmark is Test {
         refundRequestEvidence.submitEvidence(pi, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
         uint256 evidenceGas = g5 - gasleft();
 
-        // approve (arbiter approves — but this is post-escrow, so approve won't work with refundInEscrow)
-        // In v2, approve() atomically calls refundInEscrow, which only works while in escrow.
+        // approve (arbiter approves — but this is post-escrow, so approve won't work with void)
+        // In v2, approve() atomically calls void, which only works while in escrow.
         // For post-escrow flow, the refund request is just tracked (no atomic execution).
         // Measure deny instead (same state machine cost).
         vm.prank(arbiter);
@@ -1257,7 +1257,7 @@ contract GasBenchmark is Test {
         // refundPostEscrow
         uint256 netAmount = PAYMENT_AMOUNT - (PAYMENT_AMOUNT * TOTAL_BPS) / 10000;
         uint256 g7 = gasleft();
-        fullOperator.refundPostEscrow(pi, netAmount, address(refundCollector), "");
+        fullOperator.refund(pi, netAmount, address(refundCollector), "");
         uint256 refundGas = g7 - gasleft();
 
         uint256 total = authorizeGas + freezeGas + releaseGas + requestGas + evidenceGas + denyGas + refundGas;

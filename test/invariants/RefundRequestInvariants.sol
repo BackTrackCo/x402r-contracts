@@ -56,36 +56,36 @@ contract RefundRequestInvariants is Test {
 
         refundRequest = new RefundRequest(arbiter);
 
-        // Build REFUND_IN_ESCROW_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)
+        // Build VOID_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)
         StaticAddressCondition arbiterCondition = new StaticAddressCondition(arbiter);
         ReceiverCondition receiverCondition = new ReceiverCondition();
         ICondition[] memory refundConditions = new ICondition[](2);
         refundConditions[0] = ICondition(address(arbiterCondition));
         refundConditions[1] = ICondition(address(receiverCondition));
-        OrCondition refundInEscrowCondition = new OrCondition(refundConditions);
+        OrCondition voidCondition = new OrCondition(refundConditions);
 
-        // Build RELEASE_CONDITION = Or(StaticAddressCondition(arbiter), PayerCondition)
+        // Build CAPTURE_CONDITION = Or(StaticAddressCondition(arbiter), PayerCondition)
         PayerCondition payerCondition = new PayerCondition();
-        ICondition[] memory releaseConditions = new ICondition[](2);
-        releaseConditions[0] = ICondition(address(arbiterCondition));
-        releaseConditions[1] = ICondition(address(payerCondition));
-        OrCondition releaseCondition = new OrCondition(releaseConditions);
+        ICondition[] memory captureConditions = new ICondition[](2);
+        captureConditions[0] = ICondition(address(arbiterCondition));
+        captureConditions[1] = ICondition(address(payerCondition));
+        OrCondition captureCondition = new OrCondition(captureConditions);
 
         PaymentOperatorFactory operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: address(this),
+            feeReceiver: address(this),
             feeCalculator: address(0),
             authorizeCondition: address(0),
             authorizeRecorder: address(0),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(releaseCondition),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(refundInEscrowCondition),
-            refundInEscrowRecorder: address(refundRequest),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            captureCondition: address(captureCondition),
+            captureRecorder: address(0),
+            voidCondition: address(voidCondition),
+            voidRecorder: address(refundRequest),
+            refundCondition: address(0),
+            refundRecorder: address(0)
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
 
@@ -131,9 +131,9 @@ contract RefundRequestInvariants is Test {
 
         RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequestByKey(paymentInfoHash);
 
-        // Arbiter calls operator.refundInEscrow() which triggers record()
+        // Arbiter calls operator.void() which triggers record()
         vm.prank(arbiter);
-        try operator.refundInEscrow(paymentInfo, data.amount, "") {
+        try operator.void(paymentInfo, "") {
             lastKnownStatus[paymentInfoHash] = RequestStatus.Approved;
             wasTerminallyResolved[paymentInfoHash] = true;
         } catch {}

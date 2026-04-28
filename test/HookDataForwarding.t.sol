@@ -71,26 +71,26 @@ contract HookDataForwardingTest is Test {
         });
     }
 
-    // ============ refundInEscrow: data forwarded to condition ============
+    // ============ void: data forwarded to condition ============
 
-    function test_refundInEscrow_nonEmptyData_reachesCondition() public {
+    function test_void_nonEmptyData_reachesCondition() public {
         // Deploy MockDataCondition that requires MAGIC in data
         MockDataCondition dataCondition = new MockDataCondition(MAGIC);
         MockDataRecorder dataRecorder = new MockDataRecorder();
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: protocolFeeRecipient,
+            feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
             authorizeCondition: address(0),
             authorizeRecorder: address(0),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(0),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(dataCondition),
-            refundInEscrowRecorder: address(dataRecorder),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            captureCondition: address(0),
+            captureRecorder: address(0),
+            voidCondition: address(dataCondition),
+            voidRecorder: address(dataRecorder),
+            refundCondition: address(0),
+            refundRecorder: address(0)
         });
         PaymentOperator operator = PaymentOperator(operatorFactory.deployOperator(config));
 
@@ -101,22 +101,22 @@ contract HookDataForwardingTest is Test {
         collector.preApprove(paymentInfo);
         operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
-        // refundInEscrow with empty data should REVERT (condition requires magic)
+        // void with empty data should REVERT (condition requires magic)
         vm.expectRevert();
-        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT / 2), "");
+        operator.void(paymentInfo, "");
 
-        // refundInEscrow with wrong magic should REVERT
+        // void with wrong magic should REVERT
         vm.expectRevert();
-        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT / 2), abi.encode(bytes32(uint256(999))));
+        operator.void(paymentInfo, abi.encode(bytes32(uint256(999))));
 
-        // refundInEscrow with correct magic should SUCCEED
+        // void with correct magic should SUCCEED
         bytes memory hookData = abi.encode(MAGIC);
         uint256 payerBefore = token.balanceOf(payer);
-        operator.refundInEscrow(paymentInfo, uint120(PAYMENT_AMOUNT / 2), hookData);
+        operator.void(paymentInfo, hookData);
         uint256 payerAfter = token.balanceOf(payer);
 
-        // Verify funds returned
-        assertEq(payerAfter - payerBefore, PAYMENT_AMOUNT / 2, "Payer should receive refund");
+        // Verify funds returned (full void returns the entire authorized amount)
+        assertEq(payerAfter - payerBefore, PAYMENT_AMOUNT, "Payer should receive refund");
 
         // Verify recorder received the data
         assertEq(dataRecorder.recordCount(), 1, "Recorder should be called once");
@@ -131,18 +131,18 @@ contract HookDataForwardingTest is Test {
         MockDataRecorder dataRecorder = new MockDataRecorder();
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: protocolFeeRecipient,
+            feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
             authorizeCondition: address(dataCondition),
             authorizeRecorder: address(dataRecorder),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(0),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(0),
-            refundInEscrowRecorder: address(0),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            captureCondition: address(0),
+            captureRecorder: address(0),
+            voidCondition: address(0),
+            voidRecorder: address(0),
+            refundCondition: address(0),
+            refundRecorder: address(0)
         });
         PaymentOperator operator = PaymentOperator(operatorFactory.deployOperator(config));
 
@@ -183,18 +183,18 @@ contract HookDataForwardingTest is Test {
         MockDataRecorder dataRecorder = new MockDataRecorder();
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: protocolFeeRecipient,
+            feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
             authorizeCondition: address(0),
             authorizeRecorder: address(0),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(dataCondition),
-            releaseRecorder: address(dataRecorder),
-            refundInEscrowCondition: address(0),
-            refundInEscrowRecorder: address(0),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            captureCondition: address(dataCondition),
+            captureRecorder: address(dataRecorder),
+            voidCondition: address(0),
+            voidRecorder: address(0),
+            refundCondition: address(0),
+            refundRecorder: address(0)
         });
         PaymentOperator operator = PaymentOperator(operatorFactory.deployOperator(config));
 
@@ -207,11 +207,11 @@ contract HookDataForwardingTest is Test {
 
         // Release with empty data — should REVERT
         vm.expectRevert();
-        operator.release(paymentInfo, PAYMENT_AMOUNT, "");
+        operator.capture(paymentInfo, PAYMENT_AMOUNT, "");
 
         // Release with correct data — should SUCCEED
         bytes memory hookData = abi.encode(MAGIC);
-        operator.release(paymentInfo, PAYMENT_AMOUNT, hookData);
+        operator.capture(paymentInfo, PAYMENT_AMOUNT, hookData);
 
         assertEq(dataRecorder.recordCount(), 1, "Recorder called on release");
         assertEq(dataRecorder.lastReceivedData(), hookData, "Recorder receives release data");

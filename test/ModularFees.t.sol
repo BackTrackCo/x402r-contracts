@@ -62,7 +62,7 @@ contract ModularFeesTest is Test {
         // Authorize and release
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), totalBps);
         _authorizePayment(op, paymentInfo);
-        op.release(paymentInfo, PAYMENT_AMOUNT, "");
+        op.capture(paymentInfo, PAYMENT_AMOUNT, "");
 
         // Calculate expected fees
         uint256 expectedTotalFee = (PAYMENT_AMOUNT * totalBps) / 10000; // 75
@@ -94,7 +94,7 @@ contract ModularFeesTest is Test {
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), protocolBps);
         _authorizePayment(op, paymentInfo);
-        op.release(paymentInfo, PAYMENT_AMOUNT, "");
+        op.capture(paymentInfo, PAYMENT_AMOUNT, "");
 
         uint256 expectedProtocolFee = (PAYMENT_AMOUNT * protocolBps) / 10000; // 100
 
@@ -121,7 +121,7 @@ contract ModularFeesTest is Test {
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), operatorBps);
         _authorizePayment(op, paymentInfo);
-        op.release(paymentInfo, PAYMENT_AMOUNT, "");
+        op.capture(paymentInfo, PAYMENT_AMOUNT, "");
 
         uint256 expectedOperatorFee = (PAYMENT_AMOUNT * operatorBps) / 10000;
 
@@ -139,7 +139,7 @@ contract ModularFeesTest is Test {
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), 0);
         _authorizePayment(op, paymentInfo);
-        op.release(paymentInfo, PAYMENT_AMOUNT, "");
+        op.capture(paymentInfo, PAYMENT_AMOUNT, "");
 
         // No fees collected
         uint256 operatorBalance = token.balanceOf(address(op));
@@ -192,13 +192,13 @@ contract ModularFeesTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo1 = _createPaymentInfo(address(op), totalBps);
         paymentInfo1.salt = 1;
         _authorizePayment(op, paymentInfo1);
-        op.release(paymentInfo1, PAYMENT_AMOUNT, "");
+        op.capture(paymentInfo1, PAYMENT_AMOUNT, "");
 
         // Second payment
         AuthCaptureEscrow.PaymentInfo memory paymentInfo2 = _createPaymentInfo(address(op), totalBps);
         paymentInfo2.salt = 2;
         _authorizePayment(op, paymentInfo2);
-        op.release(paymentInfo2, PAYMENT_AMOUNT, "");
+        op.capture(paymentInfo2, PAYMENT_AMOUNT, "");
 
         uint256 expectedProtocolFee = 2 * ((PAYMENT_AMOUNT * protocolBps) / 10000);
         assertEq(op.accumulatedProtocolFees(address(token)), expectedProtocolFee, "Accumulated over 2 payments");
@@ -385,7 +385,7 @@ contract ModularFeesTest is Test {
         );
 
         // Release should succeed using stored fees (not recalculated fees which would fail)
-        op.release(paymentInfo, PAYMENT_AMOUNT, "");
+        op.capture(paymentInfo, PAYMENT_AMOUNT, "");
 
         // Verify protocol fee tracking used stored rate
         uint256 expectedProtocolFee = (PAYMENT_AMOUNT * initialProtocolBps) / 10000;
@@ -438,18 +438,18 @@ contract ModularFeesTest is Test {
         returns (PaymentOperatorFactory.OperatorConfig memory)
     {
         return PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: operatorFeeRecipient,
+            feeReceiver: operatorFeeRecipient,
             feeCalculator: feeCalculator,
             authorizeCondition: address(0),
             authorizeRecorder: address(0),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(0),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(0),
-            refundInEscrowRecorder: address(0),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            captureCondition: address(0),
+            captureRecorder: address(0),
+            voidCondition: address(0),
+            voidRecorder: address(0),
+            refundCondition: address(0),
+            refundRecorder: address(0)
         });
     }
 

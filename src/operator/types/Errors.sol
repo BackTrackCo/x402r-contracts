@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 
 // ============ Operator-Specific Errors ============
 error ZeroEscrow();
-error ReleaseLocked();
+error CaptureLocked();
 
 // ============ PaymentInfo Validation Errors ============
 error InvalidFeeReceiver();
@@ -14,5 +14,5 @@ error UnauthorizedCaller();
 error FeeTooHigh();
 error FeeBoundsIncompatible(uint16 calculatedFeeBps, uint16 minFeeBps, uint16 maxFeeBps);
 
-// ============ Condition Errors ============
-error ConditionNotMet();
+// ============ Pre-Action Condition Errors ============
+error PreActionConditionNotMet();

@@ -63,25 +63,25 @@ contract EscrowPeriodConditionInvariants is Test {
         ICondition[] memory conditions = new ICondition[](2);
         conditions[0] = ICondition(address(escrowPeriod));
         conditions[1] = ICondition(address(freeze));
-        AndCondition releaseCondition = new AndCondition(conditions);
+        AndCondition captureCondition = new AndCondition(conditions);
 
         ProtocolFeeConfig protocolFeeConfig = new ProtocolFeeConfig(address(0), address(this), address(this));
 
         PaymentOperatorFactory operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: address(this),
+            feeReceiver: address(this),
             feeCalculator: address(0),
             authorizeCondition: address(0),
             authorizeRecorder: address(escrowPeriod),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(releaseCondition),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(0),
-            refundInEscrowRecorder: address(0),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            captureCondition: address(captureCondition),
+            captureRecorder: address(0),
+            voidCondition: address(0),
+            voidRecorder: address(0),
+            refundCondition: address(0),
+            refundRecorder: address(0)
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
 
@@ -142,7 +142,7 @@ contract EscrowPeriodConditionInvariants is Test {
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(uint120(PAYMENT_AMOUNT), uint256(hash));
 
-        try operator.release(paymentInfo, amount, "") {
+        try operator.capture(paymentInfo, amount, "") {
             releasedByUs[hash] = true;
         } catch {}
     }

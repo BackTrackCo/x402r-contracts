@@ -14,11 +14,11 @@ import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} fro
  * @title RefundRequest
  * @notice Refund request lifecycle as an IRecorder plugin for PaymentOperator.
  * @dev ARBITER is an immutable address for deny/refuse gating. Approval happens via
- *      operator.refundInEscrow() which triggers record() on this contract as the
+ *      operator.void() which triggers record() on this contract as the
  *      REFUND_IN_ESCROW_RECORDER.
  *
  *      State machine:
- *        Pending  -> Approved  (operator calls record() after refundInEscrow)
+ *        Pending  -> Approved  (operator calls record() after void)
  *        Approved -> Approved  (cumulative top-up via subsequent record() calls)
  *        Pending  -> Denied    (onlyArbiter)
  *        Pending  -> Refused   (onlyArbiter)
@@ -108,12 +108,12 @@ contract RefundRequest is IRecorder {
 
     // ============ IRecorder Implementation ============
 
-    /// @notice Called by PaymentOperator after refundInEscrow succeeds.
+    /// @notice Called by PaymentOperator after void succeeds.
     ///         No-op if no request exists or request is not approvable.
     ///         Caps approved amount at requested amount. Never reverts on state mismatches.
     /// @param paymentInfo PaymentInfo struct
     /// @param amount Amount that was refunded
-    /// @param caller The address that called operator.refundInEscrow()
+    /// @param caller The address that called operator.void()
     function record(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint256 amount,

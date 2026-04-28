@@ -78,18 +78,18 @@ contract ReceiverRefundCollectorTest is Test {
         operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: operatorFeeRecipient,
+            feeReceiver: operatorFeeRecipient,
             feeCalculator: address(operatorCalc),
             authorizeCondition: address(0),
             authorizeRecorder: address(escrowPeriod),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(escrowPeriod),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(0),
-            refundInEscrowRecorder: address(0),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            captureCondition: address(escrowPeriod),
+            captureRecorder: address(0),
+            voidCondition: address(0),
+            voidRecorder: address(0),
+            refundCondition: address(0),
+            refundRecorder: address(0)
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
 
@@ -135,7 +135,7 @@ contract ReceiverRefundCollectorTest is Test {
         // Release
         uint256 receiverBefore = token.balanceOf(receiver);
         vm.prank(receiver);
-        operator.release(paymentInfo, amount, "");
+        operator.capture(paymentInfo, amount, "");
         netAmount = token.balanceOf(receiver) - receiverBefore;
     }
 
@@ -163,7 +163,7 @@ contract ReceiverRefundCollectorTest is Test {
 
         // Post-escrow refund succeeds
         uint256 payerBefore = token.balanceOf(payer);
-        operator.refundPostEscrow(paymentInfo, netAmount, address(refundCollector), "");
+        operator.refund(paymentInfo, netAmount, address(refundCollector), "");
         assertEq(token.balanceOf(payer) - payerBefore, netAmount, "Payer receives full refund");
     }
 
@@ -173,7 +173,7 @@ contract ReceiverRefundCollectorTest is Test {
 
         // Do NOT approve refund collector — should revert
         vm.expectRevert();
-        operator.refundPostEscrow(paymentInfo, netAmount, address(refundCollector), "");
+        operator.refund(paymentInfo, netAmount, address(refundCollector), "");
     }
 
     function test_revert_insufficientAllowance() public {
@@ -186,7 +186,7 @@ contract ReceiverRefundCollectorTest is Test {
 
         // Refund for full amount should revert
         vm.expectRevert();
-        operator.refundPostEscrow(paymentInfo, netAmount, address(refundCollector), "");
+        operator.refund(paymentInfo, netAmount, address(refundCollector), "");
     }
 
     function test_partialRefund() public {
@@ -201,7 +201,7 @@ contract ReceiverRefundCollectorTest is Test {
 
         // Partial refund succeeds
         uint256 payerBefore = token.balanceOf(payer);
-        operator.refundPostEscrow(paymentInfo, halfRefund, address(refundCollector), "");
+        operator.refund(paymentInfo, halfRefund, address(refundCollector), "");
         assertEq(token.balanceOf(payer) - payerBefore, halfRefund, "Payer receives partial refund");
     }
 
@@ -217,7 +217,7 @@ contract ReceiverRefundCollectorTest is Test {
 
         // Refund should revert
         vm.expectRevert();
-        operator.refundPostEscrow(paymentInfo, netAmount, address(refundCollector), "");
+        operator.refund(paymentInfo, netAmount, address(refundCollector), "");
     }
 
     function test_multipleSequentialRefunds() public {
@@ -232,12 +232,12 @@ contract ReceiverRefundCollectorTest is Test {
 
         // First refund
         uint256 payerBefore = token.balanceOf(payer);
-        operator.refundPostEscrow(paymentInfo, thirdRefund, address(refundCollector), "");
+        operator.refund(paymentInfo, thirdRefund, address(refundCollector), "");
         assertEq(token.balanceOf(payer) - payerBefore, thirdRefund, "First refund correct");
 
         // Second refund
         payerBefore = token.balanceOf(payer);
-        operator.refundPostEscrow(paymentInfo, thirdRefund, address(refundCollector), "");
+        operator.refund(paymentInfo, thirdRefund, address(refundCollector), "");
         assertEq(token.balanceOf(payer) - payerBefore, thirdRefund, "Second refund correct");
 
         // Check allowance decremented correctly
@@ -258,7 +258,7 @@ contract ReceiverRefundCollectorTest is Test {
 
         // Refund should revert (enforced by escrow)
         vm.expectRevert();
-        operator.refundPostEscrow(paymentInfo, netAmount, address(refundCollector), "");
+        operator.refund(paymentInfo, netAmount, address(refundCollector), "");
     }
 
     function test_revert_exceedsCapturedAmount() public {
@@ -273,7 +273,7 @@ contract ReceiverRefundCollectorTest is Test {
         bytes32 hash = escrow.getHash(paymentInfo);
         (,, uint120 refundable) = escrow.paymentState(hash);
         vm.expectRevert();
-        operator.refundPostEscrow(paymentInfo, uint256(refundable) + 1, address(refundCollector), "");
+        operator.refund(paymentInfo, uint256(refundable) + 1, address(refundCollector), "");
     }
 
     function test_revert_calledByNonEscrow() public {

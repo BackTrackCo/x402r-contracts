@@ -77,18 +77,18 @@ contract PaymentOperatorInvariants is Test {
         PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: operatorFeeRecipient,
+            feeReceiver: operatorFeeRecipient,
             feeCalculator: address(operatorCalc),
             authorizeCondition: address(0),
             authorizeRecorder: address(0),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(0),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(0),
-            refundInEscrowRecorder: address(0),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            captureCondition: address(0),
+            captureRecorder: address(0),
+            voidCondition: address(0),
+            voidRecorder: address(0),
+            refundCondition: address(0),
+            refundRecorder: address(0)
         });
 
         operator = PaymentOperator(factory.deployOperator(config));
@@ -96,18 +96,18 @@ contract PaymentOperatorInvariants is Test {
         // Deploy operator with malicious recorder to verify reentrancy protection
         maliciousRecorder = new MaliciousRecorder(MaliciousRecorder.AttackType.REENTER_WITHDRAW_FEES);
         PaymentOperatorFactory.OperatorConfig memory reentrancyConfig = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: operatorFeeRecipient,
+            feeReceiver: operatorFeeRecipient,
             feeCalculator: address(operatorCalc),
             authorizeCondition: address(0),
             authorizeRecorder: address(maliciousRecorder),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(0),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(0),
-            refundInEscrowRecorder: address(0),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            captureCondition: address(0),
+            captureRecorder: address(0),
+            voidCondition: address(0),
+            voidRecorder: address(0),
+            refundCondition: address(0),
+            refundRecorder: address(0)
         });
         reentrancyTestOperator = PaymentOperator(factory.deployOperator(reentrancyConfig));
 
@@ -187,7 +187,7 @@ contract PaymentOperatorInvariants is Test {
     }
 
     function _release(AuthCaptureEscrow.PaymentInfo memory paymentInfo, uint256 amount) internal {
-        operator.release(paymentInfo, amount, "");
+        operator.capture(paymentInfo, amount, "");
 
         bytes32 hash = escrow.getHash(paymentInfo);
         if (payments[hash].exists) {
@@ -207,7 +207,7 @@ contract PaymentOperatorInvariants is Test {
     }
 
     function _refund(AuthCaptureEscrow.PaymentInfo memory paymentInfo, uint120 amount) internal {
-        operator.refundInEscrow(paymentInfo, amount, "");
+        operator.void(paymentInfo, "");
 
         bytes32 hash = escrow.getHash(paymentInfo);
         if (payments[hash].exists) {

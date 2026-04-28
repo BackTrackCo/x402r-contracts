@@ -53,18 +53,18 @@ contract ReentrancyAttackTest is Test {
         maliciousRecorder = new MaliciousRecorder(attackType);
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: protocolFeeRecipient,
+            feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
             authorizeCondition: address(0),
             authorizeRecorder: recorderSlot == 0 ? address(maliciousRecorder) : address(0),
             chargeCondition: address(0),
             chargeRecorder: recorderSlot == 1 ? address(maliciousRecorder) : address(0),
-            releaseCondition: address(0),
-            releaseRecorder: recorderSlot == 2 ? address(maliciousRecorder) : address(0),
-            refundInEscrowCondition: address(0),
-            refundInEscrowRecorder: recorderSlot == 3 ? address(maliciousRecorder) : address(0),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: recorderSlot == 4 ? address(maliciousRecorder) : address(0)
+            captureCondition: address(0),
+            captureRecorder: recorderSlot == 2 ? address(maliciousRecorder) : address(0),
+            voidCondition: address(0),
+            voidRecorder: recorderSlot == 3 ? address(maliciousRecorder) : address(0),
+            refundCondition: address(0),
+            refundRecorder: recorderSlot == 4 ? address(maliciousRecorder) : address(0)
         });
 
         return PaymentOperator(factory.deployOperator(config));
@@ -119,7 +119,7 @@ contract ReentrancyAttackTest is Test {
 
         uint256 receiverBalanceBefore = token.balanceOf(receiver);
         vm.prank(receiver);
-        operator.release(paymentInfo, PAYMENT_AMOUNT, "");
+        operator.capture(paymentInfo, PAYMENT_AMOUNT, "");
         uint256 receiverBalanceAfter = token.balanceOf(receiver);
 
         // No fee calculators configured (both address(0)), so fee is 0

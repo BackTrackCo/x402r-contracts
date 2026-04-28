@@ -50,7 +50,7 @@ contract FullLifecycleTest is Test {
 
     // Refund request
     RefundRequest public refundRequest;
-    OrCondition public refundInEscrowCondition;
+    OrCondition public voidCondition;
 
     // Addresses
     address public owner;
@@ -107,29 +107,29 @@ contract FullLifecycleTest is Test {
         // Deploy RefundRequest with arbiter
         refundRequest = new RefundRequest(arbiter);
 
-        // Build REFUND_IN_ESCROW_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)
+        // Build VOID_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)
         StaticAddressCondition arbiterCondition = new StaticAddressCondition(arbiter);
         ICondition[] memory refundConditions = new ICondition[](2);
         refundConditions[0] = ICondition(address(arbiterCondition));
         refundConditions[1] = ICondition(address(receiverCondition));
-        refundInEscrowCondition = new OrCondition(refundConditions);
+        voidCondition = new OrCondition(refundConditions);
 
         // Deploy operator with full configuration
         operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: operatorFeeRecipient,
+            feeReceiver: operatorFeeRecipient,
             feeCalculator: address(operatorCalc),
             authorizeCondition: address(0),
             authorizeRecorder: address(escrowPeriod),
             chargeCondition: address(0),
             chargeRecorder: address(0),
-            releaseCondition: address(escrowReleaseCondition),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(refundInEscrowCondition),
-            refundInEscrowRecorder: address(refundRequest),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            captureCondition: address(escrowReleaseCondition),
+            captureRecorder: address(0),
+            voidCondition: address(voidCondition),
+            voidRecorder: address(refundRequest),
+            refundCondition: address(0),
+            refundRecorder: address(0)
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
 
@@ -161,7 +161,7 @@ contract FullLifecycleTest is Test {
         // --- Step 2: RELEASE BLOCKED (within escrow period) ---
         vm.prank(receiver);
         vm.expectRevert();
-        operator.release(paymentInfo, PAYMENT_AMOUNT, "");
+        operator.capture(paymentInfo, PAYMENT_AMOUNT, "");
 
         // --- Step 3: FREEZE ---
         vm.prank(payer);
@@ -177,7 +177,7 @@ contract FullLifecycleTest is Test {
         // --- Step 6: RELEASE ---
         uint256 receiverBefore = token.balanceOf(receiver);
         vm.prank(receiver);
-        operator.release(paymentInfo, PAYMENT_AMOUNT, "");
+        operator.capture(paymentInfo, PAYMENT_AMOUNT, "");
 
         uint256 expectedTotalFee = (PAYMENT_AMOUNT * TOTAL_BPS) / 10000;
         uint256 expectedNetAmount = PAYMENT_AMOUNT - expectedTotalFee;
@@ -235,9 +235,9 @@ contract FullLifecycleTest is Test {
         assertEq(token.balanceOf(protocolFeeRecipient), expectedProtocolFee, "Protocol recipient paid");
     }
 
-    // ============ Partial Refund In Escrow Lifecycle ============
+    // ============ Full Void Lifecycle ============
 
-    function test_LifecyclePartialRefundInEscrow() public {
+    function test_LifecycleFullVoid() public {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(99999);
 
         // Authorize
@@ -246,34 +246,23 @@ contract FullLifecycleTest is Test {
         vm.stopPrank();
         operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
-        // Payer requests partial refund (50%)
-        uint120 refundAmount = uint120(PAYMENT_AMOUNT / 2);
+        // Payer requests refund
+        uint120 refundAmount = uint120(PAYMENT_AMOUNT);
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo, refundAmount);
 
-        // Arbiter calls operator.refundInEscrow() which triggers record()
+        uint256 payerBefore = token.balanceOf(payer);
+
+        // Arbiter calls operator.void() which voids the entire authorization
         vm.prank(arbiter);
-        operator.refundInEscrow(paymentInfo, refundAmount, "");
+        operator.void(paymentInfo, "");
 
         bytes32 hash = escrow.getHash(paymentInfo);
         (, uint120 capturable,) = escrow.paymentState(hash);
-        assertEq(capturable, PAYMENT_AMOUNT - refundAmount, "Capturable reduced by refund");
+        assertEq(capturable, 0, "Capturable zeroed by void");
 
-        // Still InEscrow (capturable > 0)
-        assertGt(capturable, 0, "Still InEscrow after partial refund");
-
-        // Warp past escrow period
-        vm.warp(block.timestamp + ESCROW_PERIOD + 1);
-
-        // Release remainder
-        uint256 remainder = PAYMENT_AMOUNT - refundAmount;
-        uint256 receiverBefore = token.balanceOf(receiver);
-        vm.prank(receiver);
-        operator.release(paymentInfo, remainder, "");
-
-        uint256 expectedFee = (remainder * TOTAL_BPS) / 10000;
-        uint256 expectedNet = remainder - expectedFee;
-        assertEq(token.balanceOf(receiver) - receiverBefore, expectedNet, "Receiver gets remainder minus fees");
+        uint256 payerAfter = token.balanceOf(payer);
+        assertEq(payerAfter - payerBefore, PAYMENT_AMOUNT, "Payer receives full authorized amount");
     }
 
     // ============ Helper Functions ============
