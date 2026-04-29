@@ -10,6 +10,7 @@ import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreAppro
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockDataPreActionCondition} from "./mocks/MockDataPreActionCondition.sol";
 import {MockDataPostActionHook} from "./mocks/MockDataPostActionHook.sol";
+import {MockNonZeroAmountCondition} from "./mocks/MockNonZeroAmountCondition.sol";
 import {PreActionConditionNotMet} from "../src/operator/types/Errors.sol";
 
 /**
@@ -218,5 +219,44 @@ contract HookDataForwardingTest is Test {
 
         assertEq(dataPostActionHook.recordCount(), 1, "PostActionHook called on release");
         assertEq(dataPostActionHook.lastReceivedData(), hookData, "PostActionHook receives release data");
+    }
+
+    // ============ void: condition receives the capturable amount, not 0 ============
+
+    /// @dev Regression: an earlier draft of `PaymentOperator.void` passed `0` to the
+    ///      pre-action condition's `check`, which silently bypassed any amount-gated
+    ///      logic. The fix reads `paymentState.capturableAmount` first and forwards it.
+    ///      This test installs a condition that only allows when amount > 0; under the
+    ///      old code (amount = 0) the void would revert with PreActionConditionNotMet,
+    ///      under the fix it succeeds.
+    function test_void_passesCapturableAmountToCondition() public {
+        MockNonZeroAmountCondition nonZeroCondition = new MockNonZeroAmountCondition();
+
+        PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
+            feeReceiver: protocolFeeRecipient,
+            feeCalculator: address(0),
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(0),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(0),
+            capturePreActionCondition: address(0),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(nonZeroCondition),
+            voidPostActionHook: address(0),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
+        });
+        PaymentOperator op = PaymentOperator(operatorFactory.deployOperator(config));
+
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), 9999);
+
+        vm.prank(payer);
+        collector.preApprove(paymentInfo);
+        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+
+        // capturableAmount > 0 → condition must pass → void succeeds.
+        uint256 payerBefore = token.balanceOf(payer);
+        op.void(paymentInfo, "");
+        assertEq(token.balanceOf(payer) - payerBefore, PAYMENT_AMOUNT, "payer received voided amount");
     }
 }

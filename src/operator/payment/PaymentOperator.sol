@@ -285,20 +285,22 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
 
     /**
      * @notice Void an authorization, returning held funds to payer
-     * @dev Checks VOID_PRE_ACTION_CONDITION, performs escrow.void, then calls VOID_POST_ACTION_HOOK.
-     *      Reads the capturable amount before voiding so the hook can know how much was returned.
+     * @dev Checks VOID_PRE_ACTION_CONDITION with the current capturable amount, performs
+     *      escrow.void, then calls VOID_POST_ACTION_HOOK. The condition receives the actual
+     *      amount the void will return so amount-gated conditions (e.g. TVL limits, bounds
+     *      checks) work correctly. Passing 0 here would silently bypass any amount-based gate.
      * @param paymentInfo PaymentInfo struct
      * @param data Arbitrary data forwarded to VOID_PRE_ACTION_CONDITION.check() and VOID_POST_ACTION_HOOK.run()
      */
     function void(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, bytes calldata data) external nonReentrant {
+        bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
+        (, uint120 capturableAmount,) = ESCROW.paymentState(paymentInfoHash);
+
         if (address(VOID_PRE_ACTION_CONDITION) != address(0)) {
-            if (!VOID_PRE_ACTION_CONDITION.check(paymentInfo, 0, msg.sender, data)) {
+            if (!VOID_PRE_ACTION_CONDITION.check(paymentInfo, capturableAmount, msg.sender, data)) {
                 revert PreActionConditionNotMet();
             }
         }
-
-        bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
-        (, uint120 capturableAmount,) = ESCROW.paymentState(paymentInfoHash);
 
         emit VoidExecuted(paymentInfo, paymentInfoHash, paymentInfo.payer, paymentInfo.receiver);
 
