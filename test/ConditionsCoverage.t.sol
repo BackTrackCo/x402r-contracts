@@ -11,36 +11,85 @@ import {AlwaysTrueCondition} from "../src/plugins/conditions/access/AlwaysTrueCo
 import {ReceiverCondition} from "../src/plugins/conditions/access/ReceiverCondition.sol";
 import {PayerCondition} from "../src/plugins/conditions/access/PayerCondition.sol";
 import {NotCondition} from "../src/plugins/conditions/combinators/NotCondition.sol";
+import {AndCondition} from "../src/plugins/conditions/combinators/AndCondition.sol";
 import {HookCombinator} from "../src/plugins/hooks/combinators/HookCombinator.sol";
 import {StaticAddressCondition} from "../src/plugins/conditions/access/static-address/StaticAddressCondition.sol";
 import {
     StaticAddressConditionFactory
 } from "../src/plugins/conditions/access/static-address/StaticAddressConditionFactory.sol";
 
-/// @notice Mock hook for testing HookCombinator
+/// @notice Mock hook for testing HookCombinator. Records every arg of the most recent
+///         run() so combinator-forwarding tests can assert that paymentInfo / amount /
+///         caller / data flow through unmangled.
 contract MockPostActionHook is IHook {
     uint256 public recordCount;
-    AuthCaptureEscrow.PaymentInfo public lastPaymentInfo;
+    AuthCaptureEscrow.PaymentInfo internal _lastPaymentInfo;
+    uint256 public lastAmount;
+    address public lastCaller;
+    bytes public lastData;
 
-    function run(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address, bytes calldata) external {
+    function run(
+        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
+        uint256 amount,
+        address caller,
+        bytes calldata data
+    ) external {
         recordCount++;
-        lastPaymentInfo = paymentInfo;
+        _lastPaymentInfo = paymentInfo;
+        lastAmount = amount;
+        lastCaller = caller;
+        lastData = data;
+    }
+
+    /// @notice Returns the last paymentInfo as a struct (vs. the auto-getter, which
+    ///         returns a tuple that abi.encode can't accept). Lets tests do an
+    ///         end-to-end struct-equality check via keccak256(abi.encode(...)).
+    function getLastPaymentInfo() external view returns (AuthCaptureEscrow.PaymentInfo memory) {
+        return _lastPaymentInfo;
     }
 }
 
-/// @notice Mock condition that can be toggled
+/// @notice Mock condition for testing combinators. Toggleable result + expectation
+///         registry so combinator-forwarding tests can prove every arg passes through:
+///         setExpected() sets what we expect to receive; check() compares and returns
+///         false if anything mismatches (overrides `result` if expectations are set).
 contract MockCondition is ICondition {
     bool public result = true;
+    bool public expectationSet;
+    bytes32 public expectedPaymentInfoHash;
+    uint256 public expectedAmount;
+    address public expectedCaller;
+    bytes32 public expectedDataHash;
 
     function setResult(bool _result) external {
         result = _result;
     }
 
-    function check(AuthCaptureEscrow.PaymentInfo calldata, uint256, address, bytes calldata)
-        external
-        view
-        returns (bool)
-    {
+    function setExpected(
+        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
+        uint256 amount,
+        address caller,
+        bytes calldata data
+    ) external {
+        expectationSet = true;
+        expectedPaymentInfoHash = keccak256(abi.encode(paymentInfo));
+        expectedAmount = amount;
+        expectedCaller = caller;
+        expectedDataHash = keccak256(data);
+    }
+
+    function check(
+        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
+        uint256 amount,
+        address caller,
+        bytes calldata data
+    ) external view returns (bool) {
+        if (expectationSet) {
+            if (keccak256(abi.encode(paymentInfo)) != expectedPaymentInfoHash) return false;
+            if (amount != expectedAmount) return false;
+            if (caller != expectedCaller) return false;
+            if (keccak256(data) != expectedDataHash) return false;
+        }
         return result;
     }
 }
@@ -141,11 +190,71 @@ contract PreActionConditionsCoverageTest is Test {
         HookCombinator combinator = new HookCombinator(hooks);
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
-        vm.prank(operator);
-        combinator.run(paymentInfo, 500, payer, "");
+        bytes memory data = abi.encode(bytes32(uint256(0xdeadbeef)));
+        uint256 amount = 500;
 
+        vm.prank(operator);
+        combinator.run(paymentInfo, amount, payer, data);
+
+        // Both hooks invoked.
         assertEq(hook1.recordCount(), 1);
         assertEq(hook2.recordCount(), 1);
+
+        // Combinator forwards every arg to every inner hook unmangled.
+        assertEq(
+            keccak256(abi.encode(hook1.getLastPaymentInfo())), keccak256(abi.encode(paymentInfo)), "hook1 paymentInfo"
+        );
+        assertEq(hook1.lastAmount(), amount, "hook1 amount");
+        assertEq(hook1.lastCaller(), payer, "hook1 caller");
+        assertEq(keccak256(hook1.lastData()), keccak256(data), "hook1 data");
+        assertEq(
+            keccak256(abi.encode(hook2.getLastPaymentInfo())), keccak256(abi.encode(paymentInfo)), "hook2 paymentInfo"
+        );
+        assertEq(hook2.lastAmount(), amount, "hook2 amount");
+        assertEq(hook2.lastCaller(), payer, "hook2 caller");
+        assertEq(keccak256(hook2.lastData()), keccak256(data), "hook2 data");
+    }
+
+    /// @notice Pins that combinator-style condition wrappers (And/Or/Not) forward
+    ///         every arg to every inner condition. Each MockCondition is loaded
+    ///         with an expectation; check() returns false if any received arg
+    ///         differs from the expectation, so a wrapper that loses or mangles
+    ///         an arg would flip this assertion.
+    function test_ConditionCombinatorForwarding_AllArgsReachInnerConditions() public {
+        MockCondition c1 = new MockCondition();
+        MockCondition c2 = new MockCondition();
+
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+        uint256 amount = 7777;
+        address caller = makeAddr("caller");
+        bytes memory data = abi.encode("forwarded-data", uint256(42));
+
+        // Both conditions expect the same args; the wrapper must forward identically.
+        c1.setExpected(paymentInfo, amount, caller, data);
+        c2.setExpected(paymentInfo, amount, caller, data);
+
+        // And-combinator: passes only if both inner conditions return true.
+        ICondition[] memory conds = new ICondition[](2);
+        conds[0] = c1;
+        conds[1] = c2;
+        AndCondition andCond = new AndCondition(conds);
+
+        assertTrue(andCond.check(paymentInfo, amount, caller, data), "AndCondition must forward all args to both");
+
+        // Mangling any arg makes the inner check fail, which propagates.
+        assertFalse(andCond.check(paymentInfo, amount + 1, caller, data), "mangled amount must fail");
+        assertFalse(andCond.check(paymentInfo, amount, makeAddr("otherCaller"), data), "mangled caller must fail");
+        assertFalse(andCond.check(paymentInfo, amount, caller, abi.encode("different")), "mangled data must fail");
+
+        // Same proof for Not (negates a single inner): inner must see the args.
+        MockCondition c3 = new MockCondition();
+        c3.setExpected(paymentInfo, amount, caller, data);
+        NotCondition notCond = new NotCondition(c3);
+        // c3 returns true when expectations match → Not negates → returns false.
+        assertFalse(
+            notCond.check(paymentInfo, amount, caller, data),
+            "NotCondition forwards args; inner sees them, Not negates true to false"
+        );
     }
 
     function test_HookCombinator_RevertsOnEmptyHooks() public {

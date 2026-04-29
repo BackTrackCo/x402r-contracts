@@ -62,10 +62,10 @@ PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.Ope
     feeReceiver: feeReceiver,
     feeCalculator: address(0),            // No operator fee
     authorizePreActionCondition: address(0),        // Anyone can authorize
-    authorizePostActionHook: address(0),         // No recording
+    authorizePostActionHook: address(0),         // No post-action hook
     chargePreActionCondition: address(0),
     chargePostActionHook: address(0),
-    capturePreActionCondition: address(0),          // Anyone can release
+    capturePreActionCondition: address(0),          // Anyone can capture
     capturePostActionHook: address(0),
     voidPreActionCondition: address(0),
     voidPostActionHook: address(0),
@@ -94,24 +94,24 @@ op.capture(paymentInfo, amount);
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              USER INTERACTIONS                               │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│  Payer              Receiver              Designated Address                │
+│  Payer              Receiver              Designated Address (operator-config) │
 │    │                   │                         │                           │
-│    │  authorize()      │  capture()              │  refund*() (if configured)│
-│    │  freeze()         │  charge()               │  updateStatus()           │
-│    │  requestRefund()  │  requestRefund()        │  capture() (if configured)│
+│    │  authorize()      │  capture()              │  capture() (if configured)│
+│    │  freeze()         │  charge()               │  void()    (if configured)│
+│    │  requestRefund()  │  requestRefund()        │  refund()  (if configured)│
 └────┼───────────────────┼─────────────────────────┼───────────────────────────┘
      │                   │                         │
      ▼                   ▼                         ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                          PAYMENT OPERATOR                                    │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │  Condition Slots (before action)    Recorder Slots (after action)   │   │
+│  │  Condition Slots (before action)    Hook Slots (after action)       │   │
 │  │  ─────────────────────────────────  ─────────────────────────────   │   │
-│  │  AUTHORIZE_PRE_ACTION_CONDITION ──────────────► AUTHORIZE_POST_ACTION_HOOK             │   │
-│  │  CHARGE_PRE_ACTION_CONDITION ─────────────────► CHARGE_POST_ACTION_HOOK                │   │
-│  │  RELEASE_PRE_ACTION_CONDITION ────────────────► RELEASE_POST_ACTION_HOOK               │   │
-│  │  REFUND_IN_ESCROW_PRE_ACTION_CONDITION ───────► REFUND_IN_ESCROW_POST_ACTION_HOOK      │   │
-│  │  REFUND_POST_ESCROW_PRE_ACTION_CONDITION ─────► REFUND_POST_ESCROW_POST_ACTION_HOOK    │   │
+│  │  AUTHORIZE_PRE_ACTION_CONDITION ──────► AUTHORIZE_POST_ACTION_HOOK  │   │
+│  │  CHARGE_PRE_ACTION_CONDITION ─────────► CHARGE_POST_ACTION_HOOK     │   │
+│  │  CAPTURE_PRE_ACTION_CONDITION ────────► CAPTURE_POST_ACTION_HOOK    │   │
+│  │  VOID_PRE_ACTION_CONDITION ───────────► VOID_POST_ACTION_HOOK       │   │
+│  │  REFUND_PRE_ACTION_CONDITION ─────────► REFUND_POST_ACTION_HOOK     │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                    │                                        │
 │  Owner Functions (7-day Timelock):  │                                        │
@@ -127,10 +127,10 @@ op.capture(paymentInfo, amount);
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │  Payment State Machine:                                              │   │
 │  │                                                                      │   │
-│  │  NonExistent ──authorize()──► InEscrow ──capture()──► Released      │   │
+│  │  NonExistent ──authorize()──► InEscrow ──capture()──► Captured      │   │
 │  │                                  │                        │          │   │
-│  │                     void/reclaim │      refund  │          │   │
-│  │                     void                        │          │   │
+│  │                     void()       │       refund()         │          │   │
+│  │                     reclaim()    │                        │          │   │
 │  │                                  ▼                        ▼          │   │
 │  │                            ┌─────────────────────────────────┐      │   │
 │  │                            │           Settled               │      │   │
@@ -152,7 +152,7 @@ Conditions are composable plugins that control access to operator actions:
 │  OrCondition([A, B])      ──►  A || B                            │
 │  NotCondition(A)          ──►  !A                                │
 │                                                                   │
-│  Example: Release requires (Receiver OR DesignatedAddr) AND EscrowPassed│
+│  Example: Capture requires (Receiver OR DesignatedAddr) AND EscrowPassed│
 │                                                                   │
 │  OrCondition([                                                   │
 │    ReceiverCondition,                                            │
@@ -179,8 +179,8 @@ Compose them via `AndCondition([escrowPeriod, freeze])` when you want both behav
 Timeline:
 ├─────────────── ESCROW_PERIOD (e.g., 7 days) ───────────────┼──── Post-Escrow ────►
 │                                                             │
-│  [Payer can freeze via Freeze contract]                    │  [Release allowed]
-│  [Release blocked by EscrowPeriod]                         │  [Freeze blocked]
+│  [Payer can freeze via Freeze contract]                    │  [Capture allowed]
+│  [Capture blocked by EscrowPeriod]                         │  [Freeze blocked]
 │                                                             │
 │  Freeze.freeze() ──► PaymentFrozen                         │
 │  Freeze.unfreeze() ──► PaymentUnfrozen                     │
@@ -214,7 +214,7 @@ MEV Protection: Payers should freeze EARLY, not at deadline.
 │  - StaticAddressCondition    │                              │
 │  - AlwaysTrueCondition       │                              │
 ├─────────────────────────────────────────────────────────────┤
-│  Combinators:                │  Recorders (Optional):       │
+│  Combinators:                │  Hooks (Optional):       │
 │  - AndCondition              │  - PaymentIndexHook      │
 │  - OrCondition               │  - HookCombinator        │
 │  - NotCondition              │                              │
@@ -231,7 +231,7 @@ MEV Protection: Payers should freeze EARLY, not at deadline.
 |------|-------------|
 | **Payer** | `authorize()`, `freeze()`, `unfreeze()`, `requestRefund()`, `cancelRefundRequest()`, `void()` (after expiry) |
 | **Receiver** | `capture()` (if condition allows), `charge()` |
-| **Designated Address** | Per operator configuration - can include `void()`, `refund()`, `capture()`, `updateStatus()` (arbiter, service provider, DAO, etc.) |
+| **Designated Address** | Per operator configuration - can include `void()`, `refund()`, `capture()` (arbiter, service provider, DAO, etc.) |
 | **Owner** | `queueFeesEnabled()`, `executeFeesEnabled()`, `cancelFeesEnabled()`, `rescueETH()` |
 
 **Authorization Expiry:** The `PaymentInfo` struct includes an `authorizationExpiry` field from base commerce-payments. Payers can set this to limit how long receivers can charge funds. Set to `type(uint48).max` for no expiry, or specify a timestamp for time-limited authorizations (useful for subscriptions). After expiry, payers can reclaim unused funds via `void()`.
@@ -258,9 +258,10 @@ Typical gas costs for common operations (measured with via-IR optimization and r
 | Operation | Gas Cost | With Indexing | Notes |
 |-----------|----------|---------------|-------|
 | **Payment Authorization** | ~231,000 | ~273,000 | Minimal storage (fees only) |
-| **Payment Release** | ~65,000 | ~65,000 | Release after escrow period |
+| **Capture** | ~65,000 | ~65,000 | Capture after escrow period |
 | **Direct Charge** | ~285,000 | ~327,000 | Immediate capture (no escrow) |
-| **Refund In Escrow** | ~45,000 | ~45,000 | Refund before release |
+| **Void** | ~45,000 | ~45,000 | Cancel authorization, return funds to payer |
+| **Refund** | ~50,000 | ~50,000 | Return captured funds via ReceiverRefundCollector |
 | **Freeze Payment** | ~50,000 | ~50,000 | Payer freezes during escrow |
 
 **Implementation**: Payment indexing is **optional** via `PaymentIndexHook`. Deploy with indexing for on-chain queries (+42k gas first, +22k subsequent) or skip for gas savings when using external indexers (The Graph).
@@ -302,7 +303,7 @@ Typical gas costs for common operations (measured with via-IR optimization and r
 
 Estimated transaction costs on different networks (at typical gas prices):
 
-| Network | Gas Price | Authorization | Release | Charge |
+| Network | Gas Price | Authorization | Capture | Charge |
 |---------|-----------|---------------|---------|--------|
 | **Base Mainnet** | 0.001 gwei | ~$0.0002 | ~$0.0001 | ~$0.0003 |
 | **Base Sepolia** | Free | Free | Free | Free |
@@ -312,7 +313,7 @@ Estimated transaction costs on different networks (at typical gas prices):
 
 ### Comparison with Alternatives
 
-| Protocol | Authorization | Release | Notes |
+| Protocol | Authorization | Capture | Notes |
 |----------|--------------|---------|-------|
 | **x402r** | ~231k | ~65k | Minimal storage + reentrancy protection + flexible conditions |
 | Gnosis Safe | ~300k | ~250k | Multi-sig overhead, less flexible |
@@ -432,23 +433,23 @@ struct OperatorConfig {
 address arbiterCondition = staticAddressConditionFactory.deploy(arbiterAddress);
 
 PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
-    feeReceiver: arbiterAddress,           // Arbiter earns fees for dispute resolution
-    feeCalculator: address(feeCalc),        // Operator fee calculator
-    authorizePreActionCondition: address(0),         // Anyone can authorize
-    authorizePostActionHook: address(0),          // No recording
-    chargePreActionCondition: RECEIVER_PRE_ACTION_CONDITION,    // Only receiver can charge
+    feeReceiver: arbiterAddress,                                  // Arbiter earns fees for dispute resolution
+    feeCalculator: address(feeCalc),                              // Operator fee calculator
+    authorizePreActionCondition: address(0),                      // Anyone can authorize
+    authorizePostActionHook: address(0),                          // No post-action work
+    chargePreActionCondition: address(receiverCondition),         // Only receiver can charge
     chargePostActionHook: address(0),
-    capturePreActionCondition: address(0),           // Anyone can release after escrow
-    capturePostActionHook: escrowRecorder,        // Record timestamp
-    voidPreActionCondition: arbiterCondition,  // Only arbiter can refund
+    capturePreActionCondition: address(escrowPeriodCondition),    // Capture allowed only after escrow period
+    capturePostActionHook: address(escrowPeriodHook),             // Record timestamp
+    voidPreActionCondition: arbiterCondition,                     // Only arbiter can void
     voidPostActionHook: address(0),
-    refundPreActionCondition: arbiterCondition, // Only arbiter for post-escrow refunds
+    refundPreActionCondition: arbiterCondition,                   // Only arbiter for post-capture refunds
     refundPostActionHook: address(0)
 });
 address operator = factory.deployOperator(config);
 ```
 
-**Note:** `address(0)` for a condition means "allow all" (no restriction). `address(0)` for a recorder means "no-op" (no state recording).
+**Note:** `address(0)` for a condition means "allow all" (no restriction). `address(0)` for a hook means "no-op" (no post-action work).
 
 #### Optional Payment Indexing
 
@@ -456,13 +457,13 @@ address operator = factory.deployOperator(config);
 
 ```solidity
 // Deploy indexer (optional)
-PaymentIndexHook indexRecorder = new PaymentIndexHook(address(escrow));
+PaymentIndexHook indexHook = new PaymentIndexHook(address(escrow), bytes32(0));
 
 // Option 1: Enable indexing
 PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
     // ...
-    authorizePostActionHook: address(indexRecorder),  // Index on authorize
-    chargePostActionHook: address(indexRecorder),     // Index on charge
+    authorizePostActionHook: address(indexHook),  // Index on authorize
+    chargePostActionHook: address(indexHook),     // Index on charge
     // ...
 });
 
@@ -475,7 +476,7 @@ PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.Ope
 });
 
 // Query payments (requires indexing enabled)
-(bytes32[] memory hashes, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 10);
+(bytes32[] memory hashes, uint256 total) = indexHook.getPayerPayments(payer, 0, 10);
 // hashes[0] - Payment hash for escrow lookup
 // For amounts: escrow.paymentState(hashes[0]).capturableAmount
 // For timestamps: use EscrowPeriod.authorizationTimes(hash)
@@ -485,7 +486,7 @@ PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.Ope
 - **Efficient Storage**: Stores only payment hashes (minimal gas cost)
 - **Gas Savings**: ~55k per authorization when indexing disabled
 - **Flexibility**: Deploy with or without on-chain queries
-- **Composability**: Combine with other recorders via `HookCombinator`
+- **Composability**: Combine with other hooks via `HookCombinator`
 - **No Duplication**: Use `EscrowPeriod` for timestamps, escrow for amounts
 
 **When to use indexing:**

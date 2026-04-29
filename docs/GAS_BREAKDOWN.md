@@ -63,7 +63,7 @@ Total escrow:          ~175,000 gas
 **What it does:**
 - Fee calculation and locking
 - Access control (conditions)
-- Event recording (optional recorders)
+- Event recording (optional hooks)
 - Fee distribution
 - Reentrancy protection
 
@@ -77,7 +77,7 @@ Condition check:        2,000 gas (if address(0))
 Fee calculation:        3,000 gas
 Fee locking storage:    22,000 gas (first) / 5,000 gas (subsequent)
 Event emission:         1,500 gas
-Recorder call:          2,000 gas (if address(0))
+Hook call:          2,000 gas (if address(0))
 Function overhead:      1,000 gas
 Validations & misc:    22,500 gas
 ─────────────────────────────────────

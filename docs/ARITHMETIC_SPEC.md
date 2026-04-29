@@ -76,7 +76,7 @@ paymentInfo.maxAmount: uint120
 
 **Test coverage:** `PaymentOperatorInvariants.sol:echidna_no_double_spend`, `FoundryPaymentOperatorInvariants.t.sol:invariant_noDoubleSpend`
 
-### 2.2 Release Amount
+### 2.2 Capture Amount
 
 **Constraint:**
 ```
@@ -129,7 +129,7 @@ nonce must be unique per (payer, paymentHash) pair
 
 **Formula:**
 ```
-canRelease = (block.timestamp >= authorizationTime + ESCROW_PERIOD) && !frozen
+canCapture = (block.timestamp >= authorizationTime + ESCROW_PERIOD) && !frozen
 ```
 
 **Code location:** `EscrowPeriod.sol:check()`

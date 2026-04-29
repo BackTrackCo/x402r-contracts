@@ -13,7 +13,7 @@ import {OnlyOperator} from "../../../types/Errors.sol";
  *      Allows combining multiple hook behaviors in a single slot.
  *
  * USE CASES:
- *   - EscrowPeriodPostActionHook + PaymentIndexHook
+ *   - EscrowPeriod hook + PaymentIndexHook
  *   - Multiple analytics/logging hooks
  *   - Custom business logic + indexing
  *
@@ -28,8 +28,8 @@ import {OnlyOperator} from "../../../types/Errors.sol";
  *
  * EXAMPLE:
  *   IHook[] memory hooks = new IHook[](2);
- *   hooks[0] = escrowPeriodRecorder;
- *   hooks[1] = paymentIndexRecorder;
+ *   hooks[0] = escrowPeriodHook;
+ *   hooks[1] = paymentIndexHook;
  *   HookCombinator combinator = new HookCombinator(hooks);
  *
  *   operator = factory.deploy({
@@ -67,8 +67,8 @@ contract HookCombinator is IHook {
     }
 
     /**
-     * @notice Calls record() on all configured hooks sequentially
-     * @param paymentInfo Payment information to record
+     * @notice Calls run() on all configured hooks sequentially
+     * @param paymentInfo Payment information to forward
      * @param amount Amount involved in the action
      * @param caller Address that executed the action
      * @dev Reverts if any hook reverts

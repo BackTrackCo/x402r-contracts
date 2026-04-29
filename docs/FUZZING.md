@@ -140,7 +140,7 @@ if (tokenStoreBalanceAfter != tokenStoreBalanceBefore + amount)
 ### 7. echidna_reentrancy_protected (P22)
 **Property**: Reentrancy protection prevents callback attacks
 
-**Why Critical**: Malicious conditions/recorders cannot reenter PaymentOperator.
+**Why Critical**: Malicious conditions/hooks cannot reenter PaymentOperator.
 
 **Test Logic**:
 ```solidity
@@ -207,7 +207,7 @@ Echidna randomly calls these functions with various inputs:
 ### release_fuzz(uint256 paymentIndex, uint128 amount)
 - Bounds: Valid payment index
 - Action: Releases captured funds to receiver
-- Coverage: Release conditions, fee distribution, balance updates
+- Coverage: Capture conditions, fee distribution, balance updates
 
 ### refund_fuzz(uint256 paymentIndex, uint120 amount)
 - Bounds: Valid payment index
@@ -385,7 +385,7 @@ jobs:
           path: echidna-corpus/
 ```
 
-### Pre-Release Checklist
+### Pre-Deployment Checklist
 
 Before mainnet deployment:
 

@@ -4,12 +4,9 @@ pragma solidity ^0.8.28;
 import {ICondition} from "../../src/plugins/conditions/ICondition.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
-/// @notice Release conditions are not met
-error CaptureLocked();
-
 /**
  * @title MockCaptureCondition
- * @notice Mock release condition for testing - allows manual approval of releases
+ * @notice Mock capture condition for testing - allows manual approval of captures
  * @dev Implements ICondition - returns bool instead of reverting
  */
 contract MockCaptureCondition is ICondition {

@@ -218,9 +218,10 @@ contract EventEmitAssertionsTest is Test {
         // Compute the deterministic address before deployment so we can pin it in the event.
         address expected = factory.computeAddress(config);
 
-        // Pin the field order: (operator, deployer, feeReceiver). All three indexed.
-        // The third arg name was renamed from feeRecipient -> feeReceiver.
-        vm.expectEmit(true, true, true, false, address(factory));
+        // Pin the field order: (operator, deployer, feeReceiver). All three indexed today;
+        // checkData = true so a future non-indexed field added in the data slot doesn't
+        // silently pass this assertion.
+        vm.expectEmit(true, true, true, true, address(factory));
         emit OperatorDeployed(expected, address(this), makeAddr("freshFeeReceiver"));
         factory.deployOperator(config);
     }

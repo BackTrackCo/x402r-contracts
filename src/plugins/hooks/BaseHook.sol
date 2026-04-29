@@ -18,7 +18,7 @@ import {OnlyOperator, ZeroAddress, PaymentDoesNotExist} from "../../types/Errors
  *      - OnlyOperator: msg.sender must equal paymentInfo.operator, or msg.sender's
  *        runtime codehash must match AUTHORIZED_CODEHASH (e.g. HookCombinator)
  *      - Escrow existence: payment must exist in the trusted immutable ESCROW
- *      - Both checks together ensure only real operators recording real payments can write state
+ *      - Both checks together ensure only real operators running real payments can write state
  */
 abstract contract BaseHook is IHook {
     /// @notice Escrow contract for payment hash calculation and existence verification
@@ -37,7 +37,7 @@ abstract contract BaseHook is IHook {
 
     /**
      * @notice Verify caller is the operator and payment exists in escrow
-     * @dev Returns the payment hash for use by subclass record() implementations.
+     * @dev Returns the payment hash for use by subclass run() implementations.
      *      Reverts with OnlyOperator if caller != paymentInfo.operator.
      *      Reverts with PaymentDoesNotExist if payment not found in escrow.
      * @param paymentInfo PaymentInfo struct
@@ -63,7 +63,7 @@ abstract contract BaseHook is IHook {
 
     /**
      * @notice Internal helper to get payment hash without verification
-     * @dev Used by subclass view functions and non-record operations (e.g. freeze/unfreeze)
+     * @dev Used by subclass view functions and non-run operations (e.g. freeze/unfreeze)
      * @param paymentInfo PaymentInfo struct
      * @return Payment hash
      */

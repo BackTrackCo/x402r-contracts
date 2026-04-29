@@ -12,7 +12,7 @@
 
 ### Security Objectives
 
-**Primary Goal**: Validate security of generic payment operator architecture with flexible condition/recorder system for beta release.
+**Primary Goal**: Validate security of generic payment operator architecture with flexible condition/hook system for beta release.
 
 **Specific Objectives**:
 1. **Verify partialVoid() Addition**: Custom addition to Base Commerce Payments - ensure no edge cases or state inconsistencies
@@ -33,14 +33,14 @@
   - State consistency after partial void?
   - Amount validation edge cases?
 
-**2. Condition/Recorder System**
+**2. Condition/Hook System**
 - **Location**: `src/commerce-payments/operator/arbitration/PaymentOperator.sol` (10 slots)
 - **Concern**: Arbitrary external contracts can be called in critical paths
 - **Questions**:
   - Can malicious conditions cause DoS?
-  - Can recorder state corruption affect escrow?
+  - Can hook state corruption affect escrow?
   - Cross-operator interference risks?
-  - Reentrancy through recorder callbacks?
+  - Reentrancy through hook callbacks?
 
 **3. Fee Distribution**
 - **Location**: `PaymentOperator._distributeFees()`
@@ -50,7 +50,7 @@
   - Fee calculation overflow risks?
   - Protocol fee evasion vectors?
 
-**4. Freeze/Release Race Condition**
+**4. Freeze/Capture Race Condition**
 - **Location**: `EscrowPeriod.freeze()` + `EscrowPeriod.check()`
 - **Concern**: MEV exploitation at escrow period expiry boundary
 - **Questions**:
@@ -68,7 +68,7 @@
 
 ### Worst-Case Scenarios
 
-**1. Funds Loss**: Malicious condition/recorder drains escrowed funds or causes permanent lock
+**1. Funds Loss**: Malicious condition/hook drains escrowed funds or causes permanent lock
 **2. Fee Evasion**: Protocol fees bypassed through rounding exploits
 **3. State Corruption**: partialVoid() causes accounting mismatch between operator and escrow
 **4. DoS Attack**: Malicious condition bricks operator for all users
@@ -85,7 +85,7 @@
 
 1. **partialVoid() Addition**: Is our custom addition to AuthCaptureEscrow secure? Any edge cases with partial vs full void?
 2. **Condition System**: Any security concerns with allowing arbitrary external condition contracts?
-3. **Recorder Reentrancy**: Can recorder reentrancy cause issues despite operator reentrancy guard?
+3. **Hook Reentrancy**: Can hook reentrancy cause issues despite operator reentrancy guard?
 4. **Mapping + Counter**: Any edge cases with the optimized indexing pattern?
 5. **Fee Distribution**: Is the split calculation secure against rounding exploits?
 6. **Freeze Race**: Beyond documentation, any way to mitigate the MEV risk at escrow boundary?
@@ -135,7 +135,7 @@
 #### 2. Unused Return Values (unused-return)
 
 **Findings**:
-- `RefundRequest._updateStatus()`: Ignores `(None,capturableAmount,refundableAmount)`
+- `RefundRequest._setStatus()`: Ignores `(None,capturableAmount,refundableAmount)`
 - `RefundRequestAccess.onlyAuthorizedForRefundStatus()`: Ignores `(None,capturableAmount,None)`
 
 **Status**: ✅ **INTENTIONAL**
@@ -172,7 +172,7 @@
 **Finding**:
 - `EscrowPeriod.check()`: Uses `block.timestamp` for comparisons
   - `RECORDER.frozenUntil(paymentInfoHash) > block.timestamp`
-  - `block.timestamp < authTime + RECORDER.ESCROW_PERIOD()`
+  - `block.timestamp < authTime + POST_ACTION_HOOK.ESCROW_PERIOD()`
 
 **Status**: ✅ **ACCEPTABLE**
 
@@ -496,15 +496,15 @@ PaymentOperatorFactory
                       ├── AUTHORIZE_POST_ACTION_HOOK (optional)
                       ├── CHARGE_PRE_ACTION_CONDITION (optional)
                       ├── CHARGE_POST_ACTION_HOOK (optional)
-                      ├── RELEASE_PRE_ACTION_CONDITION (optional)
-                      ├── RELEASE_POST_ACTION_HOOK (optional)
-                      ├── REFUND_IN_ESCROW_PRE_ACTION_CONDITION (optional)
-                      ├── REFUND_IN_ESCROW_POST_ACTION_HOOK (optional)
-                      ├── REFUND_POST_ESCROW_PRE_ACTION_CONDITION (optional)
-                      └── REFUND_POST_ESCROW_POST_ACTION_HOOK (optional)
+                      ├── CAPTURE_PRE_ACTION_CONDITION (optional)
+                      ├── CAPTURE_POST_ACTION_HOOK (optional)
+                      ├── VOID_PRE_ACTION_CONDITION (optional)
+                      ├── VOID_POST_ACTION_HOOK (optional)
+                      ├── REFUND_PRE_ACTION_CONDITION (optional)
+                      └── REFUND_POST_ACTION_HOOK (optional)
 
 EscrowPeriodFactory
-    └── deploys → EscrowPeriod (combined condition + recorder)
+    └── deploys → EscrowPeriod (combined condition + hook)
 
 FreezeFactory
     └── deploys → Freeze instances (with freeze/unfreeze conditions passed directly)
@@ -512,7 +512,7 @@ FreezeFactory
 
 **Key Patterns**:
 1. **Immutable Operators**: No upgrade path (deploy new if needed)
-2. **Condition/Recorder Slots**: 10 flexible hooks for custom logic
+2. **Condition/Hook Slots**: 10 flexible hooks for custom logic
 3. **Mapping + Counter**: Gas-efficient payment indexing
 4. **Fee Distribution**: Protocol/operator split with timelock
 5. **Escrow Period**: Time-based holds with freeze capability
@@ -523,7 +523,7 @@ FreezeFactory
 ```
 1. Payer authorizes payment (escrow funds)
    → Condition checks: Pass
-   → Recorder logs: Authorization time
+   → Hook logs: Authorization time
    → Result: Funds escrowed, 7-day timer starts
 
 2. Escrow period passes (7 days)
@@ -599,7 +599,7 @@ FreezeFactory
 
 **Trust Boundaries**:
 1. **Trusted**: Operator owner (multisig for production)
-2. **Trusted**: Deployed condition/recorder contracts (validated at deployment)
+2. **Trusted**: Deployed condition/hook contracts (validated at deployment)
 3. **Untrusted**: Payers and receivers (adversarial model)
 4. **Untrusted**: Token contracts (validated before accepting payments)
 
@@ -611,10 +611,10 @@ FreezeFactory
 ### Glossary
 
 **Core Concepts**:
-- **Payment Operator**: Contract orchestrating payment lifecycle with condition/recorder hooks
+- **Payment Operator**: Contract orchestrating payment lifecycle with condition/hook hooks
 - **Escrow**: Base Commerce Payments mechanism holding funds until authorized release
 - **Condition**: Contract that gates an operation (authorize, charge, release, refund)
-- **Recorder**: Contract that logs state during an operation (hooks)
+- **Hook**: Contract that logs state during an operation (hooks)
 - **Payment Info**: Struct identifying a payment (payer, receiver, token, amount, operator, metadata)
 - **Payment Hash**: `keccak256(abi.encode(PaymentInfo))` used as unique identifier
 
@@ -722,7 +722,7 @@ FreezeFactory
 - Lower gas costs (no proxy)
 - Users can deploy new operator if needed
 
-**3. Why Flexible Condition/Recorder Slots?**
+**3. Why Flexible Condition/Hook Slots?**
 - Composability (mix and match logic)
 - Extensibility (custom conditions without redeployment)
 - Separation of concerns

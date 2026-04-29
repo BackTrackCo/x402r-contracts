@@ -283,14 +283,24 @@ contract FullLifecycleTest is Test {
         // --- Warp past escrow period so capture is allowed ---
         vm.warp(block.timestamp + ESCROW_PERIOD + 1);
 
-        // --- Capture (fees taken at this stage) ---
+        // --- Capture: net to receiver, both fee buckets accumulate on the operator ---
         uint256 receiverBefore = token.balanceOf(receiver);
         vm.prank(receiver);
         operator.capture(paymentInfo, PAYMENT_AMOUNT, "");
 
         uint256 totalFee = (PAYMENT_AMOUNT * TOTAL_BPS) / 10000;
+        uint256 expectedProtocolFee = (PAYMENT_AMOUNT * PROTOCOL_BPS) / 10000;
         uint256 netToReceiver = PAYMENT_AMOUNT - totalFee;
-        assertEq(token.balanceOf(receiver) - receiverBefore, netToReceiver, "receiver gets net");
+        assertEq(token.balanceOf(receiver) - receiverBefore, netToReceiver, "receiver gets net of total fees");
+
+        // Direct fee-bucket assertions: the operator holds the full fee, with the
+        // protocol share tracked separately for distributeFees().
+        assertEq(token.balanceOf(address(operator)), totalFee, "operator holds total fee in escrow");
+        assertEq(
+            operator.accumulatedProtocolFees(address(token)),
+            expectedProtocolFee,
+            "operator's accumulated protocol-fee bucket matches expected"
+        );
 
         // --- Refund via ReceiverRefundCollector: pulls from receiver's allowance ---
         ReceiverRefundCollector refundCollector = new ReceiverRefundCollector(address(escrow));
@@ -310,9 +320,15 @@ contract FullLifecycleTest is Test {
         operator.refund(paymentInfo, secondRefund, address(refundCollector), "");
         assertEq(token.balanceOf(payer) - payerBefore, secondRefund, "second partial refund");
 
-        // Total refunded so far = 3/4 of PAYMENT_AMOUNT. Remaining capacity = 1/4.
-        // Attempting to refund more than what's left should revert at the escrow level.
-        vm.expectRevert();
+        // Total refunded so far = 3/4 of PAYMENT_AMOUNT. Remaining refundable capacity = 1/4.
+        // Attempting to refund more than what's left reverts with the canonical
+        // RefundExceedsCapture(refund, captured) — pin the selector so an unrelated
+        // earlier-in-the-call-path revert wouldn't be silently accepted.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                AuthCaptureEscrow.RefundExceedsCapture.selector, PAYMENT_AMOUNT / 2, PAYMENT_AMOUNT / 4
+            )
+        );
         operator.refund(paymentInfo, PAYMENT_AMOUNT / 2, address(refundCollector), "");
     }
 

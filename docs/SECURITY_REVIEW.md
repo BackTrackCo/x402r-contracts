@@ -2,7 +2,7 @@
 
 ## Contract Overview
 
-**x402r Payment System** - Generic payment operator built on Base Commerce Payments with flexible condition/recorder slots.
+**x402r Payment System** - Generic payment operator built on Base Commerce Payments with flexible condition/hook slots.
 
 **Version**: 0.1.0 (Beta - Unaudited)
 **Optimizations**: Mapping + counter indexing pattern
@@ -19,12 +19,12 @@
 
 | Contract | LoC | Description |
 |----------|-----|-------------|
-| **PaymentOperator.sol** | ~600 | Core payment operator with condition/recorder slots |
+| **PaymentOperator.sol** | ~600 | Core payment operator with condition/hook slots |
 | **PaymentOperatorAccess.sol** | ~100 | Access control modifiers and validation |
 | **PaymentOperatorFactory.sol** | ~200 | Factory for deploying operators |
 | **RefundRequest.sol** | ~300 | Refund request management with status tracking |
 | **RefundRequestAccess.sol** | ~80 | Refund access control |
-| **EscrowPeriod.sol** | ~210 | Combined escrow period recorder + condition |
+| **EscrowPeriod.sol** | ~210 | Combined escrow period hook + condition |
 | **FreezeFactory.sol** | ~120 | Factory for freeze condition instances |
 | **Freeze.sol** | ~150 | Standalone freeze condition with configurable freeze/unfreeze conditions |
 
@@ -83,15 +83,15 @@ PaymentOperatorFactory
                       ├── AUTHORIZE_POST_ACTION_HOOK (optional)
                       ├── CHARGE_PRE_ACTION_CONDITION (optional)
                       ├── CHARGE_POST_ACTION_HOOK (optional)
-                      ├── RELEASE_PRE_ACTION_CONDITION (optional)
-                      ├── RELEASE_POST_ACTION_HOOK (optional)
-                      ├── REFUND_IN_ESCROW_PRE_ACTION_CONDITION (optional)
-                      ├── REFUND_IN_ESCROW_POST_ACTION_HOOK (optional)
-                      ├── REFUND_POST_ESCROW_PRE_ACTION_CONDITION (optional)
-                      └── REFUND_POST_ESCROW_POST_ACTION_HOOK (optional)
+                      ├── CAPTURE_PRE_ACTION_CONDITION (optional)
+                      ├── CAPTURE_POST_ACTION_HOOK (optional)
+                      ├── VOID_PRE_ACTION_CONDITION (optional)
+                      ├── VOID_POST_ACTION_HOOK (optional)
+                      ├── REFUND_PRE_ACTION_CONDITION (optional)
+                      └── REFUND_POST_ACTION_HOOK (optional)
 
 EscrowPeriodFactory
-    └── deploys → EscrowPeriod (combined condition + recorder)
+    └── deploys → EscrowPeriod (combined condition + hook)
 
 FreezeFactory
     └── deploys → Freeze instances (with freeze/unfreeze conditions passed directly)
@@ -99,7 +99,7 @@ FreezeFactory
 
 ### Key Features
 
-1. **Flexible Condition/Recorder System**: Each operation (authorize, charge, release, refund) can have custom conditions (gates) and recorders (hooks)
+1. **Flexible Condition/Hook System**: Each operation (authorize, charge, release, refund) can have custom conditions (gates) and hooks (hooks)
 2. **Fee Distribution**: Automatic split between protocol and operator fees
 3. **Payment Indexing**: On-chain mapping of payer/receiver → payment hashes
 4. **Escrow Period**: Time-based holds with freeze capability
@@ -174,7 +174,7 @@ See `OPTIMIZATION_SUMMARY.md` for full details.
    - Rebasing tokens documented as unsupported
    - Uses Solady's SafeTransferLib (assembly-optimized)
 
-5. **Freeze/Release Race Condition**
+5. **Freeze/Capture Race Condition**
    - MEV risk at escrow period expiry boundary
    - Mitigated by freezing early + private mempool
    - Documented in EscrowPeriod.sol
@@ -240,7 +240,7 @@ See `FUZZING.md` for fuzzing methodology.
 
 **Operator overhead includes**:
 - Reentrancy guard: 2k
-- Conditions/recorders: 4k
+- Conditions/hooks: 4k
 - Payment indexing: 44k (first) / 10k (subsequent)
 - Storage: 108k (first) / 46k (subsequent)
 
@@ -309,7 +309,7 @@ See `SOLADY_VS_OZ_ANALYSIS.md` for full comparison.
 - Lower gas costs (no proxy overhead)
 - Deploy new operator if needed
 
-### 2. Generic Condition/Recorder Slots
+### 2. Generic Condition/Hook Slots
 
 **Decision**: 10 flexible slots vs hardcoded logic
 
@@ -380,9 +380,9 @@ See `SOLADY_VS_OZ_ANALYSIS.md` for full comparison.
    - Integration with existing void/reclaim flows?
    - Edge case: partialVoid entire amount vs void()?
 
-2. **Condition/Recorder System**
+2. **Condition/Hook System**
    - Can malicious conditions brick operator?
-   - Can recorder state corruption affect escrow?
+   - Can hook state corruption affect escrow?
    - Cross-operator interference risks?
 
 3. **Fee Distribution Logic**
@@ -395,7 +395,7 @@ See `SOLADY_VS_OZ_ANALYSIS.md` for full comparison.
    - Pagination edge cases?
    - Storage collision risks?
 
-5. **Freeze/Release Race Condition**
+5. **Freeze/Capture Race Condition**
    - MEV exploitation at boundary?
    - Timestamp manipulation risks?
    - Front-running scenarios?
@@ -426,7 +426,7 @@ See `SOLADY_VS_OZ_ANALYSIS.md` for full comparison.
 
 2. **Condition System**: Any security concerns with allowing arbitrary external condition contracts?
 
-3. **Recorder System**: Can recorder reentrancy cause issues despite operator reentrancy guard?
+3. **Hook System**: Can hook reentrancy cause issues despite operator reentrancy guard?
 
 4. **Mapping + Counter**: Any edge cases with the optimized indexing pattern?
 

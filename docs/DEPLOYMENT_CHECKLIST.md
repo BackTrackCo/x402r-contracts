@@ -30,7 +30,7 @@ Use this checklist for every mainnet deployment to ensure nothing is missed.
 - [ ] **Protocol fee percentage** correct (25% recommended)
 - [ ] **Operator fee recipient** correct (your address)
 - [ ] **Condition addresses** correct (or address(0) for defaults)
-- [ ] **Recorder addresses** correct (or address(0) for defaults)
+- [ ] **Hook addresses** correct (or address(0) for defaults)
 
 ### Testing & Security
 - [ ] **All tests passing** (`forge test`)
@@ -123,7 +123,7 @@ node scripts/verify-deployment.js
   - [ ] FEE_RECIPIENT address correct
   - [ ] MAX_TOTAL_FEE_RATE correct
   - [ ] PROTOCOL_FEE_PERCENTAGE correct
-- [ ] Condition/recorder slots match configuration
+- [ ] Condition/hook slots match configuration
 - [ ] Escrow contract exists at specified address
 
 ### Manual Verification
@@ -177,7 +177,7 @@ node scripts/verify-deployment.js
   - [ ] Transaction hashes
   - [ ] Deployer address
   - [ ] Gas used
-  - [ ] Configuration (fees, conditions, recorders)
+  - [ ] Configuration (fees, conditions, hooks)
 
 ### Update Documentation Files
 - [ ] Update `README.md` with deployed addresses:

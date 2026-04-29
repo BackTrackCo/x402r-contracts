@@ -201,7 +201,7 @@ The following security properties MUST hold at all times. These are tested via u
 | ID | Property | Test Coverage |
 |----|----------|---------------|
 | **P6** | Freeze can only occur during escrow period | EscrowPeriodCondition.t.sol |
-| **P7** | Release cannot occur before escrow period expires (unless unfrozen) | EscrowPeriodCondition.t.sol |
+| **P7** | Capture cannot occur before escrow period expires (unless unfrozen) | EscrowPeriodCondition.t.sol |
 | **P8** | Frozen payments cannot be released until unfrozen | EscrowPeriodConditionInvariants.sol |
 
 | **P9** | Escrow period clock starts at authorization time | Unit tests |
@@ -214,7 +214,7 @@ The following security properties MUST hold at all times. These are tested via u
 | **P11** | Only owner can change fee configuration | Unit tests + Echidna |
 | **P12** | Fee changes require 7-day timelock execution | Unit tests |
 | **P13** | Condition checks are pure/view (no state modification) | Solidity type system |
-| **P14** | Recorders execute after successful action (idempotent) | Code review |
+| **P14** | Hooks execute after successful action (idempotent) | Code review |
 | **P15** | address(0) condition = always allow (default behavior) | Unit tests |
 
 ### Fee Calculation Invariants
@@ -277,18 +277,18 @@ The x402r payment system has a clear trust boundary between the trustless escrow
 ┌──────────────────────▼──────────────────────────────┐
 │                   TRUSTED LAYER                      │
 │                                                     │
-│  PaymentOperator + Conditions + Recorders           │
+│  PaymentOperator + Conditions + Hooks           │
 │  - Operator deployer chooses all plugins            │
 │  - Immutable after deployment (no upgrades)         │
 │  - Users must trust operator configuration          │
 │  - Conditions can block/allow operations            │
-│  - Recorders execute post-action callbacks          │
+│  - Hooks execute post-action callbacks          │
 └─────────────────────────────────────────────────────┘
 ```
 
 ### What the Escrow Protects Against
 
-The escrow layer provides hard guarantees that **no operator, condition, or recorder can violate**:
+The escrow layer provides hard guarantees that **no operator, condition, or hook can violate**:
 
 - **Fund extraction**: Escrow enforces `captured + refunded <= authorized` per payment. No amount of operator manipulation can extract more than what was authorized.
 - **Balance manipulation**: Every token transfer is verified via `balanceAfter == balanceBefore + amount`. Fee-on-transfer or rebasing tokens are rejected.
@@ -299,15 +299,15 @@ The escrow layer provides hard guarantees that **no operator, condition, or reco
 
 Operators control the business logic layer. A malicious or buggy operator **can**:
 
-- **Block releases**: A malicious `RELEASE_PRE_ACTION_CONDITION` can return `false` indefinitely, trapping funds until `authorizationExpiry` when the payer can reclaim.
+- **Block releases**: A malicious `CAPTURE_PRE_ACTION_CONDITION` can return `false` indefinitely, trapping funds until `authorizationExpiry` when the payer can reclaim.
 - **Censor users**: Conditions with blocklists can selectively prevent specific addresses from interacting.
 - **Leak MEV**: Non-`view` conditions (should never be used) could emit events or make external calls that leak payment data to MEV bots.
-- **Front-run refunds**: Without an escrow period (`RELEASE_PRE_ACTION_CONDITION = address(0)`), a receiver can release funds before a refund request is processed.
-- **Gas grief**: Conditions or recorders with unbounded loops can make operations fail with out-of-gas.
+- **Front-run refunds**: Without an escrow period (`CAPTURE_PRE_ACTION_CONDITION = address(0)`), a receiver can release funds before a refund request is processed.
+- **Gas grief**: Conditions or hooks with unbounded loops can make operations fail with out-of-gas.
 
 ### Implications
 
-**For users**: Always verify the operator's condition and recorder contracts before interacting. Use operators deployed by trusted parties with audited conditions from the safe condition library.
+**For users**: Always verify the operator's condition and hook contracts before interacting. Use operators deployed by trusted parties with audited conditions from the safe condition library.
 
 **For operators**: Deploy with audited conditions, use escrow periods for dispute resolution, and document trust assumptions for your users. See [OPERATOR_SECURITY.md](./OPERATOR_SECURITY.md) for the full deployment checklist.
 
@@ -365,7 +365,7 @@ AndCondition(
 
 **✅ GOOD** (Depth 2):
 ```solidity
-// Receiver can release after escrow period
+// Receiver can capture after escrow period
 AndCondition(
     ReceiverCondition(),
     EscrowPeriod(escrowPeriod, freezePolicy, escrow, codehash)
@@ -374,14 +374,14 @@ AndCondition(
 
 **⚠️ ACCEPTABLE** (Depth 3):
 ```solidity
-// Receiver OR arbiter can release after escrow, but not if frozen
+// Receiver OR arbiter can capture after escrow, but not while frozen
 AndCondition(
     OrCondition(
         ReceiverCondition(),
         StaticAddressCondition(arbiter)
     ),
     NotCondition(
-        FrozenCondition(recorder)
+        Freeze(freezeCond, unfreezeCond, duration, escrowPeriod, escrow)
     )
 )
 ```
@@ -463,7 +463,7 @@ Payment operations can be vulnerable to front-running and MEV (Maximal Extractab
 
 ---
 
-#### Attack Vector 2: Release Front-Running by Receiver
+#### Attack Vector 2: Capture Front-Running by Receiver
 
 **Scenario**: Payer requests refund, receiver front-runs with release
 
@@ -471,12 +471,12 @@ Payment operations can be vulnerable to front-running and MEV (Maximal Extractab
 1. Payer calls: requestRefund(paymentInfo)
 2. Receiver sees request in mempool
 3. Receiver front-runs with: capture(paymentInfo, amount)
-4. Release executes first, capturing funds before refund request
+4. Capture executes first, capturing funds before refund request
 ```
 
 **Mitigation**:
 - ✅ RefundRequest contract tracks request status
-- ✅ Release condition can check RefundRequest status
+- ✅ Capture condition can check RefundRequest status
 - ⚠️ Users should use refund conditions that prevent front-running
 - ⚠️ Escrow period provides time for dispute resolution
 
@@ -561,7 +561,7 @@ function check(PaymentInfo calldata paymentInfo, address) view returns (bool) {
 **Risk**: Miners can manipulate timestamp by ~900 seconds (15 minutes)
 
 **Impact**:
-- Release could happen 15 min early
+- Capture could happen 15 min early
 - Escrow period could be shortened by 15 min
 
 **Mitigation**:
