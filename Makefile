@@ -1,13 +1,17 @@
 # Makefile for x402r-contracts deployment and management
 
-.PHONY: help deploy verify-owner test coverage clean format slither fuzz gas-snapshot gas-check
+.PHONY: help predict deploy-primitives deploy-x402r verify-owner test coverage clean format slither fuzz gas-snapshot gas-check
 
 # Default target
 help:
 	@echo "x402r-contracts Makefile"
 	@echo ""
-	@echo "Available targets:"
-	@echo "  deploy            - Deploy canonical addresses via CREATE2 (CreateX guarded)"
+	@echo "Deploy targets (run in order, per chain):"
+	@echo "  predict           - Predict canonical CREATE2 addresses (read-only, no broadcast)"
+	@echo "  deploy-primitives - Deploy upstream MIT base/commerce-payments contracts"
+	@echo "  deploy-x402r      - Deploy x402r-authored BUSL contracts (requires primitives)"
+	@echo ""
+	@echo "Other targets:"
 	@echo "  verify-owner      - Verify owner address is multisig"
 	@echo "  test              - Run test suite"
 	@echo "  coverage          - Generate test coverage report"
@@ -19,20 +23,42 @@ help:
 	@echo "  clean             - Clean build artifacts"
 	@echo ""
 	@echo "Example usage:"
-	@echo "  make deploy RPC_URL=https://sepolia.base.org"
+	@echo "  make predict"
+	@echo "  make deploy-primitives RPC_URL=https://sepolia.base.org"
+	@echo "  make deploy-x402r     RPC_URL=https://sepolia.base.org"
 
-# Canonical CREATE2 deploy (single script for all chains).
-# Set CANONICAL_OWNER and CANONICAL_FEE_RECIPIENT in script/DeployCreate2.s.sol
-# before running. The script require()-guards both at runtime.
-deploy:
+# Predict canonical addresses without broadcasting (cross-check before any deploy)
+predict:
+	forge script script/PredictAddresses.s.sol -vvv
+
+# Deploy upstream commerce-payments primitives (MIT). Idempotent per chain.
+deploy-primitives:
 	@if [ -z "$$RPC_URL" ]; then \
 		echo "❌ ERROR: RPC_URL not set"; \
-		echo "Usage: make deploy RPC_URL=https://..."; \
+		echo "Usage: make deploy-primitives RPC_URL=https://..."; \
 		exit 1; \
 	fi
-	@echo "🚀 Running CREATE2 canonical deploy against $$RPC_URL"
+	@echo "🚀 Deploying base/commerce-payments primitives to $$RPC_URL"
 	@echo ""
-	forge script script/DeployCreate2.s.sol \
+	forge script script/DeployCommercePayments.s.sol \
+		--rpc-url $$RPC_URL \
+		--broadcast \
+		--verify \
+		--slow \
+		-vvv
+
+# Deploy x402r-authored contracts (BUSL). Requires primitives to be deployed already.
+# Set CANONICAL_OWNER and CANONICAL_FEE_RECIPIENT in script/DeployX402r.s.sol
+# before running. The script require()-guards both at runtime.
+deploy-x402r:
+	@if [ -z "$$RPC_URL" ]; then \
+		echo "❌ ERROR: RPC_URL not set"; \
+		echo "Usage: make deploy-x402r RPC_URL=https://..."; \
+		exit 1; \
+	fi
+	@echo "🚀 Deploying x402r-authored contracts to $$RPC_URL"
+	@echo ""
+	forge script script/DeployX402r.s.sol \
 		--rpc-url $$RPC_URL \
 		--broadcast \
 		--verify \

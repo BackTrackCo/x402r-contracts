@@ -4,15 +4,8 @@ pragma solidity ^0.8.28;
 import {console} from "forge-std/Script.sol";
 import {Create2Deployer} from "./deploy/Create2Deployer.sol";
 
-// Upstream commerce-payments primitives — vendored unchanged at a pinned commit.
-// Deployed at canonical addresses under the `commerce-payments::v1::*` salt namespace
-// to signal that the bytecode is upstream audited code, not ours.
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {ERC3009PaymentCollector} from "commerce-payments/collectors/ERC3009PaymentCollector.sol";
-import {Permit2PaymentCollector} from "commerce-payments/collectors/Permit2PaymentCollector.sol";
 
-// x402r-authored contracts — deployed at canonical addresses under the
-// `x402r-canonical-v1::*` salt namespace.
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
 import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
 import {SignatureConditionFactory} from "../src/plugins/conditions/access/signature/SignatureConditionFactory.sol";
@@ -34,37 +27,26 @@ import {ReceiverRefundCollector} from "../src/collectors/ReceiverRefundCollector
 import {RefundRequestEvidenceFactory} from "../src/evidence/RefundRequestEvidenceFactory.sol";
 
 /**
- * @title DeployCreate2
- * @notice Deterministic CREATE2 deployment of x402r canonical contracts via CreateX permissionless salts.
- *         Same salt + byte-identical initCode = same address on every chain, regardless of who broadcasts.
+ * @title DeployX402r
+ * @notice Deterministic CREATE2 deployment of x402r-authored contracts (BUSL-1.1) at canonical
+ *         addresses. Depends on the upstream `base/commerce-payments` primitives (MIT) being
+ *         already deployed via `script/DeployCommercePayments.s.sol`.
  *
- * @dev Two salt namespaces:
+ * @dev Salt namespace: `x402r-canonical-v1::<ContractName>`.
  *
- *      `commerce-payments::v1::<ContractName>` — upstream audited bytecode, vendored unchanged
- *      from base/commerce-payments at the pinned submodule commit. The bytecode hash here MUST
- *      match the upstream artifact; any compiler/dep drift moves the canonical address.
+ *      The escrow address is predicted from the canonical CREATE2 derivation (label
+ *      `commerce-payments::v1::AuthCaptureEscrow` + locked upstream initCode at the v1.0.0
+ *      submodule pin). The script asserts the predicted address has code; if not, run
+ *      `DeployCommercePayments.s.sol` first.
  *
- *      `x402r-canonical-v1::<ContractName>` — x402r-authored contracts.
- *
- *      Both namespaces use CreateX permissionless salts (`bytes20(0) || 0x00 || bytes11(label)`).
- *      Anyone with the same source can reproduce the address; first-mover convention applies per
- *      chain. We rely on bytecode reproducibility (not address ACL) as the canonical-deployment
- *      trust root, matching Permit2 / UniversalRouter / Seaport / EntryPoint / commerce-payments.
- *
- *      Reproducibility requirements (see foundry.toml):
- *      - solc version locked
- *      - evm_version = cancun (matches upstream commerce-payments deploy profile)
- *      - optimizer_runs = 100000 (matches upstream commerce-payments deploy profile)
- *      - bytecode_hash = none (strips per-machine metadata)
+ *      Set CANONICAL_OWNER and CANONICAL_FEE_RECIPIENT below before running. Both are pinned
+ *      constants, not env vars: any change moves the CREATE2 addresses of the contracts that
+ *      take them as constructor args (ProtocolFeeConfig and everything downstream).
  *
  *      Usage:
- *        forge script script/DeployCreate2.s.sol --rpc-url <RPC> --broadcast --verify -vvvv
+ *        forge script script/DeployX402r.s.sol --rpc-url <RPC> --broadcast --verify -vvv
  */
-contract DeployCreate2 is Create2Deployer {
-    // ---- Universal addresses (same on every chain via their own deterministic deploys) ----
-    address constant MULTICALL3 = 0xcA11bde05977b3631167028862bE2a173976CA11;
-    address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
-
+contract DeployX402r is Create2Deployer {
     // ---- Canonical x402r EOAs ----
     // TBD: Replace with production multisig addresses BEFORE running this script.
     // Any change here moves the CREATE2 addresses of contracts that take these as
@@ -77,42 +59,28 @@ contract DeployCreate2 is Create2Deployer {
         require(CANONICAL_OWNER != address(0), "Set CANONICAL_OWNER before deploying");
         require(CANONICAL_FEE_RECIPIENT != address(0), "Set CANONICAL_FEE_RECIPIENT before deploying");
 
+        // Predict + assert the upstream escrow is already deployed.
+        address escrow =
+            _predict2("commerce-payments::v1::AuthCaptureEscrow", keccak256(type(AuthCaptureEscrow).creationCode));
+        require(escrow.code.length > 0, "AuthCaptureEscrow not deployed - run DeployCommercePayments.s.sol first");
+
         uint256 deployerPk = vm.envUint("PRIVATE_KEY");
 
         console.log("\n========================================");
-        console.log("  x402r CREATE2 Canonical Deployment");
+        console.log("  x402r BUSL contracts (CREATE2)");
         console.log("========================================");
-        console.log("Chain ID:", block.chainid);
-        console.log("Deployer:", vm.addr(deployerPk));
-        console.log("Owner:", CANONICAL_OWNER);
-        console.log("Fee Recipient:", CANONICAL_FEE_RECIPIENT);
+        console.log("Chain ID:           ", block.chainid);
+        console.log("Deployer:           ", vm.addr(deployerPk));
+        console.log("Owner:              ", CANONICAL_OWNER);
+        console.log("Fee Recipient:      ", CANONICAL_FEE_RECIPIENT);
+        console.log("AuthCaptureEscrow:  ", escrow);
 
         vm.startBroadcast(deployerPk);
 
         // =============================================
-        // 1. commerce-payments primitives (upstream bytecode)
+        // 1. x402r protocol infrastructure
         // =============================================
-        console.log("\n--- 1. commerce-payments primitives ---");
-
-        address escrow = _deploy2("commerce-payments::v1::AuthCaptureEscrow", type(AuthCaptureEscrow).creationCode);
-        console.log("AuthCaptureEscrow:", escrow);
-
-        address erc3009Collector = _deploy2(
-            "commerce-payments::v1::ERC3009PaymentCollector",
-            abi.encodePacked(type(ERC3009PaymentCollector).creationCode, abi.encode(escrow, MULTICALL3))
-        );
-        console.log("ERC3009PaymentCollector:", erc3009Collector);
-
-        address permit2Collector = _deploy2(
-            "commerce-payments::v1::Permit2PaymentCollector",
-            abi.encodePacked(type(Permit2PaymentCollector).creationCode, abi.encode(escrow, PERMIT2))
-        );
-        console.log("Permit2PaymentCollector:", permit2Collector);
-
-        // =============================================
-        // 2. x402r protocol infrastructure
-        // =============================================
-        console.log("\n--- 2. x402r protocol infrastructure ---");
+        console.log("\n--- 1. x402r protocol infrastructure ---");
 
         // ProtocolFeeConfig deploys with calculator = address(0) (protocol fees disabled by
         // default; getProtocolFeeBps returns 0 when calculator is unset). Owner can swap to a
@@ -132,9 +100,9 @@ contract DeployCreate2 is Create2Deployer {
         console.log("PaymentOperatorFactory:", paymentOperatorFactory);
 
         // =============================================
-        // 3. Plugin singletons (no ctor args)
+        // 2. Plugin singletons (no ctor args)
         // =============================================
-        console.log("\n--- 3. Plugin singletons ---");
+        console.log("\n--- 2. Plugin singletons ---");
 
         address payerCondition = _deploy2("x402r-canonical-v1::PayerCondition", type(PayerCondition).creationCode);
         console.log("PayerCondition:", payerCondition);
@@ -148,9 +116,9 @@ contract DeployCreate2 is Create2Deployer {
         console.log("AlwaysTrueCondition:", alwaysTrueCondition);
 
         // =============================================
-        // 4. Plugin factories
+        // 3. Plugin factories
         // =============================================
-        console.log("\n--- 4. Plugin factories ---");
+        console.log("\n--- 3. Plugin factories ---");
 
         address sigCondFactory =
             _deploy2("x402r-canonical-v1::SignatureConditionFactory", type(SignatureConditionFactory).creationCode);
@@ -179,9 +147,9 @@ contract DeployCreate2 is Create2Deployer {
         console.log("StaticFeeCalculatorFactory:", staticFeeCalcFactory);
 
         // =============================================
-        // 5. Per-payment factories (escrow-bound)
+        // 4. Per-payment factories (escrow-bound)
         // =============================================
-        console.log("\n--- 5. Per-payment factories ---");
+        console.log("\n--- 4. Per-payment factories ---");
 
         address escrowPeriodFactory = _deploy2(
             "x402r-canonical-v1::EscrowPeriodFactory",
@@ -195,9 +163,9 @@ contract DeployCreate2 is Create2Deployer {
         console.log("FreezeFactory:", freezeFactory);
 
         // =============================================
-        // 6. Refund-side
+        // 5. Refund-side
         // =============================================
-        console.log("\n--- 6. Refund-side ---");
+        console.log("\n--- 5. Refund-side ---");
 
         address refundReqFactory = _deploy2(
             "x402r-canonical-v1::RefundRequestFactory",
@@ -222,37 +190,27 @@ contract DeployCreate2 is Create2Deployer {
         // Summary
         // =============================================
         console.log("\n========================================");
-        console.log("  DEPLOYMENT SUMMARY (CREATE2)");
+        console.log("  X402R DEPLOYMENT SUMMARY");
         console.log("========================================");
-        console.log("  Same address on every chain (permissionless salt + locked bytecode):");
+        console.log("  ProtocolFeeConfig:             ", protocolFeeConfig);
+        console.log("  PaymentOperatorFactory:        ", paymentOperatorFactory);
         console.log("");
-        console.log("  -- commerce-payments primitives --");
-        console.log("    AuthCaptureEscrow:", escrow);
-        console.log("    ERC3009PaymentCollector:", erc3009Collector);
-        console.log("    Permit2PaymentCollector:", permit2Collector);
+        console.log("  PayerCondition:                ", payerCondition);
+        console.log("  ReceiverCondition:             ", receiverCondition);
+        console.log("  AlwaysTrueCondition:           ", alwaysTrueCondition);
+        console.log("  SignatureConditionFactory:     ", sigCondFactory);
+        console.log("  StaticAddressConditionFactory: ", staticAddrCondFactory);
+        console.log("  AndConditionFactory:           ", andFactory);
+        console.log("  OrConditionFactory:            ", orFactory);
+        console.log("  NotConditionFactory:           ", notFactory);
+        console.log("  HookCombinatorFactory:         ", hookCombFactory);
+        console.log("  StaticFeeCalculatorFactory:    ", staticFeeCalcFactory);
+        console.log("  EscrowPeriodFactory:           ", escrowPeriodFactory);
+        console.log("  FreezeFactory:                 ", freezeFactory);
         console.log("");
-        console.log("  -- x402r protocol --");
-        console.log("    ProtocolFeeConfig:", protocolFeeConfig);
-        console.log("    PaymentOperatorFactory:", paymentOperatorFactory);
-        console.log("");
-        console.log("  -- plugins --");
-        console.log("    PayerCondition:", payerCondition);
-        console.log("    ReceiverCondition:", receiverCondition);
-        console.log("    AlwaysTrueCondition:", alwaysTrueCondition);
-        console.log("    SignatureConditionFactory:", sigCondFactory);
-        console.log("    StaticAddressConditionFactory:", staticAddrCondFactory);
-        console.log("    AndConditionFactory:", andFactory);
-        console.log("    OrConditionFactory:", orFactory);
-        console.log("    NotConditionFactory:", notFactory);
-        console.log("    HookCombinatorFactory:", hookCombFactory);
-        console.log("    StaticFeeCalculatorFactory:", staticFeeCalcFactory);
-        console.log("    EscrowPeriodFactory:", escrowPeriodFactory);
-        console.log("    FreezeFactory:", freezeFactory);
-        console.log("");
-        console.log("  -- refund-side --");
-        console.log("    RefundRequestFactory:", refundReqFactory);
-        console.log("    ReceiverRefundCollector:", receiverRefundCollector);
-        console.log("    RefundRequestEvidenceFactory:", refundRequestEvidenceFactory);
+        console.log("  RefundRequestFactory:          ", refundReqFactory);
+        console.log("  ReceiverRefundCollector:       ", receiverRefundCollector);
+        console.log("  RefundRequestEvidenceFactory:  ", refundRequestEvidenceFactory);
         console.log("========================================");
     }
 }

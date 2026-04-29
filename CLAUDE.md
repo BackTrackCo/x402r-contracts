@@ -41,4 +41,9 @@ Operator stores only `authorizedFees[hash]` and `accumulatedProtocolFees[token]`
 
 ## Deploy
 
-Single CREATE2 canonical deploy via CreateX permissionless salts: `script/DeployCreate2.s.sol`. Both `CANONICAL_OWNER` and `CANONICAL_FEE_RECIPIENT` constants in the script must be set before running. Salt namespaces: `commerce-payments::v1::*` for upstream primitives (vendored unchanged from `base/commerce-payments` v1.0.0), `x402r-canonical-v1::*` for x402r-authored contracts.
+Two-stage CREATE2 canonical deploy via CreateX permissionless salts:
+
+- `script/DeployCommercePayments.s.sol` — upstream `base/commerce-payments` primitives (MIT, vendored from the `v1.0.0` tag): `AuthCaptureEscrow`, `ERC3009PaymentCollector`, `Permit2PaymentCollector`. Salt namespace `commerce-payments::v1::*`.
+- `script/DeployX402r.s.sol` — x402r-authored contracts (BUSL): operator factory, plugins, refund-side. Predicts the escrow address and asserts it's deployed before broadcasting. Salt namespace `x402r-canonical-v1::*`. Both `CANONICAL_OWNER` and `CANONICAL_FEE_RECIPIENT` constants in the script must be set before running.
+
+Cross-check before deploying: `forge script script/PredictAddresses.s.sol -vvv` (or `make predict`) recomputes every canonical address and prints the initCodeHashes — addresses must match across machines or the toolchain has drifted.
