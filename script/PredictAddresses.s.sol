@@ -27,8 +27,9 @@ contract PredictAddresses is Create2Deployer {
             keccak256(abi.encodePacked(type(ERC3009PaymentCollector).creationCode, abi.encode(escrow, MULTICALL3)));
         address erc3009 = _predict2("commerce-payments::v1::ERC3009PaymentCollector", erc3009InitHash);
 
-        bytes32 permit2InitHash =
-            keccak256(abi.encodePacked(type(Permit2PaymentCollector).creationCode, abi.encode(escrow, PERMIT2)));
+        bytes32 permit2InitHash = keccak256(
+            abi.encodePacked(type(Permit2PaymentCollector).creationCode, abi.encode(escrow, PERMIT2, MULTICALL3))
+        );
         address permit2Collector = _predict2("commerce-payments::v1::Permit2PaymentCollector", permit2InitHash);
 
         console.log("=== commerce-payments primitives (MIT) ===");
@@ -43,7 +44,7 @@ contract PredictAddresses is Create2Deployer {
         console.logBytes32(erc3009InitHash);
         console.log("  predicted:  ", erc3009);
         console.log("");
-        console.log("Permit2PaymentCollector(escrow, PERMIT2)");
+        console.log("Permit2PaymentCollector(escrow, PERMIT2, MULTICALL3)");
         console.log("  initCodeHash:");
         console.logBytes32(permit2InitHash);
         console.log("  predicted:  ", permit2Collector);

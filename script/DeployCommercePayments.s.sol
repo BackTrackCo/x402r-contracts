@@ -61,7 +61,7 @@ contract DeployCommercePayments is Create2Deployer {
 
         address permit2Collector = _deploy2(
             "commerce-payments::v1::Permit2PaymentCollector",
-            abi.encodePacked(type(Permit2PaymentCollector).creationCode, abi.encode(escrow, PERMIT2))
+            abi.encodePacked(type(Permit2PaymentCollector).creationCode, abi.encode(escrow, PERMIT2, MULTICALL3))
         );
         console.log("Permit2PaymentCollector:", permit2Collector);
 
