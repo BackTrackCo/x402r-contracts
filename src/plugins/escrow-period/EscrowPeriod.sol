@@ -3,39 +3,39 @@
 pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {AuthorizationTimePostActionHook} from "../post-action-hooks/AuthorizationTimePostActionHook.sol";
-import {IPreActionCondition} from "../pre-action-conditions/IPreActionCondition.sol";
+import {AuthorizationTimeHook} from "../hooks/AuthorizationTimeHook.sol";
+import {ICondition} from "../conditions/ICondition.sol";
 import {InvalidEscrowPeriod} from "./types/Errors.sol";
 
 /**
  * @title EscrowPeriod
- * @notice Combined escrow period hook and condition. Extends AuthorizationTimePostActionHook
- *         with escrow period enforcement and IPreActionCondition implementation.
+ * @notice Combined escrow period hook and condition. Extends AuthorizationTimeHook
+ *         with escrow period enforcement and ICondition implementation.
  *
- * @dev Implements both IPostActionHook (via AuthorizationTimePostActionHook inheritance) and IPreActionCondition.
+ * @dev Implements both IHook (via AuthorizationTimeHook inheritance) and ICondition.
  *      Use the same address for both the AUTHORIZE_POST_ACTION_HOOK and RELEASE_PRE_ACTION_CONDITION slots
  *      on PaymentOperator.
  *
  *      For freeze functionality, deploy a separate Freeze condition contract and compose
- *      both via AndPreActionCondition([escrowPeriod, freeze]).
+ *      both via AndCondition([escrowPeriod, freeze]).
  *
  * TRUST ASSUMPTIONS:
  *      - Timestamp: Uses block.timestamp for time-based escrow periods.
  */
-contract EscrowPeriod is AuthorizationTimePostActionHook, IPreActionCondition {
+contract EscrowPeriod is AuthorizationTimeHook, ICondition {
     /// @notice Duration of the escrow period in seconds
     uint256 public immutable ESCROW_PERIOD;
 
     constructor(uint256 _escrowPeriod, address _escrow, bytes32 _authorizedCodehash)
-        AuthorizationTimePostActionHook(_escrow, _authorizedCodehash)
+        AuthorizationTimeHook(_escrow, _authorizedCodehash)
     {
         if (_escrowPeriod == 0) revert InvalidEscrowPeriod();
         ESCROW_PERIOD = _escrowPeriod;
     }
 
-    // Note: record() inherited from AuthorizationTimePostActionHook
+    // Note: record() inherited from AuthorizationTimeHook
 
-    // ============ IPreActionCondition Implementation ============
+    // ============ ICondition Implementation ============
 
     /**
      * @notice Check if funds can be released (escrow period passed)
@@ -45,7 +45,7 @@ contract EscrowPeriod is AuthorizationTimePostActionHook, IPreActionCondition {
     function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address, bytes calldata)
         external
         view
-        override(IPreActionCondition)
+        override(ICondition)
         returns (bool allowed)
     {
         return !isDuringEscrowPeriod(paymentInfo);
@@ -53,7 +53,7 @@ contract EscrowPeriod is AuthorizationTimePostActionHook, IPreActionCondition {
 
     // ============ View Functions ============
 
-    // Note: getAuthorizationTime() inherited from AuthorizationTimePostActionHook
+    // Note: getAuthorizationTime() inherited from AuthorizationTimeHook
 
     /**
      * @notice Check if a payment is currently within its escrow period

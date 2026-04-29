@@ -24,8 +24,8 @@ All files in `src/` and `script/` must use `// SPDX-License-Identifier: BUSL-1.1
 
 - `src/operator/payment/` — PaymentOperator and access control. Action methods: `authorize`, `charge`, `capture`, `void`, `refund` (forward to canonical `AuthCaptureEscrow` methods of the same name)
 - `src/operator/PaymentOperatorFactory.sol` — Deterministic CREATE2 factory
-- `src/plugins/pre-action-conditions/` — `IPreActionCondition` implementations and And/Or/Not combinators
-- `src/plugins/post-action-hooks/` — `IPostActionHook` implementations (`run()`) and combinator
+- `src/plugins/conditions/` — `ICondition` implementations and And/Or/Not combinators
+- `src/plugins/hooks/` — `IHook` implementations (`run()`) and combinator
 - `src/plugins/escrow-period/` — EscrowPeriod (merged hook+condition) + factory
 - `src/plugins/freeze/` — Freeze condition + factory
 - `src/plugins/fees/` — ProtocolFeeConfig, StaticFeeCalculator + factory

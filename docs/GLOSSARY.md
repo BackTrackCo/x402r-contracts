@@ -35,7 +35,7 @@ The struct that uniquely identifies a payment. Contains: operator, payer, receiv
 The address that funds a payment. Can void authorized payments after `authorizationExpiry`. Can freeze escrow periods (if operator's freeze policy allows). Approves tokens to the collector before authorization.
 
 ### Receiver
-The address that receives released funds. Can approve or deny refund requests. Has priority access to release operations (via ReceiverPreActionCondition). Also referred to as "merchant" in commerce contexts.
+The address that receives released funds. Can approve or deny refund requests. Has priority access to release operations (via ReceiverCondition). Also referred to as "merchant" in commerce contexts.
 
 ### Operator Deployer
 The entity that deploys a PaymentOperator with specific conditions, recorders, and fee configuration. Responsible for choosing safe, audited plugins. Cannot modify the operator after deployment.
@@ -72,7 +72,7 @@ Interface that returns a fee in BPS for a given payment. `StaticFeeCalculator` a
 
 ## Condition System
 
-### Condition (IPreActionCondition)
+### Condition (ICondition)
 A pre-check hook that returns `bool`. Called BEFORE an operation executes. If it returns `false`, the operation reverts with `PreActionConditionNotMet()`. Conditions are `view` functions and should not modify state.
 
 ### Condition Slot
@@ -80,9 +80,9 @@ One of 5 immutable condition addresses on a PaymentOperator: `AUTHORIZE_PRE_ACTI
 
 ### Combinator
 A condition that composes other conditions using boolean logic:
-- **AndPreActionCondition**: All child conditions must return `true`
-- **OrPreActionCondition**: At least one child condition must return `true`
-- **NotPreActionCondition**: Negates a single child condition
+- **AndCondition**: All child conditions must return `true`
+- **OrCondition**: At least one child condition must return `true`
+- **NotCondition**: Negates a single child condition
 
 ### MAX_PRE_ACTION_CONDITIONS
 Hard limit of 10 conditions per combinator, preventing gas griefing from deeply nested condition trees.
@@ -91,33 +91,33 @@ Hard limit of 10 conditions per combinator, preventing gas griefing from deeply 
 
 ## Recorder System
 
-### Recorder (IPostActionHook)
+### Recorder (IHook)
 A post-action hook called AFTER the escrow operation completes. Can modify state (unlike conditions). Used for indexing, timestamp tracking, and analytics.
 
 ### Recorder Slot
 One of 5 immutable recorder addresses on a PaymentOperator: `AUTHORIZE_POST_ACTION_HOOK`, `CHARGE_POST_ACTION_HOOK`, `RELEASE_POST_ACTION_HOOK`, `REFUND_IN_ESCROW_POST_ACTION_HOOK`, `REFUND_POST_ESCROW_POST_ACTION_HOOK`. `address(0)` means "no-op" (default).
 
-### PostActionHookCombinator
+### HookCombinator
 Composes multiple recorders into a single slot. Calls each sub-recorder sequentially. Limited to `MAX_POST_ACTION_HOOKS = 10`.
 
-### BasePostActionHook
+### BaseHook
 Abstract base class for recorders. Provides `_verifyAndHash()` which validates the caller is an authorized operator (via codehash or direct address check) and that the payment exists in escrow.
 
 ### Codehash Authorization
-`BasePostActionHook` uses `EXTCODEHASH` to verify that the calling contract's runtime bytecode matches an expected hash. This prevents impersonation by contracts with different code.
+`BaseHook` uses `EXTCODEHASH` to verify that the calling contract's runtime bytecode matches an expected hash. This prevents impersonation by contracts with different code.
 
 ---
 
 ## Escrow Period System
 
 ### Escrow Period
-A time window after authorization during which funds are held in escrow before release is permitted. Enforced by `EscrowPeriod` (which implements both `IPreActionCondition` and `IPostActionHook`) as both the `AUTHORIZE_POST_ACTION_HOOK` and `RELEASE_PRE_ACTION_CONDITION`.
+A time window after authorization during which funds are held in escrow before release is permitted. Enforced by `EscrowPeriod` (which implements both `ICondition` and `IHook`) as both the `AUTHORIZE_POST_ACTION_HOOK` and `RELEASE_PRE_ACTION_CONDITION`.
 
 ### EscrowPeriod
-Combined recorder and condition contract. Records `block.timestamp` when a payment is authorized (via `AuthorizationTimePostActionHook` inheritance), checks `block.timestamp >= authorizedAt + ESCROW_PERIOD` and `!frozen` for release, and provides freeze/unfreeze capabilities.
+Combined recorder and condition contract. Records `block.timestamp` when a payment is authorized (via `AuthorizationTimeHook` inheritance), checks `block.timestamp >= authorizedAt + ESCROW_PERIOD` and `!frozen` for release, and provides freeze/unfreeze capabilities.
 
 ### Freeze
-A standalone `IPreActionCondition` contract that blocks release when a payment is frozen. The payer (or authorized party) calls `freeze.freeze(paymentInfo)` to set `frozenUntil = block.timestamp + FREEZE_DURATION`. A frozen payment cannot be released until `frozenUntil` passes or `unfreeze()` is called. Freeze contracts are deployed via `FreezeFactory` with configurable freeze/unfreeze conditions passed directly as constructor parameters.
+A standalone `ICondition` contract that blocks release when a payment is frozen. The payer (or authorized party) calls `freeze.freeze(paymentInfo)` to set `frozenUntil = block.timestamp + FREEZE_DURATION`. A frozen payment cannot be released until `frozenUntil` passes or `unfreeze()` is called. Freeze contracts are deployed via `FreezeFactory` with configurable freeze/unfreeze conditions passed directly as constructor parameters.
 
 ### Freeze Duration
 How long a freeze lasts. `0` means permanent (until explicitly unfrozen). Non-zero values auto-expire.

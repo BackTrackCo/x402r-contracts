@@ -16,8 +16,8 @@ event PaymentUnfrozen(AuthCaptureEscrow.PaymentInfo paymentInfo, address indexed
 
 /// @notice Emitted when a Freeze contract is deployed via factory
 /// @param freeze Address of the deployed Freeze contract
-/// @param freezeCondition IPreActionCondition that authorizes freeze calls
-/// @param unfreezeCondition IPreActionCondition that authorizes unfreeze calls
+/// @param freezeCondition ICondition that authorizes freeze calls
+/// @param unfreezeCondition ICondition that authorizes unfreeze calls
 /// @param freezeDuration Duration that freezes last (0 = permanent)
 /// @param escrowPeriodContract Address of the optional escrow period contract (address(0) if unconstrained)
 event FreezeDeployed(

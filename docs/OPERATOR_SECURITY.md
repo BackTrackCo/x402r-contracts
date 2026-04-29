@@ -64,7 +64,7 @@ Conditions are **pre-check hooks** that run BEFORE operations:
 
 ```solidity
 // Condition interface
-interface IPreActionCondition {
+interface ICondition {
     function check(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         address caller
@@ -93,7 +93,7 @@ if (address(RELEASE_PRE_ACTION_CONDITION) != address(0)) {
 **Malicious condition always returns false**:
 
 ```solidity
-contract MaliciousDOSCondition is IPreActionCondition {
+contract MaliciousDOSCondition is ICondition {
     function check(PaymentInfo calldata, address) external pure returns (bool) {
         return false; // Always blocks!
     }
@@ -117,7 +117,7 @@ contract MaliciousDOSCondition is IPreActionCondition {
 **Malicious condition blocks specific addresses**:
 
 ```solidity
-contract MaliciousCensorCondition is IPreActionCondition {
+contract MaliciousCensorCondition is ICondition {
     mapping(address => bool) public blocklist;
 
     function check(PaymentInfo calldata paymentInfo, address caller)
@@ -151,7 +151,7 @@ contract MaliciousCensorCondition is IPreActionCondition {
 **Malicious condition leaks data or provides MEV**:
 
 ```solidity
-contract MaliciousFrontrunCondition is IPreActionCondition {
+contract MaliciousFrontrunCondition is ICondition {
     address public immutable operator;
 
     function check(PaymentInfo calldata paymentInfo, address caller)
@@ -186,7 +186,7 @@ contract MaliciousFrontrunCondition is IPreActionCondition {
 **Malicious condition consumes excessive gas**:
 
 ```solidity
-contract MaliciousGasGriefCondition is IPreActionCondition {
+contract MaliciousGasGriefCondition is ICondition {
     function check(PaymentInfo calldata, address) external view returns (bool) {
         // Infinite loop or heavy computation
         for (uint256 i = 0; i < type(uint256).max; i++) {
@@ -216,9 +216,9 @@ contract MaliciousGasGriefCondition is IPreActionCondition {
 ```solidity
 // Create deeply nested condition
 AndCondition(
-    OrPreActionCondition(
-        NotPreActionCondition(
-            AndPreActionCondition(
+    OrCondition(
+        NotCondition(
+            AndCondition(
                 // ... 10 levels deep
             )
         )
@@ -246,7 +246,7 @@ Recorders are **post-action hooks** that run AFTER operations:
 
 ```solidity
 // Recorder interface
-interface IPostActionHook {
+interface IHook {
     function record(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint256 amount,
@@ -276,7 +276,7 @@ if (address(AUTHORIZE_POST_ACTION_HOOK) != address(0)) {
 **Malicious recorder reenters PaymentOperator during callback**:
 
 ```solidity
-contract MaliciousReentrantRecorder is IPostActionHook {
+contract MaliciousReentrantRecorder is IHook {
     PaymentOperator public targetOperator;
 
     function record(
@@ -330,7 +330,7 @@ function test_ReentrancyOnAuthorize_SameFunction() public {
 **Malicious recorder modifies external state**:
 
 ```solidity
-contract MaliciousStateRecorder is IPostActionHook {
+contract MaliciousStateRecorder is IHook {
     mapping(bytes32 => bool) public paymentProcessed;
 
     function record(
@@ -366,7 +366,7 @@ contract MaliciousStateRecorder is IPostActionHook {
 **Malicious recorder consumes excessive gas**:
 
 ```solidity
-contract MaliciousGasRecorder is IPostActionHook {
+contract MaliciousGasRecorder is IHook {
     function record(PaymentInfo calldata, uint256, address) external {
         // Infinite loop
         while (true) {}
@@ -460,10 +460,10 @@ contract PaymentOperator is Ownable, PaymentOperatorAccess, ReentrancyGuard, IOp
 
 The following conditions are **audited and safe** to use:
 
-#### 1. AlwaysTruePreActionCondition ✅
+#### 1. AlwaysTrueCondition ✅
 ```solidity
 // Always allows the operation
-contract AlwaysTruePreActionCondition is IPreActionCondition {
+contract AlwaysTrueCondition is ICondition {
     function check(PaymentInfo calldata, address) external pure returns (bool) {
         return true;
     }
@@ -475,10 +475,10 @@ contract AlwaysTruePreActionCondition is IPreActionCondition {
 
 ---
 
-#### 2. PayerPreActionCondition ✅
+#### 2. PayerCondition ✅
 ```solidity
 // Only payer can call
-contract PayerPreActionCondition is IPreActionCondition {
+contract PayerCondition is ICondition {
     function check(PaymentInfo calldata paymentInfo, address caller)
         external
         pure
@@ -494,10 +494,10 @@ contract PayerPreActionCondition is IPreActionCondition {
 
 ---
 
-#### 3. ReceiverPreActionCondition ✅
+#### 3. ReceiverCondition ✅
 ```solidity
 // Only receiver can call
-contract ReceiverPreActionCondition is IPreActionCondition {
+contract ReceiverCondition is ICondition {
     function check(PaymentInfo calldata paymentInfo, address caller)
         external
         pure
@@ -513,10 +513,10 @@ contract ReceiverPreActionCondition is IPreActionCondition {
 
 ---
 
-#### 4. StaticAddressPreActionCondition ✅
+#### 4. StaticAddressCondition ✅
 ```solidity
 // Only designated address can call
-contract StaticAddressPreActionCondition is IPreActionCondition {
+contract StaticAddressCondition is ICondition {
     address public immutable DESIGNATED_ADDRESS;
 
     constructor(address _designatedAddress) {
@@ -542,7 +542,7 @@ contract StaticAddressPreActionCondition is IPreActionCondition {
 #### 5. EscrowPeriod ✅
 ```solidity
 // Combined recorder + condition: records auth time, blocks release until escrow period expires
-contract EscrowPeriod is AuthorizationTimePostActionHook, IPreActionCondition {
+contract EscrowPeriod is AuthorizationTimeHook, ICondition {
     uint256 public immutable ESCROW_PERIOD;
 
     function check(PaymentInfo calldata paymentInfo, uint256, address)
@@ -561,12 +561,12 @@ contract EscrowPeriod is AuthorizationTimePostActionHook, IPreActionCondition {
 
 ---
 
-#### 6. AndPreActionCondition ✅
+#### 6. AndCondition ✅
 ```solidity
 // Both conditions must pass
-contract AndPreActionCondition is IPreActionCondition {
-    IPreActionCondition public immutable CONDITION_A;
-    IPreActionCondition public immutable CONDITION_B;
+contract AndCondition is ICondition {
+    ICondition public immutable CONDITION_A;
+    ICondition public immutable CONDITION_B;
 
     function check(PaymentInfo calldata paymentInfo, address caller)
         external
@@ -590,8 +590,8 @@ contract AndPreActionCondition is IPreActionCondition {
 #### 1. EscrowPeriod ✅ (also serves as condition)
 ```solidity
 // Combined recorder + condition with freeze/unfreeze
-contract EscrowPeriod is AuthorizationTimePostActionHook, IPreActionCondition {
-    // record() inherited from AuthorizationTimePostActionHook
+contract EscrowPeriod is AuthorizationTimeHook, ICondition {
+    // record() inherited from AuthorizationTimeHook
     // check() delegates to canRelease()
     // freeze()/unfreeze() for dispute handling
 }

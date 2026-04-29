@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {IPreActionCondition} from "../../src/plugins/pre-action-conditions/IPreActionCondition.sol";
+import {ICondition} from "../../src/plugins/conditions/ICondition.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
 /// @title MockNonZeroAmountCondition
@@ -9,7 +9,7 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 ///         operator action methods pass a meaningful amount to the condition rather
 ///         than a hardcoded 0 — particularly for void(), where passing 0 would
 ///         silently bypass any amount-based gating logic.
-contract MockNonZeroAmountCondition is IPreActionCondition {
+contract MockNonZeroAmountCondition is ICondition {
     function check(AuthCaptureEscrow.PaymentInfo calldata, uint256 amount, address, bytes calldata)
         external
         pure

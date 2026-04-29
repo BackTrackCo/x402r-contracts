@@ -9,9 +9,9 @@ import {EscrowPeriod} from "../src/plugins/escrow-period/EscrowPeriod.sol";
 import {PreActionConditionNotMet} from "../src/operator/types/Errors.sol";
 import {EscrowPeriodFactory} from "../src/plugins/escrow-period/EscrowPeriodFactory.sol";
 import {Freeze} from "../src/plugins/freeze/Freeze.sol";
-import {IPreActionCondition} from "../src/plugins/pre-action-conditions/IPreActionCondition.sol";
-import {AndPreActionCondition} from "../src/plugins/pre-action-conditions/combinators/AndPreActionCondition.sol";
-import {PayerPreActionCondition} from "../src/plugins/pre-action-conditions/access/PayerPreActionCondition.sol";
+import {ICondition} from "../src/plugins/conditions/ICondition.sol";
+import {AndCondition} from "../src/plugins/conditions/combinators/AndCondition.sol";
+import {PayerCondition} from "../src/plugins/conditions/access/PayerCondition.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
@@ -25,7 +25,7 @@ contract FreezeConditionTest is Test {
     PreApprovalPaymentCollector public collector;
     EscrowPeriod public escrowPeriod;
     Freeze public freeze;
-    AndPreActionCondition public capturePreActionCondition;
+    AndCondition public captureCondition;
     MockERC20 public token;
 
     address public owner;
@@ -53,16 +53,16 @@ contract FreezeConditionTest is Test {
         escrowPeriod = EscrowPeriod(escrowPeriodAddr);
 
         // Deploy freeze with escrow period constraint
-        PayerPreActionCondition payerCondition = new PayerPreActionCondition();
+        PayerCondition payerCondition = new PayerCondition();
         freeze = new Freeze(
             address(payerCondition), address(payerCondition), FREEZE_DURATION, address(escrowPeriod), address(escrow)
         );
 
-        // Compose both conditions with AndPreActionCondition
-        IPreActionCondition[] memory conditions = new IPreActionCondition[](2);
-        conditions[0] = IPreActionCondition(address(escrowPeriod));
-        conditions[1] = IPreActionCondition(address(freeze));
-        capturePreActionCondition = new AndPreActionCondition(conditions);
+        // Compose both conditions with AndCondition
+        ICondition[] memory conditions = new ICondition[](2);
+        conditions[0] = ICondition(address(escrowPeriod));
+        conditions[1] = ICondition(address(freeze));
+        captureCondition = new AndCondition(conditions);
 
         protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
         operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
@@ -74,7 +74,7 @@ contract FreezeConditionTest is Test {
             authorizePostActionHook: address(escrowPeriod),
             chargePreActionCondition: address(0),
             chargePostActionHook: address(0),
-            capturePreActionCondition: address(capturePreActionCondition),
+            capturePreActionCondition: address(captureCondition),
             capturePostActionHook: address(0),
             voidPreActionCondition: address(0),
             voidPostActionHook: address(0),
@@ -131,7 +131,7 @@ contract FreezeConditionTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorizePayment();
 
         // Deploy with permanent freeze (duration=0)
-        PayerPreActionCondition payerCond = new PayerPreActionCondition();
+        PayerCondition payerCond = new PayerCondition();
 
         // Deploy a separate escrow period + freeze + operator for this test
         EscrowPeriodFactory condFactory = new EscrowPeriodFactory(address(escrow));
@@ -140,10 +140,10 @@ contract FreezeConditionTest is Test {
 
         Freeze freeze2 = new Freeze(address(payerCond), address(payerCond), 0, address(ep2), address(escrow));
 
-        IPreActionCondition[] memory conds = new IPreActionCondition[](2);
-        conds[0] = IPreActionCondition(address(ep2));
-        conds[1] = IPreActionCondition(address(freeze2));
-        AndPreActionCondition relCond = new AndPreActionCondition(conds);
+        ICondition[] memory conds = new ICondition[](2);
+        conds[0] = ICondition(address(ep2));
+        conds[1] = ICondition(address(freeze2));
+        AndCondition relCond = new AndCondition(conds);
 
         ProtocolFeeConfig pfc2 = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
         PaymentOperatorFactory opFactory2 = new PaymentOperatorFactory(address(escrow), address(pfc2));
@@ -283,7 +283,7 @@ contract FreezeConditionTest is Test {
         vm.prank(payer);
         freeze.freeze(paymentInfo, "");
 
-        // Receiver cannot unfreeze (PayerPreActionCondition for unfreeze)
+        // Receiver cannot unfreeze (PayerCondition for unfreeze)
         vm.prank(receiver);
         vm.expectRevert(UnauthorizedFreeze.selector);
         freeze.unfreeze(paymentInfo, "");
@@ -369,7 +369,7 @@ contract FreezeConditionTest is Test {
 
     function test_ReleaseWhileFrozen_Reverts() public {
         // Deploy a permanent freeze (duration=0 means permanent)
-        PayerPreActionCondition payerCond = new PayerPreActionCondition();
+        PayerCondition payerCond = new PayerCondition();
 
         EscrowPeriodFactory condFactory = new EscrowPeriodFactory(address(escrow));
         address ep2Addr = condFactory.deploy(ESCROW_PERIOD_DURATION, bytes32(uint256(99)));
@@ -377,10 +377,10 @@ contract FreezeConditionTest is Test {
 
         Freeze freeze2 = new Freeze(address(payerCond), address(payerCond), 0, address(ep2), address(escrow));
 
-        IPreActionCondition[] memory conds = new IPreActionCondition[](2);
-        conds[0] = IPreActionCondition(address(ep2));
-        conds[1] = IPreActionCondition(address(freeze2));
-        AndPreActionCondition relCond = new AndPreActionCondition(conds);
+        ICondition[] memory conds = new ICondition[](2);
+        conds[0] = ICondition(address(ep2));
+        conds[1] = ICondition(address(freeze2));
+        AndCondition relCond = new AndCondition(conds);
 
         ProtocolFeeConfig pfc2 = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
         PaymentOperatorFactory opFactory2 = new PaymentOperatorFactory(address(escrow), address(pfc2));
@@ -460,7 +460,7 @@ contract FreezeConditionTest is Test {
 
     function test_FreezeWithoutEscrowPeriod_UnconstrainedByTime() public {
         // Deploy freeze without escrow period constraint
-        PayerPreActionCondition payerCond = new PayerPreActionCondition();
+        PayerCondition payerCond = new PayerCondition();
         Freeze unconstrainedFreeze =
             new Freeze(address(payerCond), address(payerCond), FREEZE_DURATION, address(0), address(escrow));
 

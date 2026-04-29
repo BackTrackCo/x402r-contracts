@@ -13,12 +13,10 @@ import {StaticFeeCalculator} from "../../src/plugins/fees/static-fee-calculator/
 import {EscrowPeriod} from "../../src/plugins/escrow-period/EscrowPeriod.sol";
 import {EscrowPeriodFactory} from "../../src/plugins/escrow-period/EscrowPeriodFactory.sol";
 import {Freeze} from "../../src/plugins/freeze/Freeze.sol";
-import {IPreActionCondition} from "../../src/plugins/pre-action-conditions/IPreActionCondition.sol";
-import {AndPreActionCondition} from "../../src/plugins/pre-action-conditions/combinators/AndPreActionCondition.sol";
-import {PayerPreActionCondition} from "../../src/plugins/pre-action-conditions/access/PayerPreActionCondition.sol";
-import {
-    ReceiverPreActionCondition
-} from "../../src/plugins/pre-action-conditions/access/ReceiverPreActionCondition.sol";
+import {ICondition} from "../../src/plugins/conditions/ICondition.sol";
+import {AndCondition} from "../../src/plugins/conditions/combinators/AndCondition.sol";
+import {PayerCondition} from "../../src/plugins/conditions/access/PayerCondition.sol";
+import {ReceiverCondition} from "../../src/plugins/conditions/access/ReceiverCondition.sol";
 
 import {RefundRequest} from "../../src/requests/refund/RefundRequest.sol";
 import {RefundRequestEvidence} from "../../src/evidence/RefundRequestEvidence.sol";
@@ -48,15 +46,15 @@ contract GasBenchmark is Test {
     // ============ Plugins ============
     EscrowPeriod public escrowPeriod;
     Freeze public freeze;
-    AndPreActionCondition public capturePreActionCondition;
-    PayerPreActionCondition public payerCondition;
+    AndCondition public captureCondition;
+    PayerCondition public payerCondition;
 
     // ============ Operators ============
     PaymentOperatorFactory public operatorFactory;
     PaymentOperatorFactory public bareOperatorFactory; // No protocol fees
     PaymentOperator public bareOperator; // No conditions/hooks/fees
     PaymentOperator public feesOnlyOperator; // Fees, no conditions/hooks
-    PaymentOperator public simpleOperator; // Fees + ReceiverPreActionCondition on release
+    PaymentOperator public simpleOperator; // Fees + ReceiverCondition on release
     PaymentOperator public escrowOnlyOperator; // Fees + EscrowPeriod (no Freeze)
     PaymentOperator public fullOperator; // EscrowPeriod + Freeze + fees
 
@@ -102,7 +100,7 @@ contract GasBenchmark is Test {
 
         // Deploy escrow period
         EscrowPeriodFactory escrowPeriodFactory = new EscrowPeriodFactory(address(escrow));
-        payerCondition = new PayerPreActionCondition();
+        payerCondition = new PayerCondition();
         address escrowPeriodAddr = escrowPeriodFactory.deploy(ESCROW_PERIOD_DURATION, bytes32(0));
         escrowPeriod = EscrowPeriod(escrowPeriodAddr);
 
@@ -112,10 +110,10 @@ contract GasBenchmark is Test {
         );
 
         // Compose release condition: EscrowPeriod AND NOT Frozen
-        IPreActionCondition[] memory conditions = new IPreActionCondition[](2);
-        conditions[0] = IPreActionCondition(address(escrowPeriod));
-        conditions[1] = IPreActionCondition(address(freeze));
-        capturePreActionCondition = new AndPreActionCondition(conditions);
+        ICondition[] memory conditions = new ICondition[](2);
+        conditions[0] = ICondition(address(escrowPeriod));
+        conditions[1] = ICondition(address(freeze));
+        captureCondition = new AndCondition(conditions);
 
         // Deploy operator factories
         operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
@@ -158,8 +156,8 @@ contract GasBenchmark is Test {
         });
         feesOnlyOperator = PaymentOperator(operatorFactory.deployOperator(feesOnlyConfig));
 
-        // --- SIMPLE OPERATOR (fees + ReceiverPreActionCondition on release) ---
-        ReceiverPreActionCondition receiverCondition = new ReceiverPreActionCondition();
+        // --- SIMPLE OPERATOR (fees + ReceiverCondition on release) ---
+        ReceiverCondition receiverCondition = new ReceiverCondition();
         PaymentOperatorFactory.OperatorConfig memory simpleConfig = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: operatorFeeRecipient,
             feeCalculator: address(operatorCalc),
@@ -201,7 +199,7 @@ contract GasBenchmark is Test {
             authorizePostActionHook: address(escrowPeriod),
             chargePreActionCondition: address(0),
             chargePostActionHook: address(0),
-            capturePreActionCondition: address(capturePreActionCondition),
+            capturePreActionCondition: address(captureCondition),
             capturePostActionHook: address(0),
             voidPreActionCondition: address(0),
             voidPostActionHook: address(0),
@@ -340,7 +338,7 @@ contract GasBenchmark is Test {
     }
 
     // ================================================================
-    //  2c. SIMPLE CONDITIONS (fees + ReceiverPreActionCondition on release)
+    //  2c. SIMPLE CONDITIONS (fees + ReceiverCondition on release)
     // ================================================================
 
     function test_gas_simpleAuthorize() public {
@@ -370,7 +368,7 @@ contract GasBenchmark is Test {
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== SIMPLE CONDITIONS ===");
-        console.log("release (fees + ReceiverPreActionCondition):", gasUsed);
+        console.log("release (fees + ReceiverCondition):", gasUsed);
     }
 
     // ================================================================
@@ -1111,7 +1109,7 @@ contract GasBenchmark is Test {
         collector.preApprove(piFees);
         feesOnlyOperator.authorize(piFees, PAYMENT_AMOUNT, address(collector), "");
 
-        // Simple (fees + ReceiverPreActionCondition)
+        // Simple (fees + ReceiverCondition)
         AuthCaptureEscrow.PaymentInfo memory piSimple = _createPaymentInfo(address(simpleOperator), TOTAL_BPS, 36);
         vm.prank(payer);
         collector.preApprove(piSimple);
@@ -1123,7 +1121,7 @@ contract GasBenchmark is Test {
         collector.preApprove(piEscrow);
         escrowOnlyOperator.authorize(piEscrow, PAYMENT_AMOUNT, address(collector), "");
 
-        // Full (EscrowPeriod + Freeze via AndPreActionCondition + fees)
+        // Full (EscrowPeriod + Freeze via AndCondition + fees)
         AuthCaptureEscrow.PaymentInfo memory piFull = _createPaymentInfo(address(fullOperator), TOTAL_BPS, 38);
         vm.prank(payer);
         collector.preApprove(piFull);
@@ -1165,14 +1163,14 @@ contract GasBenchmark is Test {
         console.log("=== RELEASE OVERHEAD ===");
         console.log("bare (no fees/conditions):", bareGas);
         console.log("+ fees:", feesGas);
-        console.log("+ fees + ReceiverPreActionCondition:", simpleGas);
+        console.log("+ fees + ReceiverCondition:", simpleGas);
         console.log("+ fees + EscrowPeriod:", escrowGas);
-        console.log("+ fees + EscrowPeriod + Freeze (AndPreActionCondition):", fullGas);
+        console.log("+ fees + EscrowPeriod + Freeze (AndCondition):", fullGas);
         console.log("--- marginal costs ---");
         console.log("fee retrieval + distribution:", feesGas - bareGas);
-        console.log("ReceiverPreActionCondition (pure calldata):", simpleGas - feesGas);
+        console.log("ReceiverCondition (pure calldata):", simpleGas - feesGas);
         console.log("EscrowPeriod (cross-contract storage):", escrowGas - feesGas);
-        console.log("Freeze + AndPreActionCondition combinator:", fullGas - escrowGas);
+        console.log("Freeze + AndCondition combinator:", fullGas - escrowGas);
     }
 
     // ================================================================

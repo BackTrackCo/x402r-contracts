@@ -12,16 +12,12 @@ import {StaticFeeCalculator} from "../../src/plugins/fees/static-fee-calculator/
 import {EscrowPeriod} from "../../src/plugins/escrow-period/EscrowPeriod.sol";
 import {EscrowPeriodFactory} from "../../src/plugins/escrow-period/EscrowPeriodFactory.sol";
 import {Freeze} from "../../src/plugins/freeze/Freeze.sol";
-import {IPreActionCondition} from "../../src/plugins/pre-action-conditions/IPreActionCondition.sol";
-import {AndPreActionCondition} from "../../src/plugins/pre-action-conditions/combinators/AndPreActionCondition.sol";
-import {OrPreActionCondition} from "../../src/plugins/pre-action-conditions/combinators/OrPreActionCondition.sol";
-import {PayerPreActionCondition} from "../../src/plugins/pre-action-conditions/access/PayerPreActionCondition.sol";
-import {
-    ReceiverPreActionCondition
-} from "../../src/plugins/pre-action-conditions/access/ReceiverPreActionCondition.sol";
-import {
-    StaticAddressPreActionCondition
-} from "../../src/plugins/pre-action-conditions/access/static-address/StaticAddressPreActionCondition.sol";
+import {ICondition} from "../../src/plugins/conditions/ICondition.sol";
+import {AndCondition} from "../../src/plugins/conditions/combinators/AndCondition.sol";
+import {OrCondition} from "../../src/plugins/conditions/combinators/OrCondition.sol";
+import {PayerCondition} from "../../src/plugins/conditions/access/PayerCondition.sol";
+import {ReceiverCondition} from "../../src/plugins/conditions/access/ReceiverCondition.sol";
+import {StaticAddressCondition} from "../../src/plugins/conditions/access/static-address/StaticAddressCondition.sol";
 import {RefundRequest} from "../../src/requests/refund/RefundRequest.sol";
 import {RequestStatus} from "../../src/requests/types/Types.sol";
 import {ReceiverRefundCollector} from "../../src/collectors/ReceiverRefundCollector.sol";
@@ -45,9 +41,9 @@ contract FullLifecycleTest is Test {
     // Escrow period system
     EscrowPeriod public escrowPeriod;
     Freeze public freeze;
-    AndPreActionCondition public escrowReleaseCondition;
-    PayerPreActionCondition public payerCondition;
-    ReceiverPreActionCondition public receiverCondition;
+    AndCondition public escrowReleaseCondition;
+    PayerCondition public payerCondition;
+    ReceiverCondition public receiverCondition;
 
     // Operator
     PaymentOperatorFactory public operatorFactory;
@@ -55,7 +51,7 @@ contract FullLifecycleTest is Test {
 
     // Refund request
     RefundRequest public refundRequest;
-    OrPreActionCondition public voidPreActionCondition;
+    OrCondition public voidCondition;
 
     // Addresses
     address public owner;
@@ -93,8 +89,8 @@ contract FullLifecycleTest is Test {
 
         // Deploy escrow period via factory
         EscrowPeriodFactory escrowPeriodFactory = new EscrowPeriodFactory(address(escrow));
-        payerCondition = new PayerPreActionCondition();
-        receiverCondition = new ReceiverPreActionCondition();
+        payerCondition = new PayerCondition();
+        receiverCondition = new ReceiverCondition();
         address escrowPeriodAddr = escrowPeriodFactory.deploy(ESCROW_PERIOD, bytes32(0));
         escrowPeriod = EscrowPeriod(escrowPeriodAddr);
 
@@ -104,20 +100,20 @@ contract FullLifecycleTest is Test {
         );
 
         // Compose escrow period + freeze into release condition
-        IPreActionCondition[] memory escrowConditions = new IPreActionCondition[](2);
-        escrowConditions[0] = IPreActionCondition(address(escrowPeriod));
-        escrowConditions[1] = IPreActionCondition(address(freeze));
-        escrowReleaseCondition = new AndPreActionCondition(escrowConditions);
+        ICondition[] memory escrowConditions = new ICondition[](2);
+        escrowConditions[0] = ICondition(address(escrowPeriod));
+        escrowConditions[1] = ICondition(address(freeze));
+        escrowReleaseCondition = new AndCondition(escrowConditions);
 
         // Deploy RefundRequest with arbiter
         refundRequest = new RefundRequest(arbiter);
 
-        // Build VOID_PRE_ACTION_CONDITION = Or(StaticAddressPreActionCondition(arbiter), ReceiverPreActionCondition)
-        StaticAddressPreActionCondition arbiterCondition = new StaticAddressPreActionCondition(arbiter);
-        IPreActionCondition[] memory refundPreActionConditions = new IPreActionCondition[](2);
-        refundPreActionConditions[0] = IPreActionCondition(address(arbiterCondition));
-        refundPreActionConditions[1] = IPreActionCondition(address(receiverCondition));
-        voidPreActionCondition = new OrPreActionCondition(refundPreActionConditions);
+        // Build VOID_PRE_ACTION_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)
+        StaticAddressCondition arbiterCondition = new StaticAddressCondition(arbiter);
+        ICondition[] memory refundPreActionConditions = new ICondition[](2);
+        refundPreActionConditions[0] = ICondition(address(arbiterCondition));
+        refundPreActionConditions[1] = ICondition(address(receiverCondition));
+        voidCondition = new OrCondition(refundPreActionConditions);
 
         // Deploy operator with full configuration
         operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
@@ -131,7 +127,7 @@ contract FullLifecycleTest is Test {
             chargePostActionHook: address(0),
             capturePreActionCondition: address(escrowReleaseCondition),
             capturePostActionHook: address(0),
-            voidPreActionCondition: address(voidPreActionCondition),
+            voidPreActionCondition: address(voidCondition),
             voidPostActionHook: address(refundRequest),
             refundPreActionCondition: address(0),
             refundPostActionHook: address(0)

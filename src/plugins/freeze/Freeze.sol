@@ -3,7 +3,7 @@
 pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {IPreActionCondition} from "../pre-action-conditions/IPreActionCondition.sol";
+import {ICondition} from "../conditions/ICondition.sol";
 import {EscrowPeriod} from "../escrow-period/EscrowPeriod.sol";
 import {ZeroAddress} from "../../types/Errors.sol";
 import {FreezeWindowExpired, UnauthorizedFreeze, AlreadyFrozen, NotFrozen} from "./types/Errors.sol";
@@ -11,14 +11,14 @@ import {PaymentFrozen, PaymentUnfrozen} from "./types/Events.sol";
 
 /**
  * @title Freeze
- * @notice Standalone IPreActionCondition that blocks release when a payment is frozen.
+ * @notice Standalone ICondition that blocks release when a payment is frozen.
  *         Manages freeze/unfreeze state with optional escrow period time constraint.
  *
- * @dev Implements IPreActionCondition: check() returns false when frozen (blocks release).
- *      Does NOT inherit BasePostActionHook — uses ESCROW.getHash() directly for payment hash computation.
+ * @dev Implements ICondition: check() returns false when frozen (blocks release).
+ *      Does NOT inherit BaseHook — uses ESCROW.getHash() directly for payment hash computation.
  *
  *      FREEZE_PRE_ACTION_CONDITION and UNFREEZE_PRE_ACTION_CONDITION are required (constructor reverts on address(0))
- *      — these IPreActionCondition contracts define WHO can freeze/unfreeze.
+ *      — these ICondition contracts define WHO can freeze/unfreeze.
  *      FREEZE_DURATION defines HOW LONG freezes last (0 = permanent until unfrozen).
  *
  *      ESCROW_PERIOD_CONTRACT is optional (address(0) = freeze is unconstrained by time).
@@ -29,15 +29,15 @@ import {PaymentFrozen, PaymentUnfrozen} from "./types/Events.sol";
  * COMPOSITION PATTERN:
  *      - Escrow period only:  capturePreActionCondition = escrowPeriod
  *      - Freeze only:         capturePreActionCondition = freeze
- *      - Both:                capturePreActionCondition = AndPreActionCondition([escrowPeriod, freeze])
+ *      - Both:                capturePreActionCondition = AndCondition([escrowPeriod, freeze])
  *
  * EXAMPLE CONFIGURATIONS:
- *      - Payer freeze/unfreeze (3 days): (PayerPreActionCondition, PayerPreActionCondition, 3 days)
- *      - Payer freeze, Arbiter unfreeze: (PayerPreActionCondition, StaticAddressPreActionCondition, 0)
- *      - Anyone freeze, Receiver unfreeze: (AlwaysTruePreActionCondition, ReceiverPreActionCondition, 7 days)
+ *      - Payer freeze/unfreeze (3 days): (PayerCondition, PayerCondition, 3 days)
+ *      - Payer freeze, Arbiter unfreeze: (PayerCondition, StaticAddressCondition, 0)
+ *      - Anyone freeze, Receiver unfreeze: (AlwaysTrueCondition, ReceiverCondition, 7 days)
  *
  * SECURITY NOTE - Freeze/Release Race Condition:
- *      When composed with EscrowPeriod via AndPreActionCondition, at the exact moment the escrow
+ *      When composed with EscrowPeriod via AndCondition, at the exact moment the escrow
  *      period expires:
  *      - freeze() will revert with FreezeWindowExpired
  *      - EscrowPeriod.check() will return true (release allowed)
@@ -50,15 +50,15 @@ import {PaymentFrozen, PaymentUnfrozen} from "./types/Events.sol";
  *      2. PRIVATE MEMPOOL: Submit via Flashbots Protect or MEV Blocker near the deadline.
  *      3. MONITOR: Watch for release attempts and freeze proactively.
  */
-contract Freeze is IPreActionCondition {
+contract Freeze is ICondition {
     /// @notice Escrow contract for payment hash computation
     AuthCaptureEscrow public immutable ESCROW;
 
     /// @notice Condition that authorizes freeze calls
-    IPreActionCondition public immutable FREEZE_PRE_ACTION_CONDITION;
+    ICondition public immutable FREEZE_PRE_ACTION_CONDITION;
 
     /// @notice Condition that authorizes unfreeze calls
-    IPreActionCondition public immutable UNFREEZE_PRE_ACTION_CONDITION;
+    ICondition public immutable UNFREEZE_PRE_ACTION_CONDITION;
 
     /// @notice Duration that freezes last (0 = permanent until unfrozen)
     uint256 public immutable FREEZE_DURATION;
@@ -80,14 +80,14 @@ contract Freeze is IPreActionCondition {
         if (_freezeCondition == address(0)) revert ZeroAddress();
         if (_unfreezeCondition == address(0)) revert ZeroAddress();
         if (_escrow == address(0)) revert ZeroAddress();
-        FREEZE_PRE_ACTION_CONDITION = IPreActionCondition(_freezeCondition);
-        UNFREEZE_PRE_ACTION_CONDITION = IPreActionCondition(_unfreezeCondition);
+        FREEZE_PRE_ACTION_CONDITION = ICondition(_freezeCondition);
+        UNFREEZE_PRE_ACTION_CONDITION = ICondition(_unfreezeCondition);
         FREEZE_DURATION = _freezeDuration;
         ESCROW_PERIOD_CONTRACT = EscrowPeriod(_escrowPeriodContract);
         ESCROW = AuthCaptureEscrow(_escrow);
     }
 
-    // ============ IPreActionCondition Implementation ============
+    // ============ ICondition Implementation ============
 
     /**
      * @notice Check if release is allowed (not frozen)
@@ -97,7 +97,7 @@ contract Freeze is IPreActionCondition {
     function check(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address, bytes calldata)
         external
         view
-        override(IPreActionCondition)
+        override(ICondition)
         returns (bool allowed)
     {
         return !_isFrozen(paymentInfo);

@@ -74,11 +74,11 @@ This deploys, in order:
    - `ProtocolFeeConfig` (initial calculator = `address(0)`; owner sets via 7-day timelock per chain)
    - `PaymentOperatorFactory`
 3. **Plugin singletons** (no ctor args):
-   - `PayerPreActionCondition`, `ReceiverPreActionCondition`, `AlwaysTruePreActionCondition`
+   - `PayerCondition`, `ReceiverCondition`, `AlwaysTrueCondition`
 4. **Plugin factories**:
-   - `SignaturePreActionConditionFactory`, `StaticAddressPreActionConditionFactory`
-   - `AndPreActionConditionFactory`, `OrPreActionConditionFactory`, `NotPreActionConditionFactory`
-   - `PostActionHookCombinatorFactory`, `StaticFeeCalculatorFactory`
+   - `SignatureConditionFactory`, `StaticAddressConditionFactory`
+   - `AndConditionFactory`, `OrConditionFactory`, `NotConditionFactory`
+   - `HookCombinatorFactory`, `StaticFeeCalculatorFactory`
 5. **Per-payment factories** (escrow-bound):
    - `EscrowPeriodFactory`, `FreezeFactory`
 6. **Refund-side**:

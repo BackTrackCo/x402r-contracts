@@ -9,7 +9,7 @@ import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreAppro
 import {ProtocolFeeConfig} from "../../src/plugins/fees/ProtocolFeeConfig.sol";
 import {StaticFeeCalculator} from "../../src/plugins/fees/static-fee-calculator/StaticFeeCalculator.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
-import {MaliciousPostActionHook} from "../mocks/MaliciousPostActionHook.sol";
+import {MaliciousHook} from "../mocks/MaliciousHook.sol";
 
 /**
  * @title PaymentOperatorInvariants
@@ -25,7 +25,7 @@ contract PaymentOperatorInvariants is Test {
     PreApprovalPaymentCollector public collector;
     ProtocolFeeConfig public protocolFeeConfig;
     MockERC20 public token;
-    MaliciousPostActionHook public maliciousPostActionHook;
+    MaliciousHook public maliciousHook;
     PaymentOperator public reentrancyTestOperator;
 
     address public owner;
@@ -94,12 +94,12 @@ contract PaymentOperatorInvariants is Test {
         operator = PaymentOperator(factory.deployOperator(config));
 
         // Deploy operator with malicious hook to verify reentrancy protection
-        maliciousPostActionHook = new MaliciousPostActionHook(MaliciousPostActionHook.AttackType.REENTER_WITHDRAW_FEES);
+        maliciousHook = new MaliciousHook(MaliciousHook.AttackType.REENTER_WITHDRAW_FEES);
         PaymentOperatorFactory.OperatorConfig memory reentrancyConfig = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: operatorFeeRecipient,
             feeCalculator: address(operatorCalc),
             authorizePreActionCondition: address(0),
-            authorizePostActionHook: address(maliciousPostActionHook),
+            authorizePostActionHook: address(maliciousHook),
             chargePreActionCondition: address(0),
             chargePostActionHook: address(0),
             capturePreActionCondition: address(0),
@@ -338,9 +338,9 @@ contract PaymentOperatorInvariants is Test {
 
     /// @notice Reentrancy protection prevents callback attacks
     function echidna_reentrancy_protected() public view returns (bool) {
-        // MaliciousPostActionHook attempted distributeFees() during authorize() callback.
+        // MaliciousHook attempted distributeFees() during authorize() callback.
         // nonReentrant must have blocked it.
-        return maliciousPostActionHook.reentrancyBlocked();
+        return maliciousHook.reentrancyBlocked();
     }
 
     /// @notice Payment hash uniqueness

@@ -15,32 +15,20 @@ import {Permit2PaymentCollector} from "commerce-payments/collectors/Permit2Payme
 // `x402r-canonical-v1::*` salt namespace.
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
 import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
-import {
-    SignaturePreActionConditionFactory
-} from "../src/plugins/pre-action-conditions/access/signature/SignaturePreActionConditionFactory.sol";
-import {PayerPreActionCondition} from "../src/plugins/pre-action-conditions/access/PayerPreActionCondition.sol";
-import {ReceiverPreActionCondition} from "../src/plugins/pre-action-conditions/access/ReceiverPreActionCondition.sol";
-import {
-    AlwaysTruePreActionCondition
-} from "../src/plugins/pre-action-conditions/access/AlwaysTruePreActionCondition.sol";
+import {SignatureConditionFactory} from "../src/plugins/conditions/access/signature/SignatureConditionFactory.sol";
+import {PayerCondition} from "../src/plugins/conditions/access/PayerCondition.sol";
+import {ReceiverCondition} from "../src/plugins/conditions/access/ReceiverCondition.sol";
+import {AlwaysTrueCondition} from "../src/plugins/conditions/access/AlwaysTrueCondition.sol";
 import {EscrowPeriodFactory} from "../src/plugins/escrow-period/EscrowPeriodFactory.sol";
 import {FreezeFactory} from "../src/plugins/freeze/FreezeFactory.sol";
 import {StaticFeeCalculatorFactory} from "../src/plugins/fees/static-fee-calculator/StaticFeeCalculatorFactory.sol";
 import {
-    StaticAddressPreActionConditionFactory
-} from "../src/plugins/pre-action-conditions/access/static-address/StaticAddressPreActionConditionFactory.sol";
-import {
-    AndPreActionConditionFactory
-} from "../src/plugins/pre-action-conditions/combinators/AndPreActionConditionFactory.sol";
-import {
-    OrPreActionConditionFactory
-} from "../src/plugins/pre-action-conditions/combinators/OrPreActionConditionFactory.sol";
-import {
-    NotPreActionConditionFactory
-} from "../src/plugins/pre-action-conditions/combinators/NotPreActionConditionFactory.sol";
-import {
-    PostActionHookCombinatorFactory
-} from "../src/plugins/post-action-hooks/combinators/PostActionHookCombinatorFactory.sol";
+    StaticAddressConditionFactory
+} from "../src/plugins/conditions/access/static-address/StaticAddressConditionFactory.sol";
+import {AndConditionFactory} from "../src/plugins/conditions/combinators/AndConditionFactory.sol";
+import {OrConditionFactory} from "../src/plugins/conditions/combinators/OrConditionFactory.sol";
+import {NotConditionFactory} from "../src/plugins/conditions/combinators/NotConditionFactory.sol";
+import {HookCombinatorFactory} from "../src/plugins/hooks/combinators/HookCombinatorFactory.sol";
 import {RefundRequestFactory} from "../src/requests/refund/RefundRequestFactory.sol";
 import {ReceiverRefundCollector} from "../src/collectors/ReceiverRefundCollector.sol";
 import {RefundRequestEvidenceFactory} from "../src/evidence/RefundRequestEvidenceFactory.sol";
@@ -146,54 +134,43 @@ contract DeployCreate2 is Create2Deployer {
         // =============================================
         console.log("\n--- 3. Plugin singletons ---");
 
-        address payerCondition =
-            _deploy2("x402r-canonical-v1::PayerPreActionCondition", type(PayerPreActionCondition).creationCode);
-        console.log("PayerPreActionCondition:", payerCondition);
+        address payerCondition = _deploy2("x402r-canonical-v1::PayerCondition", type(PayerCondition).creationCode);
+        console.log("PayerCondition:", payerCondition);
 
         address receiverCondition =
-            _deploy2("x402r-canonical-v1::ReceiverPreActionCondition", type(ReceiverPreActionCondition).creationCode);
-        console.log("ReceiverPreActionCondition:", receiverCondition);
+            _deploy2("x402r-canonical-v1::ReceiverCondition", type(ReceiverCondition).creationCode);
+        console.log("ReceiverCondition:", receiverCondition);
 
-        address alwaysTrueCondition = _deploy2(
-            "x402r-canonical-v1::AlwaysTruePreActionCondition", type(AlwaysTruePreActionCondition).creationCode
-        );
-        console.log("AlwaysTruePreActionCondition:", alwaysTrueCondition);
+        address alwaysTrueCondition =
+            _deploy2("x402r-canonical-v1::AlwaysTrueCondition", type(AlwaysTrueCondition).creationCode);
+        console.log("AlwaysTrueCondition:", alwaysTrueCondition);
 
         // =============================================
         // 4. Plugin factories
         // =============================================
         console.log("\n--- 4. Plugin factories ---");
 
-        address sigCondFactory = _deploy2(
-            "x402r-canonical-v1::SignaturePreActionConditionFactory",
-            type(SignaturePreActionConditionFactory).creationCode
-        );
-        console.log("SignaturePreActionConditionFactory:", sigCondFactory);
+        address sigCondFactory =
+            _deploy2("x402r-canonical-v1::SignatureConditionFactory", type(SignatureConditionFactory).creationCode);
+        console.log("SignatureConditionFactory:", sigCondFactory);
 
         address staticAddrCondFactory = _deploy2(
-            "x402r-canonical-v1::StaticAddressPreActionConditionFactory",
-            type(StaticAddressPreActionConditionFactory).creationCode
+            "x402r-canonical-v1::StaticAddressConditionFactory", type(StaticAddressConditionFactory).creationCode
         );
-        console.log("StaticAddressPreActionConditionFactory:", staticAddrCondFactory);
+        console.log("StaticAddressConditionFactory:", staticAddrCondFactory);
 
-        address andFactory = _deploy2(
-            "x402r-canonical-v1::AndPreActionConditionFactory", type(AndPreActionConditionFactory).creationCode
-        );
-        console.log("AndPreActionConditionFactory:", andFactory);
+        address andFactory = _deploy2("x402r-canonical-v1::AndConditionFactory", type(AndConditionFactory).creationCode);
+        console.log("AndConditionFactory:", andFactory);
 
-        address orFactory =
-            _deploy2("x402r-canonical-v1::OrPreActionConditionFactory", type(OrPreActionConditionFactory).creationCode);
-        console.log("OrPreActionConditionFactory:", orFactory);
+        address orFactory = _deploy2("x402r-canonical-v1::OrConditionFactory", type(OrConditionFactory).creationCode);
+        console.log("OrConditionFactory:", orFactory);
 
-        address notFactory = _deploy2(
-            "x402r-canonical-v1::NotPreActionConditionFactory", type(NotPreActionConditionFactory).creationCode
-        );
-        console.log("NotPreActionConditionFactory:", notFactory);
+        address notFactory = _deploy2("x402r-canonical-v1::NotConditionFactory", type(NotConditionFactory).creationCode);
+        console.log("NotConditionFactory:", notFactory);
 
-        address hookCombFactory = _deploy2(
-            "x402r-canonical-v1::PostActionHookCombinatorFactory", type(PostActionHookCombinatorFactory).creationCode
-        );
-        console.log("PostActionHookCombinatorFactory:", hookCombFactory);
+        address hookCombFactory =
+            _deploy2("x402r-canonical-v1::HookCombinatorFactory", type(HookCombinatorFactory).creationCode);
+        console.log("HookCombinatorFactory:", hookCombFactory);
 
         address staticFeeCalcFactory =
             _deploy2("x402r-canonical-v1::StaticFeeCalculatorFactory", type(StaticFeeCalculatorFactory).creationCode);
@@ -255,15 +232,15 @@ contract DeployCreate2 is Create2Deployer {
         console.log("    PaymentOperatorFactory:", paymentOperatorFactory);
         console.log("");
         console.log("  -- plugins --");
-        console.log("    PayerPreActionCondition:", payerCondition);
-        console.log("    ReceiverPreActionCondition:", receiverCondition);
-        console.log("    AlwaysTruePreActionCondition:", alwaysTrueCondition);
-        console.log("    SignaturePreActionConditionFactory:", sigCondFactory);
-        console.log("    StaticAddressPreActionConditionFactory:", staticAddrCondFactory);
-        console.log("    AndPreActionConditionFactory:", andFactory);
-        console.log("    OrPreActionConditionFactory:", orFactory);
-        console.log("    NotPreActionConditionFactory:", notFactory);
-        console.log("    PostActionHookCombinatorFactory:", hookCombFactory);
+        console.log("    PayerCondition:", payerCondition);
+        console.log("    ReceiverCondition:", receiverCondition);
+        console.log("    AlwaysTrueCondition:", alwaysTrueCondition);
+        console.log("    SignatureConditionFactory:", sigCondFactory);
+        console.log("    StaticAddressConditionFactory:", staticAddrCondFactory);
+        console.log("    AndConditionFactory:", andFactory);
+        console.log("    OrConditionFactory:", orFactory);
+        console.log("    NotConditionFactory:", notFactory);
+        console.log("    HookCombinatorFactory:", hookCombFactory);
         console.log("    StaticFeeCalculatorFactory:", staticFeeCalcFactory);
         console.log("    EscrowPeriodFactory:", escrowPeriodFactory);
         console.log("    FreezeFactory:", freezeFactory);

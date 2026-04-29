@@ -4,14 +4,10 @@ pragma solidity ^0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {RefundRequest} from "../../../src/requests/refund/RefundRequest.sol";
 import {RefundRequestFactory} from "../../../src/requests/refund/RefundRequestFactory.sol";
-import {IPreActionCondition} from "../../../src/plugins/pre-action-conditions/IPreActionCondition.sol";
-import {
-    StaticAddressPreActionCondition
-} from "../../../src/plugins/pre-action-conditions/access/static-address/StaticAddressPreActionCondition.sol";
-import {
-    ReceiverPreActionCondition
-} from "../../../src/plugins/pre-action-conditions/access/ReceiverPreActionCondition.sol";
-import {OrPreActionCondition} from "../../../src/plugins/pre-action-conditions/combinators/OrPreActionCondition.sol";
+import {ICondition} from "../../../src/plugins/conditions/ICondition.sol";
+import {StaticAddressCondition} from "../../../src/plugins/conditions/access/static-address/StaticAddressCondition.sol";
+import {ReceiverCondition} from "../../../src/plugins/conditions/access/ReceiverCondition.sol";
+import {OrCondition} from "../../../src/plugins/conditions/combinators/OrCondition.sol";
 import {PaymentOperator} from "../../../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../../../src/operator/PaymentOperatorFactory.sol";
 import {ProtocolFeeConfig} from "../../../src/plugins/fees/ProtocolFeeConfig.sol";
@@ -23,9 +19,9 @@ import {MockERC20} from "../../mocks/MockERC20.sol";
 
 contract RefundRequestTest is Test {
     RefundRequest public refundRequest;
-    OrPreActionCondition public voidPreActionCondition;
-    StaticAddressPreActionCondition public arbiterCondition;
-    ReceiverPreActionCondition public receiverCondition;
+    OrCondition public voidCondition;
+    StaticAddressCondition public arbiterCondition;
+    ReceiverCondition public receiverCondition;
     PaymentOperator public operator;
     PaymentOperatorFactory public operatorFactory;
     ProtocolFeeConfig public protocolFeeConfig;
@@ -58,13 +54,13 @@ contract RefundRequestTest is Test {
         refundRequest = new RefundRequest(arbiter);
 
         // Build condition tree:
-        // VOID_PRE_ACTION_CONDITION = Or(StaticAddressPreActionCondition(arbiter), ReceiverPreActionCondition)
-        arbiterCondition = new StaticAddressPreActionCondition(arbiter);
-        receiverCondition = new ReceiverPreActionCondition();
-        IPreActionCondition[] memory refundPreActionConditions = new IPreActionCondition[](2);
-        refundPreActionConditions[0] = IPreActionCondition(address(arbiterCondition));
-        refundPreActionConditions[1] = IPreActionCondition(address(receiverCondition));
-        voidPreActionCondition = new OrPreActionCondition(refundPreActionConditions);
+        // VOID_PRE_ACTION_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)
+        arbiterCondition = new StaticAddressCondition(arbiter);
+        receiverCondition = new ReceiverCondition();
+        ICondition[] memory refundPreActionConditions = new ICondition[](2);
+        refundPreActionConditions[0] = ICondition(address(arbiterCondition));
+        refundPreActionConditions[1] = ICondition(address(receiverCondition));
+        voidCondition = new OrCondition(refundPreActionConditions);
 
         // Deploy operator with refundRequest as VOID_POST_ACTION_HOOK
         protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
@@ -78,7 +74,7 @@ contract RefundRequestTest is Test {
             chargePostActionHook: address(0),
             capturePreActionCondition: address(0),
             capturePostActionHook: address(0),
-            voidPreActionCondition: address(voidPreActionCondition),
+            voidPreActionCondition: address(voidCondition),
             voidPostActionHook: address(refundRequest),
             refundPreActionCondition: address(0),
             refundPostActionHook: address(0)
@@ -488,7 +484,7 @@ contract RefundRequestTest is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
 
         // Calling operator.void directly from a non-permitted caller should revert
-        // because OrPreActionCondition(arbiter, receiver) only allows arbiter and receiver
+        // because OrCondition(arbiter, receiver) only allows arbiter and receiver
         address random = makeAddr("random");
         vm.prank(random);
         vm.expectRevert();

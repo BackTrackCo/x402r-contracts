@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 import {Test, console} from "forge-std/Test.sol";
 import {PaymentOperator} from "../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
-import {PaymentIndexPostActionHook} from "../src/plugins/post-action-hooks/PaymentIndexPostActionHook.sol";
+import {PaymentIndexHook} from "../src/plugins/hooks/PaymentIndexHook.sol";
 import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
@@ -18,7 +18,7 @@ import {MockERC20} from "./mocks/MockERC20.sol";
 contract PaymentIndexingTest is Test {
     PaymentOperator public operator;
     PaymentOperatorFactory public operatorFactory;
-    PaymentIndexPostActionHook public indexPostActionHook;
+    PaymentIndexHook public indexPostActionHook;
     ProtocolFeeConfig public protocolFeeConfig;
     AuthCaptureEscrow public escrow;
     PreApprovalPaymentCollector public collector;
@@ -49,7 +49,7 @@ contract PaymentIndexingTest is Test {
         operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         // Deploy payment index hook
-        indexPostActionHook = new PaymentIndexPostActionHook(address(escrow), bytes32(0));
+        indexPostActionHook = new PaymentIndexHook(address(escrow), bytes32(0));
 
         // Deploy operator with index hook
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
@@ -218,7 +218,7 @@ contract PaymentIndexingTest is Test {
         _authorizePayment(payer, receiver, PAYMENT_AMOUNT, 1);
 
         // Should revert when accessing index 1 (only index 0 exists)
-        vm.expectRevert(PaymentIndexPostActionHook.IndexOutOfBounds.selector);
+        vm.expectRevert(PaymentIndexHook.IndexOutOfBounds.selector);
         indexPostActionHook.getPayerPayment(payer, 1);
     }
 
@@ -229,7 +229,7 @@ contract PaymentIndexingTest is Test {
         _authorizePayment(payer, receiver, PAYMENT_AMOUNT, 1);
 
         // Should revert when accessing index 1 (only index 0 exists)
-        vm.expectRevert(PaymentIndexPostActionHook.IndexOutOfBounds.selector);
+        vm.expectRevert(PaymentIndexHook.IndexOutOfBounds.selector);
         indexPostActionHook.getReceiverPayment(receiver, 1);
     }
 

@@ -14,8 +14,8 @@ import {OperatorDeployed} from "./types/Events.sol";
  * @dev Condition Combinator Architecture:
  *      - Operators have 10 slots: 5 conditions (before checks) + 5 hooks (after state updates)
  *      - address(0) = default behavior (allow for conditions, no-op for hooks)
- *      - Conditions implement IPreActionCondition.check() -> returns bool (true = allowed)
- *      - Hooks implement IPostActionHook.run() -> updates state after action
+ *      - Conditions implement ICondition.check() -> returns bool (true = allowed)
+ *      - Hooks implement IHook.run() -> updates state after action
  *      - Conditions can be composed using combinators (Or, And, Not)
  *      - Client signs ERC-3009 with operator in PaymentInfo, committing to all conditions
  *      - Factory deploys deterministic operator instances via CREATE2

@@ -3,13 +3,11 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {
-    UsdcTvlLimitPreActionCondition
-} from "../src/plugins/pre-action-conditions/tvl-limit/UsdcTvlLimitPreActionCondition.sol";
+import {UsdcTvlLimit} from "../src/plugins/conditions/tvl-limit/UsdcTvlLimit.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 
-contract UsdcTvlLimitPreActionConditionTest is Test {
-    UsdcTvlLimitPreActionCondition public tvlLimit;
+contract UsdcTvlLimitTest is Test {
+    UsdcTvlLimit public tvlLimit;
     MockERC20 public usdc;
     MockERC20 public otherToken;
     address public escrow;
@@ -25,7 +23,7 @@ contract UsdcTvlLimitPreActionConditionTest is Test {
         usdc = new MockERC20("USD Coin", "USDC");
         otherToken = new MockERC20("Other Token", "OTHER");
 
-        tvlLimit = new UsdcTvlLimitPreActionCondition(escrow, address(usdc), LIMIT);
+        tvlLimit = new UsdcTvlLimit(escrow, address(usdc), LIMIT);
     }
 
     function _createPaymentInfo(address token) internal view returns (AuthCaptureEscrow.PaymentInfo memory) {

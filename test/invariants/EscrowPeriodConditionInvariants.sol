@@ -7,9 +7,9 @@ import {PaymentOperatorFactory} from "../../src/operator/PaymentOperatorFactory.
 import {EscrowPeriodFactory} from "../../src/plugins/escrow-period/EscrowPeriodFactory.sol";
 import {EscrowPeriod} from "../../src/plugins/escrow-period/EscrowPeriod.sol";
 import {Freeze} from "../../src/plugins/freeze/Freeze.sol";
-import {IPreActionCondition} from "../../src/plugins/pre-action-conditions/IPreActionCondition.sol";
-import {AndPreActionCondition} from "../../src/plugins/pre-action-conditions/combinators/AndPreActionCondition.sol";
-import {PayerPreActionCondition} from "../../src/plugins/pre-action-conditions/access/PayerPreActionCondition.sol";
+import {ICondition} from "../../src/plugins/conditions/ICondition.sol";
+import {AndCondition} from "../../src/plugins/conditions/combinators/AndCondition.sol";
+import {PayerCondition} from "../../src/plugins/conditions/access/PayerCondition.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
@@ -50,7 +50,7 @@ contract EscrowPeriodConditionInvariants is Test {
         collector = new PreApprovalPaymentCollector(address(escrow));
 
         EscrowPeriodFactory escrowPeriodFactory = new EscrowPeriodFactory(address(escrow));
-        PayerPreActionCondition payerCondition = new PayerPreActionCondition();
+        PayerCondition payerCondition = new PayerCondition();
         address escrowPeriodAddr = escrowPeriodFactory.deploy(ESCROW_PERIOD, bytes32(0));
         escrowPeriod = EscrowPeriod(escrowPeriodAddr);
 
@@ -60,10 +60,10 @@ contract EscrowPeriodConditionInvariants is Test {
         );
 
         // Compose escrow period + freeze into release condition
-        IPreActionCondition[] memory conditions = new IPreActionCondition[](2);
-        conditions[0] = IPreActionCondition(address(escrowPeriod));
-        conditions[1] = IPreActionCondition(address(freeze));
-        AndPreActionCondition capturePreActionCondition = new AndPreActionCondition(conditions);
+        ICondition[] memory conditions = new ICondition[](2);
+        conditions[0] = ICondition(address(escrowPeriod));
+        conditions[1] = ICondition(address(freeze));
+        AndCondition captureCondition = new AndCondition(conditions);
 
         ProtocolFeeConfig protocolFeeConfig = new ProtocolFeeConfig(address(0), address(this), address(this));
 
@@ -76,7 +76,7 @@ contract EscrowPeriodConditionInvariants is Test {
             authorizePostActionHook: address(escrowPeriod),
             chargePreActionCondition: address(0),
             chargePostActionHook: address(0),
-            capturePreActionCondition: address(capturePreActionCondition),
+            capturePreActionCondition: address(captureCondition),
             capturePostActionHook: address(0),
             voidPreActionCondition: address(0),
             voidPostActionHook: address(0),
@@ -217,7 +217,7 @@ contract EscrowPeriodConditionInvariants is Test {
             uint256 authTime = authTimes[hash];
             // If a payment was released, the escrow period must have passed at that point
             if (releasedByUs[hash] && authTime > 0) {
-                // The release succeeded, which means the AndPreActionCondition check returned true
+                // The release succeeded, which means the AndCondition check returned true
                 // This is enforced by the condition slot on the operator
             }
         }

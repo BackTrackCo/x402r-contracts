@@ -3,7 +3,7 @@
 pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {IPostActionHook} from "../../plugins/post-action-hooks/IPostActionHook.sol";
+import {IHook} from "../../plugins/hooks/IHook.sol";
 import {PaymentOperator} from "../../operator/payment/PaymentOperator.sol";
 import {InvalidOperator, NotPayer} from "../../types/Errors.sol";
 import {RequestStatus} from "../types/Types.sol";
@@ -12,7 +12,7 @@ import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} fro
 
 /**
  * @title RefundRequest
- * @notice Refund request lifecycle as an IPostActionHook plugin for PaymentOperator.
+ * @notice Refund request lifecycle as an IHook plugin for PaymentOperator.
  * @dev ARBITER is an immutable address for deny/refuse gating. Approval happens via
  *      operator.void() which triggers run() on this contract as the
  *      VOID_POST_ACTION_HOOK.
@@ -35,7 +35,7 @@ import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} fro
  *      run() behavior: No-op if no request exists or request is not approvable.
  *      Caps approved amount at requested amount. Never reverts on state mismatches.
  */
-contract RefundRequest is IPostActionHook {
+contract RefundRequest is IHook {
     /// @notice The arbiter address that can deny and refuse refund requests
     address public immutable ARBITER;
 
@@ -111,7 +111,7 @@ contract RefundRequest is IPostActionHook {
         ARBITER = _arbiter;
     }
 
-    // ============ IPostActionHook Implementation ============
+    // ============ IHook Implementation ============
 
     /// @notice Called by PaymentOperator after void succeeds.
     ///         No-op if no request exists or request is not approvable.

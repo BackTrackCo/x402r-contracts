@@ -148,17 +148,17 @@ Conditions are composable plugins that control access to operator actions:
 │                     CONDITION COMBINATORS                         │
 ├──────────────────────────────────────────────────────────────────┤
 │                                                                   │
-│  AndPreActionCondition([A, B, C])  ──►  A && B && C                       │
-│  OrPreActionCondition([A, B])      ──►  A || B                            │
-│  NotPreActionCondition(A)          ──►  !A                                │
+│  AndCondition([A, B, C])  ──►  A && B && C                       │
+│  OrCondition([A, B])      ──►  A || B                            │
+│  NotCondition(A)          ──►  !A                                │
 │                                                                   │
 │  Example: Release requires (Receiver OR DesignatedAddr) AND EscrowPassed│
 │                                                                   │
-│  OrPreActionCondition([                                                   │
-│    ReceiverPreActionCondition,                                            │
-│    StaticAddressPreActionCondition(designatedAddr)                        │
+│  OrCondition([                                                   │
+│    ReceiverCondition,                                            │
+│    StaticAddressCondition(designatedAddr)                        │
 │  ])                                                              │
-│    └──► AndPreActionCondition([                                           │
+│    └──► AndCondition([                                           │
 │           <above>,                                               │
 │           EscrowPeriod                                           │
 │         ])                                                       │
@@ -170,10 +170,10 @@ Conditions are composable plugins that control access to operator actions:
 
 Freeze and EscrowPeriod are now **separate, composable modules**:
 
-- **EscrowPeriod**: IPreActionCondition that blocks release during the escrow period
-- **Freeze**: Standalone IPreActionCondition with `freeze()`/`unfreeze()` methods
+- **EscrowPeriod**: ICondition that blocks release during the escrow period
+- **Freeze**: Standalone ICondition with `freeze()`/`unfreeze()` methods
 
-Compose them via `AndPreActionCondition([escrowPeriod, freeze])` when you want both behaviors.
+Compose them via `AndCondition([escrowPeriod, freeze])` when you want both behaviors.
 
 ```
 Timeline:
@@ -209,15 +209,15 @@ MEV Protection: Payers should freeze EARLY, not at deadline.
 │                    PLUGGABLE CONDITIONS                      │
 ├─────────────────────────────────────────────────────────────┤
 │  Access Conditions:          │  Time/State Conditions:      │
-│  - PayerPreActionCondition            │  - EscrowPeriod              │
-│  - ReceiverPreActionCondition         │  - Freeze                    │
-│  - StaticAddressPreActionCondition    │                              │
-│  - AlwaysTruePreActionCondition       │                              │
+│  - PayerCondition            │  - EscrowPeriod              │
+│  - ReceiverCondition         │  - Freeze                    │
+│  - StaticAddressCondition    │                              │
+│  - AlwaysTrueCondition       │                              │
 ├─────────────────────────────────────────────────────────────┤
 │  Combinators:                │  Recorders (Optional):       │
-│  - AndPreActionCondition              │  - PaymentIndexPostActionHook      │
-│  - OrPreActionCondition               │  - PostActionHookCombinator        │
-│  - NotPreActionCondition              │                              │
+│  - AndCondition              │  - PaymentIndexHook      │
+│  - OrCondition               │  - HookCombinator        │
+│  - NotCondition              │                              │
 ├─────────────────────────────────────────────────────────────┤
 │  Auxiliary:                  │                              │
 │  - RefundRequest             │                              │
@@ -263,7 +263,7 @@ Typical gas costs for common operations (measured with via-IR optimization and r
 | **Refund In Escrow** | ~45,000 | ~45,000 | Refund before release |
 | **Freeze Payment** | ~50,000 | ~50,000 | Payer freezes during escrow |
 
-**Implementation**: Payment indexing is **optional** via `PaymentIndexPostActionHook`. Deploy with indexing for on-chain queries (+42k gas first, +22k subsequent) or skip for gas savings when using external indexers (The Graph).
+**Implementation**: Payment indexing is **optional** via `PaymentIndexHook`. Deploy with indexing for on-chain queries (+42k gas first, +22k subsequent) or skip for gas savings when using external indexers (The Graph).
 
 ### Condition Evaluation
 
@@ -323,7 +323,7 @@ Estimated transaction costs on different networks (at typical gas prices):
 
 ### Pagination Queries (On-Chain)
 
-**Optional Feature**: Deploy `PaymentIndexPostActionHook` to enable on-chain payment lookups.
+**Optional Feature**: Deploy `PaymentIndexHook` to enable on-chain payment lookups.
 
 | Query Type | Gas Cost | Notes |
 |------------|----------|-------|
@@ -331,7 +331,7 @@ Estimated transaction costs on different networks (at typical gas prices):
 | **Get 50 payments** | ~82,000 | Scales linearly with count |
 | **Get single payment** | ~2,000 | Direct index access |
 
-**API**: `PaymentIndexPostActionHook.getPayerPayments(address, offset, count)` returns `(bytes32[] hashes, uint256 total)`:
+**API**: `PaymentIndexHook.getPayerPayments(address, offset, count)` returns `(bytes32[] hashes, uint256 total)`:
 - `hashes`: Array of payment hashes for escrow lookup
 - `total`: Total number of payments for this address
 
@@ -364,28 +364,28 @@ The commerce-payments contracts provide refund functionality for Base Commerce P
 
 #### Freeze Module
 
-**Freeze** is a standalone `IPreActionCondition` contract with `freeze()`/`unfreeze()` methods. It's separate from `EscrowPeriod` for better composability.
+**Freeze** is a standalone `ICondition` contract with `freeze()`/`unfreeze()` methods. It's separate from `EscrowPeriod` for better composability.
 
 **Deploy via FreezeFactory:**
 
 ```solidity
 // Deploy Freeze with freeze/unfreeze conditions and optional EscrowPeriod constraint
 address freeze = freezeFactory.deploy(
-    freezeCondition,      // IPreActionCondition - who can freeze (e.g., PayerPreActionCondition)
-    unfreezeCondition,    // IPreActionCondition - who can unfreeze (e.g., PayerPreActionCondition)
+    freezeCondition,      // ICondition - who can freeze (e.g., PayerCondition)
+    unfreezeCondition,    // ICondition - who can unfreeze (e.g., PayerCondition)
     freezeDuration,       // uint256 - how long freeze lasts (0 = permanent until unfrozen)
     escrowPeriodContract  // address(0) = unconstrained, or EscrowPeriod address
 );
 ```
 
-**Freeze/Unfreeze conditions** determine who can freeze/unfreeze using `IPreActionCondition` contracts:
+**Freeze/Unfreeze conditions** determine who can freeze/unfreeze using `ICondition` contracts:
 
 | Condition | Description |
 |-----------|-------------|
-| `PayerPreActionCondition` | Allows the payment's payer |
-| `ReceiverPreActionCondition` | Allows the payment's receiver |
-| `StaticAddressPreActionCondition(addr)` | Allows a designated address (arbiter, service provider, DAO, platform, etc.) |
-| `AlwaysTruePreActionCondition` | Allows anyone |
+| `PayerCondition` | Allows the payment's payer |
+| `ReceiverCondition` | Allows the payment's receiver |
+| `StaticAddressCondition(addr)` | Allows a designated address (arbiter, service provider, DAO, platform, etc.) |
+| `AlwaysTrueCondition` | Allows anyone |
 
 **Example:**
 
@@ -397,13 +397,13 @@ address escrowPeriod = escrowPeriodFactory.deploy(7 days, bytes32(0));
 address freeze = freezeFactory.deploy(payerCondition, payerCondition, 3 days, escrowPeriod);
 
 // 3. Compose for release condition: must pass both escrow period AND not be frozen
-address capturePreActionCondition = address(new AndPreActionCondition([IPreActionCondition(escrowPeriod), IPreActionCondition(freeze)]));
+address capturePreActionCondition = address(new AndCondition([ICondition(escrowPeriod), ICondition(freeze)]));
 ```
 
 **Composition Patterns:**
 - Escrow period only: `capturePreActionCondition = escrowPeriod`
 - Freeze only: `capturePreActionCondition = freeze`
-- Both: `capturePreActionCondition = AndPreActionCondition([escrowPeriod, freeze])`
+- Both: `capturePreActionCondition = AndCondition([escrowPeriod, freeze])`
 
 #### PaymentOperatorFactory API
 
@@ -452,11 +452,11 @@ address operator = factory.deployOperator(config);
 
 #### Optional Payment Indexing
 
-`PaymentIndexPostActionHook` provides on-chain payment lookups by payer/receiver. Deploy once and share across operators:
+`PaymentIndexHook` provides on-chain payment lookups by payer/receiver. Deploy once and share across operators:
 
 ```solidity
 // Deploy indexer (optional)
-PaymentIndexPostActionHook indexRecorder = new PaymentIndexPostActionHook(address(escrow));
+PaymentIndexHook indexRecorder = new PaymentIndexHook(address(escrow));
 
 // Option 1: Enable indexing
 PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
@@ -485,7 +485,7 @@ PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.Ope
 - **Efficient Storage**: Stores only payment hashes (minimal gas cost)
 - **Gas Savings**: ~55k per authorization when indexing disabled
 - **Flexibility**: Deploy with or without on-chain queries
-- **Composability**: Combine with other recorders via `PostActionHookCombinator`
+- **Composability**: Combine with other recorders via `HookCombinator`
 - **No Duplication**: Use `EscrowPeriod` for timestamps, escrow for amounts
 
 **When to use indexing:**

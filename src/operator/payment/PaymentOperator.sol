@@ -8,8 +8,8 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PaymentOperatorAccess} from "./PaymentOperatorAccess.sol";
 import {ZeroAddress} from "../../types/Errors.sol";
 import {ZeroEscrow, PreActionConditionNotMet, FeeTooHigh, FeeBoundsIncompatible} from "../types/Errors.sol";
-import {IPreActionCondition} from "../../plugins/pre-action-conditions/IPreActionCondition.sol";
-import {IPostActionHook} from "../../plugins/post-action-hooks/IPostActionHook.sol";
+import {ICondition} from "../../plugins/conditions/ICondition.sol";
+import {IHook} from "../../plugins/hooks/IHook.sol";
 import {
     AuthorizeExecuted,
     ChargeExecuted,
@@ -30,8 +30,8 @@ import {ProtocolFeeConfig} from "../../plugins/fees/ProtocolFeeConfig.sol";
  *      - Operator controls flow, conditions and hooks are composable plugins
  *      - 10 slots: 5 conditions (before checks) + 5 hooks (after state updates)
  *      - address(0) = default behavior (allow for conditions, no-op for hooks)
- *      - Conditions implement IPreActionCondition.check() -> returns bool (true = allowed)
- *      - Hooks implement IPostActionHook.run() -> updates state after action
+ *      - Conditions implement ICondition.check() -> returns bool (true = allowed)
+ *      - Hooks implement IHook.run() -> updates state after action
  *      - Conditions can be composed using combinators (Or, And, Not)
  *
  *      Slots (one per action):
@@ -93,19 +93,19 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
 
     // ============ Condition Slots (before-action checks) ============
     // address(0) = always allow (default behavior)
-    IPreActionCondition public immutable AUTHORIZE_PRE_ACTION_CONDITION;
-    IPreActionCondition public immutable CHARGE_PRE_ACTION_CONDITION;
-    IPreActionCondition public immutable CAPTURE_PRE_ACTION_CONDITION;
-    IPreActionCondition public immutable VOID_PRE_ACTION_CONDITION;
-    IPreActionCondition public immutable REFUND_PRE_ACTION_CONDITION;
+    ICondition public immutable AUTHORIZE_PRE_ACTION_CONDITION;
+    ICondition public immutable CHARGE_PRE_ACTION_CONDITION;
+    ICondition public immutable CAPTURE_PRE_ACTION_CONDITION;
+    ICondition public immutable VOID_PRE_ACTION_CONDITION;
+    ICondition public immutable REFUND_PRE_ACTION_CONDITION;
 
     // ============ PostActionHook Slots (after-action state updates) ============
     // address(0) = no-op (default behavior)
-    IPostActionHook public immutable AUTHORIZE_POST_ACTION_HOOK;
-    IPostActionHook public immutable CHARGE_POST_ACTION_HOOK;
-    IPostActionHook public immutable CAPTURE_POST_ACTION_HOOK;
-    IPostActionHook public immutable VOID_POST_ACTION_HOOK;
-    IPostActionHook public immutable REFUND_POST_ACTION_HOOK;
+    IHook public immutable AUTHORIZE_POST_ACTION_HOOK;
+    IHook public immutable CHARGE_POST_ACTION_HOOK;
+    IHook public immutable CAPTURE_POST_ACTION_HOOK;
+    IHook public immutable VOID_POST_ACTION_HOOK;
+    IHook public immutable REFUND_POST_ACTION_HOOK;
 
     constructor(
         address _escrow,
@@ -124,18 +124,18 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         FEE_CALCULATOR = IFeeCalculator(_feeCalculator);
 
         // Set condition slots (address(0) = always allow)
-        AUTHORIZE_PRE_ACTION_CONDITION = IPreActionCondition(_conditions.authorizePreActionCondition);
-        CHARGE_PRE_ACTION_CONDITION = IPreActionCondition(_conditions.chargePreActionCondition);
-        CAPTURE_PRE_ACTION_CONDITION = IPreActionCondition(_conditions.capturePreActionCondition);
-        VOID_PRE_ACTION_CONDITION = IPreActionCondition(_conditions.voidPreActionCondition);
-        REFUND_PRE_ACTION_CONDITION = IPreActionCondition(_conditions.refundPreActionCondition);
+        AUTHORIZE_PRE_ACTION_CONDITION = ICondition(_conditions.authorizePreActionCondition);
+        CHARGE_PRE_ACTION_CONDITION = ICondition(_conditions.chargePreActionCondition);
+        CAPTURE_PRE_ACTION_CONDITION = ICondition(_conditions.capturePreActionCondition);
+        VOID_PRE_ACTION_CONDITION = ICondition(_conditions.voidPreActionCondition);
+        REFUND_PRE_ACTION_CONDITION = ICondition(_conditions.refundPreActionCondition);
 
         // Set hook slots (address(0) = no-op)
-        AUTHORIZE_POST_ACTION_HOOK = IPostActionHook(_conditions.authorizePostActionHook);
-        CHARGE_POST_ACTION_HOOK = IPostActionHook(_conditions.chargePostActionHook);
-        CAPTURE_POST_ACTION_HOOK = IPostActionHook(_conditions.capturePostActionHook);
-        VOID_POST_ACTION_HOOK = IPostActionHook(_conditions.voidPostActionHook);
-        REFUND_POST_ACTION_HOOK = IPostActionHook(_conditions.refundPostActionHook);
+        AUTHORIZE_POST_ACTION_HOOK = IHook(_conditions.authorizePostActionHook);
+        CHARGE_POST_ACTION_HOOK = IHook(_conditions.chargePostActionHook);
+        CAPTURE_POST_ACTION_HOOK = IHook(_conditions.capturePostActionHook);
+        VOID_POST_ACTION_HOOK = IHook(_conditions.voidPostActionHook);
+        REFUND_POST_ACTION_HOOK = IHook(_conditions.refundPostActionHook);
     }
 
     // ============ Internal Fee Calculation ============

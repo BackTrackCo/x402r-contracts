@@ -8,8 +8,8 @@ import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
-import {MockDataPreActionCondition} from "./mocks/MockDataPreActionCondition.sol";
-import {MockDataPostActionHook} from "./mocks/MockDataPostActionHook.sol";
+import {MockDataCondition} from "./mocks/MockDataCondition.sol";
+import {MockDataHook} from "./mocks/MockDataHook.sol";
 import {MockNonZeroAmountCondition} from "./mocks/MockNonZeroAmountCondition.sol";
 import {PreActionConditionNotMet} from "../src/operator/types/Errors.sol";
 
@@ -76,9 +76,9 @@ contract HookDataForwardingTest is Test {
     // ============ void: data forwarded to condition ============
 
     function test_void_nonEmptyData_reachesCondition() public {
-        // Deploy MockDataPreActionCondition that requires MAGIC in data
-        MockDataPreActionCondition dataCondition = new MockDataPreActionCondition(MAGIC);
-        MockDataPostActionHook dataPostActionHook = new MockDataPostActionHook();
+        // Deploy MockDataCondition that requires MAGIC in data
+        MockDataCondition dataCondition = new MockDataCondition(MAGIC);
+        MockDataHook dataHook = new MockDataHook();
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
@@ -90,7 +90,7 @@ contract HookDataForwardingTest is Test {
             capturePreActionCondition: address(0),
             capturePostActionHook: address(0),
             voidPreActionCondition: address(dataCondition),
-            voidPostActionHook: address(dataPostActionHook),
+            voidPostActionHook: address(dataHook),
             refundPreActionCondition: address(0),
             refundPostActionHook: address(0)
         });
@@ -121,22 +121,22 @@ contract HookDataForwardingTest is Test {
         assertEq(payerAfter - payerBefore, PAYMENT_AMOUNT, "Payer should receive refund");
 
         // Verify hook received the data
-        assertEq(dataPostActionHook.recordCount(), 1, "PostActionHook should be called once");
-        assertEq(dataPostActionHook.lastReceivedData(), hookData, "PostActionHook should receive the hook data");
+        assertEq(dataHook.recordCount(), 1, "PostActionHook should be called once");
+        assertEq(dataHook.lastReceivedData(), hookData, "PostActionHook should receive the hook data");
     }
 
     // ============ authorize: dual-purpose collectorData reaches condition AND collector ============
 
     function test_authorize_collectorData_reachesConditionAndRecorder() public {
-        // Deploy MockDataPreActionCondition on the AUTHORIZE_PRE_ACTION_CONDITION slot
-        MockDataPreActionCondition dataCondition = new MockDataPreActionCondition(MAGIC);
-        MockDataPostActionHook dataPostActionHook = new MockDataPostActionHook();
+        // Deploy MockDataCondition on the AUTHORIZE_PRE_ACTION_CONDITION slot
+        MockDataCondition dataCondition = new MockDataCondition(MAGIC);
+        MockDataHook dataHook = new MockDataHook();
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
             authorizePreActionCondition: address(dataCondition),
-            authorizePostActionHook: address(dataPostActionHook),
+            authorizePostActionHook: address(dataHook),
             chargePreActionCondition: address(0),
             chargePostActionHook: address(0),
             capturePreActionCondition: address(0),
@@ -174,17 +174,15 @@ contract HookDataForwardingTest is Test {
         assertTrue(exists, "Payment should be authorized");
 
         // Verify hook received the collectorData as hook data
-        assertEq(dataPostActionHook.recordCount(), 1, "PostActionHook should be called once");
-        assertEq(
-            dataPostActionHook.lastReceivedData(), hookData, "PostActionHook should receive collectorData as hook data"
-        );
+        assertEq(dataHook.recordCount(), 1, "PostActionHook should be called once");
+        assertEq(dataHook.lastReceivedData(), hookData, "PostActionHook should receive collectorData as hook data");
     }
 
     // ============ release: data forwarded to condition and hook ============
 
     function test_release_nonEmptyData_reachesConditionAndRecorder() public {
-        MockDataPreActionCondition dataCondition = new MockDataPreActionCondition(MAGIC);
-        MockDataPostActionHook dataPostActionHook = new MockDataPostActionHook();
+        MockDataCondition dataCondition = new MockDataCondition(MAGIC);
+        MockDataHook dataHook = new MockDataHook();
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
@@ -194,7 +192,7 @@ contract HookDataForwardingTest is Test {
             chargePreActionCondition: address(0),
             chargePostActionHook: address(0),
             capturePreActionCondition: address(dataCondition),
-            capturePostActionHook: address(dataPostActionHook),
+            capturePostActionHook: address(dataHook),
             voidPreActionCondition: address(0),
             voidPostActionHook: address(0),
             refundPreActionCondition: address(0),
@@ -217,8 +215,8 @@ contract HookDataForwardingTest is Test {
         bytes memory hookData = abi.encode(MAGIC);
         operator.capture(paymentInfo, PAYMENT_AMOUNT, hookData);
 
-        assertEq(dataPostActionHook.recordCount(), 1, "PostActionHook called on release");
-        assertEq(dataPostActionHook.lastReceivedData(), hookData, "PostActionHook receives release data");
+        assertEq(dataHook.recordCount(), 1, "PostActionHook called on release");
+        assertEq(dataHook.lastReceivedData(), hookData, "PostActionHook receives release data");
     }
 
     // ============ void: condition receives the capturable amount, not 0 ============

@@ -152,8 +152,8 @@
 #### 3. External Calls in Loop (calls-loop)
 
 **Findings**:
-- `AndPreActionCondition.check()`: Loops through conditions array calling `conditions[i].check()`
-- `OrPreActionCondition.check()`: Loops through conditions array calling `conditions[i].check()`
+- `AndCondition.check()`: Loops through conditions array calling `conditions[i].check()`
+- `OrCondition.check()`: Loops through conditions array calling `conditions[i].check()`
 
 **Status**: ✅ **ACCEPTABLE - BOUNDED**
 
@@ -236,8 +236,8 @@
 | **RefundRequest** | 71.88% | 68.35% | 33.33% | 58.33% |
 | **RefundRequestAccess** | 84.62% | 80.00% | 60.00% | 75.00% |
 | **EscrowPeriod** | 57.45% | 52.38% | 8.33% | 57.14% |
-| **AndPreActionCondition** | 53.85% | 56.25% | 66.67% | 66.67% |
-| **OrPreActionCondition** | 53.85% | 56.25% | 66.67% | 66.67% |
+| **AndCondition** | 53.85% | 56.25% | 66.67% | 66.67% |
+| **OrCondition** | 53.85% | 56.25% | 66.67% | 66.67% |
 
 ### Test Suites
 
@@ -293,8 +293,8 @@
 - One-time setup code
 
 **3. Unused Condition Contracts** (0-50% coverage)
-- `AlwaysTruePreActionCondition`, `PayerPreActionCondition`, `ReceiverPreActionCondition` - simple utility conditions
-- `NotPreActionCondition` - not used in current deployment
+- `AlwaysTrueCondition`, `PayerCondition`, `ReceiverCondition` - simple utility conditions
+- `NotCondition` - not used in current deployment
 
 **4. Error Path Branches** (low branch coverage)
 - Many revert paths not triggered in happy path tests
@@ -325,11 +325,11 @@
 ### Status: MINIMAL DEAD CODE
 
 **Unused Contracts** (Intentional):
-- `AlwaysTruePreActionCondition.sol` - Utility condition for testing/flexibility
-- `PayerPreActionCondition.sol` - Optional access control condition
-- `ReceiverPreActionCondition.sol` - Optional access control condition
-- `NotPreActionCondition.sol` - Logical negation combinator (not used yet)
-- `StaticAddressPreActionCondition.sol` - Testing utility
+- `AlwaysTrueCondition.sol` - Utility condition for testing/flexibility
+- `PayerCondition.sol` - Optional access control condition
+- `ReceiverCondition.sol` - Optional access control condition
+- `NotCondition.sol` - Logical negation combinator (not used yet)
+- `StaticAddressCondition.sol` - Testing utility
 
 **Rationale**: These are part of the flexible condition system - not dead code, but optional components users can deploy as needed.
 
@@ -415,8 +415,8 @@ src/commerce-payments/plugins/freeze/
   ├── FreezeFactory.sol (~120 LoC)
 
 src/commerce-payments/conditions/
-  ├── IPreActionCondition.sol (interface)
-  ├── IPostActionHook.sol (interface)
+  ├── ICondition.sol (interface)
+  ├── IHook.sol (interface)
   ├── access/ (3 simple conditions)
   ├── combinators/ (3 combinator conditions)
 
@@ -570,7 +570,7 @@ FreezeFactory
 2. **Receiver**: Releases payments, creates refund requests, executes refunds
 3. **Operator Owner**: Sets fee parameters (with 7-day timelock), withdraws protocol fees
 4. **Factory Owner**: Can deploy new operators
-5. **Freeze Conditions**: Determines who can freeze/unfreeze payments via IPreActionCondition contracts passed to FreezeFactory
+5. **Freeze Conditions**: Determines who can freeze/unfreeze payments via ICondition contracts passed to FreezeFactory
 
 **Privilege Matrix**:
 
@@ -588,7 +588,7 @@ FreezeFactory
 | setFeeParameters() | ❌ | ❌ | ✅ | ❌ |
 | withdrawFees() | ❌ | ❌ | ✅ | ❌ |
 
-*Subject to freeze conditions (e.g., PayerPreActionCondition allows payer)
+*Subject to freeze conditions (e.g., PayerCondition allows payer)
 
 ### Assumptions and Trust Boundaries
 
@@ -605,7 +605,7 @@ FreezeFactory
 
 **Off-Chain Assumptions**:
 - Dispute resolution happens off-chain (system provides enforcement)
-- Freeze/unfreeze conditions determined at deployment (IPreActionCondition contracts passed to FreezeFactory)
+- Freeze/unfreeze conditions determined at deployment (ICondition contracts passed to FreezeFactory)
 - Users use private mempool or freeze early to mitigate MEV
 
 ### Glossary

@@ -319,19 +319,19 @@ Operators control the business logic layer. A malicious or buggy operator **can*
 
 **Protocol Enforced Limit**: `MAX_PRE_ACTION_CONDITIONS = 10`
 
-The condition combinator architecture (AndPreActionCondition, OrPreActionCondition, NotPreActionCondition) allows nesting but has a hard limit to prevent gas exhaustion and stack depth issues.
+The condition combinator architecture (AndCondition, OrCondition, NotCondition) allows nesting but has a hard limit to prevent gas exhaustion and stack depth issues.
 
 #### Why Depth Matters
 
 ```solidity
 // Example: Depth 3 combinator
 AndCondition(
-    OrPreActionCondition(
-        PayerPreActionCondition(),          // Depth 2
-        ReceiverPreActionCondition()        // Depth 2
+    OrCondition(
+        PayerCondition(),          // Depth 2
+        ReceiverCondition()        // Depth 2
     ),
-    NotPreActionCondition(
-        StaticAddressPreActionCondition(arbiter)  // Depth 2
+    NotCondition(
+        StaticAddressCondition(arbiter)  // Depth 2
     )
 )
 // Total depth: 3 levels
@@ -367,7 +367,7 @@ AndCondition(
 ```solidity
 // Receiver can release after escrow period
 AndCondition(
-    ReceiverPreActionCondition(),
+    ReceiverCondition(),
     EscrowPeriod(escrowPeriod, freezePolicy, escrow, codehash)
 )
 ```
@@ -376,11 +376,11 @@ AndCondition(
 ```solidity
 // Receiver OR arbiter can release after escrow, but not if frozen
 AndCondition(
-    OrPreActionCondition(
-        ReceiverPreActionCondition(),
-        StaticAddressPreActionCondition(arbiter)
+    OrCondition(
+        ReceiverCondition(),
+        StaticAddressCondition(arbiter)
     ),
-    NotPreActionCondition(
+    NotCondition(
         FrozenCondition(recorder)
     )
 )
@@ -390,10 +390,10 @@ AndCondition(
 ```solidity
 // Too complex - hard to understand, high gas, difficult to audit
 AndCondition(
-    OrPreActionCondition(
-        AndPreActionCondition(
-            NotPreActionCondition(
-                OrPreActionCondition(
+    OrCondition(
+        AndCondition(
+            NotCondition(
+                OrCondition(
                     ConditionA(),
                     ConditionB()
                 )
@@ -522,7 +522,7 @@ RefundRequestBlockerCondition {
 
 ```solidity
 // DANGEROUS: Condition that emits events
-contract MaliciousFrontrunCondition is IPreActionCondition {
+contract MaliciousFrontrunCondition is ICondition {
     event PaymentAttempt(address payer, uint256 amount);
 
     function check(PaymentInfo calldata paymentInfo, address)
