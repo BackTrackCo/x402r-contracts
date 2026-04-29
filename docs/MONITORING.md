@@ -134,7 +134,7 @@ type Payment @entity {
   amount: BigInt!
   state: PaymentState!
   authorizedAt: BigInt!
-  releasedAt: BigInt
+  capturedAt: BigInt
   settledAt: BigInt
   refundRequests: [RefundRequest!]! @derivedFrom(field: "payment")
 }
@@ -297,7 +297,7 @@ Set up alerts for operational issues:
 4. **Escrow Period Expiry**
    - Alert when: Payment nearing expiry (< 24h remaining)
    - Severity: LOW
-   - Action: Notify relevant parties, prepare for automatic release
+   - Action: Notify relevant parties, prepare for automatic capture
 
 5. **Contract Ownership Changes**
    - Alert when: Owner transfer initiated or executed

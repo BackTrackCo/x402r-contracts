@@ -9,6 +9,13 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 /// @dev Hooks are called after an action succeeds, typically to update state.
 ///      Amount and caller are provided for convenience; hooks may ignore them.
 ///      Amount can also be deduced from escrow state (capturableAmount, refundableAmount).
+///
+///      IMPORTANT: Implementations MUST NOT revert. Use early-return for no-op cases
+///      (e.g. RefundRequest returns early when no request exists, when the request is
+///      not approvable, or when the capped amount is zero). A reverting hook causes
+///      permanent DoS on the surrounding action — hook slots are immutable on
+///      PaymentOperator, so a reverting hook cannot be replaced. The pattern
+///      mirrors ICondition's "MUST NOT revert" guidance.
 interface IHook {
     /// @notice Run the hook after an action is executed
     /// @param paymentInfo The payment information

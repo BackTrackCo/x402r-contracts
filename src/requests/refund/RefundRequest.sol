@@ -23,12 +23,20 @@ import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} fro
  *        Pending  -> Refused   (onlyArbiter)
  *        Pending  -> Cancelled (payer only)
  *
- *      Note: void() empties the entire authorization in one shot, so a request goes
- *      from Pending -> Approved on the first run() call and the authorization is
- *      gone after that. Subsequent run() invocations would revert at the escrow
- *      level (no capturable funds left), so the cumulative-top-up branch present in
- *      this contract's accounting is unreachable in practice. Kept for forward
- *      compatibility if partial-void is ever reintroduced upstream.
+ *      Note: under the canonical wiring (VOID_POST_ACTION_HOOK), void() empties the
+ *      entire authorization in one shot, so a request goes from Pending -> Approved
+ *      on the first run() call and the authorization is gone after that — subsequent
+ *      run() invocations from VOID would revert at the escrow level (no capturable
+ *      funds left). The cumulative-top-up branch in this contract's accounting is
+ *      unreachable in that wiring.
+ *
+ *      IHook is generic and plugin slots on PaymentOperator are permissionlessly
+ *      configurable: an operator can wire RefundRequest to CHARGE_POST_ACTION_HOOK
+ *      or REFUND_POST_ACTION_HOOK, both of which fire repeatedly for the same
+ *      paymentInfoHash. Under those wirings the cumulative branch IS reachable;
+ *      cappedAmount is bounded by (request.amount - request.approvedAmount) so it
+ *      cannot exceed the original request, and the run() bailouts preserve the
+ *      no-op-on-mismatch contract.
  *
  *      Keying: paymentInfoHash only (no nonce). One active request per payment.
  *
@@ -142,12 +150,13 @@ contract RefundRequest is IHook {
         // No-op if not approvable
         if (request.status != RequestStatus.Pending && request.status != RequestStatus.Approved) return;
 
-        // Cap amount at remaining requestable amount
-        uint120 cappedAmount = uint120(amount);
+        // Cap amount at remaining requestable amount.
+        // IHook.run takes uint256 amount, but RefundRequestData stores uint120. Solidity
+        // 0.8 does NOT auto-revert on explicit uint256->uint120 narrowing, so an upstream
+        // caller passing an out-of-range value would silently truncate and corrupt
+        // approvedAmount. Saturate to `remaining` first (the only legitimate ceiling).
         uint120 remaining = request.amount - request.approvedAmount;
-        if (cappedAmount > remaining) {
-            cappedAmount = remaining;
-        }
+        uint120 cappedAmount = amount >= remaining ? remaining : uint120(amount);
         if (cappedAmount == 0) return;
 
         // Update state

@@ -99,7 +99,7 @@ FreezeFactory
 
 ### Key Features
 
-1. **Flexible Condition/Hook System**: Each operation (authorize, charge, release, refund) can have custom conditions (gates) and hooks (hooks)
+1. **Flexible Condition/Hook System**: Each operation (authorize, charge, capture, void, refund) can have custom conditions (gates) and hooks (hooks)
 2. **Fee Distribution**: Automatic split between protocol and operator fees
 3. **Payment Indexing**: On-chain mapping of payer/receiver → payment hashes
 4. **Escrow Period**: Time-based holds with freeze capability
@@ -217,7 +217,7 @@ Coverage: 85%+ on core contracts
    - 50k+ sequences tested
 
 4. **Integration**:
-   - Full authorization → release flow
+   - Full authorization → capture flow
    - Refund workflows (including partial refunds via partialVoid)
    - Freeze/unfreeze scenarios
 

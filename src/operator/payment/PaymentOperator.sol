@@ -238,11 +238,15 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
 
         bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
 
-        accumulatedProtocolFees[paymentInfo.token] += protocolFeeAmount;
-
-        emit ChargeExecuted(paymentInfo, paymentInfoHash, paymentInfo.payer, paymentInfo.receiver, amount);
-
+        // ============ INTERACTIONS ============
         ESCROW.charge(paymentInfo, amount, tokenCollector, collectorData, totalFeeBps, feeReceiver);
+
+        // ============ EFFECTS (post-INTERACTIONS for strict CEI) ============
+        // Done after the escrow call so that any future revert path (e.g. wrapping the
+        // escrow call in try/catch) cannot leave fee state mutated or events emitted
+        // for an action that didn't go through.
+        accumulatedProtocolFees[paymentInfo.token] += protocolFeeAmount;
+        emit ChargeExecuted(paymentInfo, paymentInfoHash, paymentInfo.payer, paymentInfo.receiver, amount);
 
         if (address(CHARGE_POST_ACTION_HOOK) != address(0)) {
             CHARGE_POST_ACTION_HOOK.run(paymentInfo, amount, msg.sender, collectorData);
@@ -253,6 +257,10 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
      * @notice Capture authorized funds and transfer to receiver
      * @dev Checks CAPTURE_PRE_ACTION_CONDITION, performs escrow.capture, then calls CAPTURE_POST_ACTION_HOOK.
      *      Uses fees stored at authorization time to prevent protocol fee changes from breaking capture.
+     *      `validFees` is required here for symmetry with authorize/charge: capture passes
+     *      `feeReceiver = address(this)` to escrow, and `paymentInfo.feeReceiver != address(this)`
+     *      would otherwise be mismatched. Upstream `_validateFee` also enforces this, but the
+     *      modifier makes the local invariant explicit and survives future escrow refactors.
      * @param paymentInfo PaymentInfo struct
      * @param amount Amount to capture
      * @param data Arbitrary data forwarded to CAPTURE_PRE_ACTION_CONDITION.check() and CAPTURE_POST_ACTION_HOOK.run()
@@ -260,6 +268,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
     function capture(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount, bytes calldata data)
         external
         nonReentrant
+        validFees(paymentInfo)
     {
         if (address(CAPTURE_PRE_ACTION_CONDITION) != address(0)) {
             if (!CAPTURE_PRE_ACTION_CONDITION.check(paymentInfo, amount, msg.sender, data)) {
@@ -272,11 +281,12 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         uint256 protocolFeeAmount = (amount * fees.protocolFeeBps) / 10000;
         address feeReceiver = address(this);
 
-        accumulatedProtocolFees[paymentInfo.token] += protocolFeeAmount;
-
-        emit CaptureExecuted(paymentInfo, paymentInfoHash, paymentInfo.payer, paymentInfo.receiver, amount);
-
+        // ============ INTERACTIONS ============
         ESCROW.capture(paymentInfo, amount, fees.totalFeeBps, feeReceiver);
+
+        // ============ EFFECTS (post-INTERACTIONS for strict CEI) ============
+        accumulatedProtocolFees[paymentInfo.token] += protocolFeeAmount;
+        emit CaptureExecuted(paymentInfo, paymentInfoHash, paymentInfo.payer, paymentInfo.receiver, amount);
 
         if (address(CAPTURE_POST_ACTION_HOOK) != address(0)) {
             CAPTURE_POST_ACTION_HOOK.run(paymentInfo, amount, msg.sender, data);

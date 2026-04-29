@@ -80,19 +80,19 @@ paymentInfo.maxAmount: uint120
 
 **Constraint:**
 ```
-0 < releaseAmount <= capturableAmount
+0 < captureAmount <= capturableAmount
 ```
 
-**After release:**
+**After capture:**
 ```
-capturableAmount' = capturableAmount - releaseAmount
-receiverGets = releaseAmount - fee
-fee = releaseAmount * combinedFeeBps / 10000
+capturableAmount' = capturableAmount - captureAmount
+receiverGets = captureAmount - fee
+fee = captureAmount * combinedFeeBps / 10000
 ```
 
 **Code location:** Escrow layer (`capture` function)
 
-**Invariant:** `capturableAmount` is monotonically non-increasing per payment (can only decrease via release or refund).
+**Invariant:** `capturableAmount` is monotonically non-increasing per payment (can only decrease via capture or refund).
 
 ### 2.3 Refund Amount
 
@@ -201,7 +201,7 @@ payerPaymentCount[payer]++
 receiverPaymentCount[receiver]++
 ```
 
-**Code location:** `PaymentIndexHook.sol:record()`
+**Code location:** `PaymentIndexHook.sol:run()`
 
 **Overflow safety:** `uint256` counters. Would need 10^77 calls to overflow — practically impossible.
 
@@ -235,7 +235,7 @@ address = uint160(uint256(keccak256(
 | A1 | Fee never exceeds payment | `fee <= amount` | `feeBps <= 10000` enforced |
 | A2 | No double-spend | `captured + refunded <= authorized` | Echidna + Foundry invariant tests |
 | A3 | Solvency | `escrowBalance >= Σ(capturable + refundable)` | Echidna + Foundry invariant tests |
-| A4 | Fee conservation | `protocolFee + operatorFee + receiverAmount == releaseAmount` | Fuzz tests |
+| A4 | Fee conservation | `protocolFee + operatorFee + receiverAmount == captureAmount` | Fuzz tests |
 | A5 | Protocol fees bounded | `accumulatedProtocolFees <= operatorBalance` | Echidna + Foundry invariant tests |
 | A6 | Fee recipient monotonic | `recipientBalance` only increases | Echidna invariant test |
 | A7 | Timestamp monotonic | `block.timestamp` never decreases | EVM guarantee |

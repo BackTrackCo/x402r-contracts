@@ -15,7 +15,7 @@ Most gas is spent in the escrow layer (which we don't control), not our operator
 - **With PaymentIndexHook**: ~273,000 gas (first) / ~253,000 gas (subsequent)
 
 ### PaymentOperator.capture()
-- **Base release**: ~65,000 gas
+- **Base capture**: ~65,000 gas
 - **With conditions**: +2,000-10,000 gas per condition
 
 ### PaymentOperator.charge()

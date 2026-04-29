@@ -171,7 +171,7 @@
 
 **Finding**:
 - `EscrowPeriod.check()`: Uses `block.timestamp` for comparisons
-  - `RECORDER.frozenUntil(paymentInfoHash) > block.timestamp`
+  - `Freeze.frozenUntil(paymentInfoHash) > block.timestamp`
   - `block.timestamp < authTime + POST_ACTION_HOOK.ESCROW_PERIOD()`
 
 **Status**: ✅ **ACCEPTABLE**
@@ -253,7 +253,7 @@
    - Complex condition chains
 
 3. **EscrowPeriodTest** (3 tests)
-   - Time-based release logic
+   - Time-based capture logic
    - Freeze/unfreeze scenarios
    - Escrow period validation
 
@@ -519,7 +519,7 @@ FreezeFactory
 
 ### User Stories (Payment Flows)
 
-**Story 1: Standard Authorization → Release**
+**Story 1: Standard Authorization → Capture**
 ```
 1. Payer authorizes payment (escrow funds)
    → Condition checks: Pass
@@ -537,7 +537,7 @@ FreezeFactory
 1. Payer authorizes payment
 2. Payer freezes payment (within escrow period)
    → Freeze policy checks: Payer authorized
-   → Result: Payment locked, receiver cannot release
+   → Result: Payment locked, receiver cannot capture
 3. Dispute resolved off-chain
 4. Receiver creates refund request (50% refund)
    → RefundRequest state: PENDING
@@ -548,12 +548,12 @@ FreezeFactory
    → Calls ESCROW.partialVoid() with 50% amount
    → Result: 50% to payer, 50% remains escrowed
 7. Payer unfreezes payment
-8. Receiver releases remaining 50%
+8. Receiver captures remaining 50%
 ```
 
 **Story 3: Post-Escrow Refund**
 ```
-1. Payer authorizes, receiver releases immediately
+1. Payer authorizes, receiver captures immediately
    → Funds transferred to receiver
 2. Product issue discovered
 3. Receiver creates refund request (100%)
@@ -612,16 +612,16 @@ FreezeFactory
 
 **Core Concepts**:
 - **Payment Operator**: Contract orchestrating payment lifecycle with condition/hook hooks
-- **Escrow**: Base Commerce Payments mechanism holding funds until authorized release
-- **Condition**: Contract that gates an operation (authorize, charge, release, refund)
+- **Escrow**: Base Commerce Payments mechanism holding funds until authorized capture
+- **Condition**: Contract that gates an operation (authorize, charge, capture, void, refund)
 - **Hook**: Contract that logs state during an operation (hooks)
 - **Payment Info**: Struct identifying a payment (payer, receiver, token, amount, operator, metadata)
 - **Payment Hash**: `keccak256(abi.encode(PaymentInfo))` used as unique identifier
 
 **Escrow Period**:
 - **Authorization Time**: `block.timestamp` when payment authorized
-- **Escrow Period**: Duration before receiver can release (e.g., 7 days)
-- **Freeze**: Payer-initiated lock preventing release during escrow
+- **Escrow Period**: Duration before receiver can capture (e.g., 7 days)
+- **Freeze**: Payer-initiated lock preventing capture during escrow
 - **Frozen Until**: Timestamp until which payment remains frozen
 
 **Fee System**:
@@ -633,7 +633,7 @@ FreezeFactory
 **Refund System**:
 - **Refund Request**: Receiver-initiated request for payer approval
 - **In-Escrow Refund**: Refund while funds still in escrow (uses `partialVoid()`)
-- **Post-Escrow Refund**: Refund after release (receiver sends from own balance)
+- **Post-Escrow Refund**: Refund after capture (receiver sends from own balance)
 - **Refund Status**: PENDING, APPROVED, DENIED, CANCELLED
 
 **Storage Optimization**:
@@ -752,7 +752,7 @@ FreezeFactory
 **Deployment**:
 - [ ] Deploy to mainnet with correct owner (multisig)
 - [ ] Verify contracts on block explorer
-- [ ] Test basic operations (authorize, release) with small amounts
+- [ ] Test basic operations (authorize, capture) with small amounts
 - [ ] Validate deployment addresses match expected
 - [ ] Transfer ownership to multisig (if needed)
 

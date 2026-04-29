@@ -10,13 +10,13 @@ Domain-specific terms used in x402r-contracts.
 The entry point contract for all payment operations. Each operator is immutable after deployment and encodes specific business logic through its condition and hook slots. Operators delegate fund custody to the escrow layer.
 
 ### AuthCaptureEscrow (Escrow)
-The trustless custody contract that holds user funds during the payment lifecycle. Enforces the payment state machine (authorize → release/refund) with reentrancy guards. Operators interact with escrow but cannot bypass its invariants.
+The trustless custody contract that holds user funds during the payment lifecycle. Enforces the payment state machine (authorize → capture/void → refund) with reentrancy guards. Operators interact with escrow but cannot bypass its invariants.
 
 ### Payment State Machine
 The set of valid states and transitions for a payment:
 - **NonExistent** → **InEscrow** (via authorize)
 - **InEscrow** → **Captured** (via capture, full amount)
-- **InEscrow** → **PartiallyVoided** (via release, partial amount)
+- **InEscrow** → **PartiallyVoided** (via capture, partial amount)
 - **InEscrow** → **Refunded** (via void, full capturable amount)
 - **InEscrow** → **Expired** (authorizationExpiry passes)
 - **Expired** → **RefundedPostEscrow** (via refund)
@@ -35,7 +35,7 @@ The struct that uniquely identifies a payment. Contains: operator, payer, receiv
 The address that funds a payment. Can void authorized payments after `authorizationExpiry`. Can freeze escrow periods (if operator's freeze policy allows). Approves tokens to the collector before authorization.
 
 ### Receiver
-The address that receives released funds. Can approve or deny refund requests. Has priority access to release operations (via ReceiverCondition). Also referred to as "merchant" in commerce contexts.
+The address that receives captured funds. Can approve or deny refund requests. Has priority access to capture operations (via ReceiverCondition). Also referred to as "merchant" in commerce contexts.
 
 ### Operator Deployer
 The entity that deploys a PaymentOperator with specific conditions, hooks, and fee configuration. Responsible for choosing safe, audited plugins. Cannot modify the operator after deployment.
@@ -54,7 +54,7 @@ The owner of the `ProtocolFeeConfig` contract. Can queue timelocked changes to t
 Fee unit where 1 BPS = 0.01%. Range: 0–10000 (0%–100%). Fees are calculated as `amount * feeBps / 10000`.
 
 ### Protocol Fee
-Fee charged on every release, accruing to the `protocolFeeRecipient`. Calculated by the `ProtocolFeeConfig`'s fee calculator. Subject to a 7-day timelock for changes.
+Fee charged on every capture, accruing to the `protocolFeeRecipient`. Calculated by the `ProtocolFeeConfig`'s fee calculator. Subject to a 7-day timelock for changes.
 
 ### Operator Fee
 Per-operator immutable fee set at deployment time via `FEE_CALCULATOR`. Accrues to the operator's `FEE_RECIPIENT`. Cannot be changed after deployment.
@@ -111,13 +111,13 @@ Abstract base class for hooks. Provides `_verifyAndHash()` which validates the c
 ## Escrow Period System
 
 ### Escrow Period
-A time window after authorization during which funds are held in escrow before release is permitted. Enforced by `EscrowPeriod` (which implements both `ICondition` and `IHook`) as both the `AUTHORIZE_POST_ACTION_HOOK` and `CAPTURE_PRE_ACTION_CONDITION`.
+A time window after authorization during which funds are held in escrow before capture is permitted. Enforced by `EscrowPeriod` (which implements both `ICondition` and `IHook`) as both the `AUTHORIZE_POST_ACTION_HOOK` and `CAPTURE_PRE_ACTION_CONDITION`.
 
 ### EscrowPeriod
-Combined hook and condition contract. Records `block.timestamp` when a payment is authorized (via `AuthorizationTimeHook` inheritance), checks `block.timestamp >= authorizedAt + ESCROW_PERIOD` and `!frozen` for release, and provides freeze/unfreeze capabilities.
+Combined hook and condition contract. Records `block.timestamp` when a payment is authorized (via `AuthorizationTimeHook` inheritance), checks `block.timestamp >= authorizedAt + ESCROW_PERIOD` and `!frozen` for capture, and provides freeze/unfreeze capabilities.
 
 ### Freeze
-A standalone `ICondition` contract that blocks release when a payment is frozen. The payer (or authorized party) calls `freeze.freeze(paymentInfo)` to set `frozenUntil = block.timestamp + FREEZE_DURATION`. A frozen payment cannot be released until `frozenUntil` passes or `unfreeze()` is called. Freeze contracts are deployed via `FreezeFactory` with configurable freeze/unfreeze conditions passed directly as constructor parameters.
+A standalone `ICondition` contract that blocks capture when a payment is frozen. The payer (or authorized party) calls `freeze.freeze(paymentInfo)` to set `frozenUntil = block.timestamp + FREEZE_DURATION`. A frozen payment cannot be captured until `frozenUntil` passes or `unfreeze()` is called. Freeze contracts are deployed via `FreezeFactory` with configurable freeze/unfreeze conditions passed directly as constructor parameters.
 
 ### Freeze Duration
 How long a freeze lasts. `0` means permanent (until explicitly unfrozen). Non-zero values auto-expire.
@@ -133,7 +133,7 @@ A formal request from a payer for a refund. Tracked by the `RefundRequest` contr
 Refund path while funds are still in escrow (capturable > 0). Reduces `capturableAmount` and increases `refundableAmount`. Governed by `VOID_PRE_ACTION_CONDITION`.
 
 ### RefundPostEscrow
-Refund path after escrow is released (capturable = 0). Receiver must voluntarily refund from their own balance. Governed by `REFUND_PRE_ACTION_CONDITION`.
+Refund path after funds are captured (capturable = 0). Receiver must voluntarily refund from their own balance via the ReceiverRefundCollector. Governed by `REFUND_PRE_ACTION_CONDITION`.
 
 ### Refund Expiry
 Timestamp after which a payer can reclaim authorized but uncaptured funds. Safety valve ensuring funds are never permanently locked.

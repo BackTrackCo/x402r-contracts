@@ -101,7 +101,7 @@ contract MaliciousDOSCondition is ICondition {
 ```
 
 **Impact:**
-- ❌ Users cannot release payments
+- ❌ Users cannot capture payments
 - ❌ Merchants cannot receive funds
 - ❌ Funds stuck in escrow until refundExpiry
 
@@ -247,7 +247,7 @@ Hooks are **post-action hooks** that run AFTER operations:
 ```solidity
 // Hook interface
 interface IHook {
-    function record(
+    function run(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint256 amount,
         address caller
@@ -279,7 +279,7 @@ if (address(AUTHORIZE_POST_ACTION_HOOK) != address(0)) {
 contract MaliciousReentrantHook is IHook {
     PaymentOperator public targetOperator;
 
-    function record(
+    function run(
         PaymentInfo calldata paymentInfo,
         uint256 amount,
         address caller
@@ -304,7 +304,7 @@ function test_ReentrancyOnAuthorize_SameFunction() public {
     // Malicious hook successfully calls capture() during authorize callback
     // Because PaymentOperator doesn't have reentrancy protection at operator level
 
-    assertEq(capturableAmount, 0); // Already captured by malicious release
+    assertEq(capturableAmount, 0); // Already captured by malicious capture
     assertEq(refundableAmount, PAYMENT_AMOUNT); // Now in refundable state
     assertEq(maliciousHook.reentrancyCount(), 1);
 }
@@ -316,7 +316,7 @@ function test_ReentrancyOnAuthorize_SameFunction() public {
 3. **Operator calls hook.run()** (no reentrancy guard)
 4. Malicious hook calls `operator.capture()`
 5. PaymentOperator allows it (no guard)
-6. Escrow processes release (separate `nonReentrant` context)
+6. Escrow processes capture (separate `nonReentrant` context)
 
 **Mitigation:**
 - ✅ **Use only trusted hooks**
@@ -333,7 +333,7 @@ function test_ReentrancyOnAuthorize_SameFunction() public {
 contract MaliciousStateHook is IHook {
     mapping(bytes32 => bool) public paymentProcessed;
 
-    function record(
+    function run(
         PaymentInfo calldata paymentInfo,
         uint256 amount,
         address caller
@@ -367,7 +367,7 @@ contract MaliciousStateHook is IHook {
 
 ```solidity
 contract MaliciousGasHook is IHook {
-    function record(PaymentInfo calldata, uint256, address) external {
+    function run(PaymentInfo calldata, uint256, address) external {
         // Infinite loop
         while (true) {}
     }
@@ -420,7 +420,7 @@ contract PaymentOperator is Ownable, PaymentOperatorAccess, IOperator {
 5.             └─> ESCROW.capture() [PROTECTED by nonReentrant - separate context]
 ```
 
-**Result**: Payment authorized and immediately released in same transaction, bypassing business logic.
+**Result**: Payment authorized and immediately captured in same transaction, bypassing business logic.
 
 ---
 
@@ -508,7 +508,7 @@ contract ReceiverCondition is ICondition {
 }
 ```
 
-**Use case**: Receiver-only operations (e.g., only merchant can release)
+**Use case**: Receiver-only operations (e.g., only merchant can capture)
 **Risk**: None
 
 ---
@@ -541,7 +541,7 @@ contract StaticAddressCondition is ICondition {
 
 #### 5. EscrowPeriod ✅
 ```solidity
-// Combined hook + condition: records auth time, blocks release until escrow period expires
+// Combined hook + condition: records auth time, blocks capture until escrow period expires
 contract EscrowPeriod is AuthorizationTimeHook, ICondition {
     uint256 public immutable ESCROW_PERIOD;
 
@@ -550,7 +550,7 @@ contract EscrowPeriod is AuthorizationTimeHook, ICondition {
         view
         returns (bool)
     {
-        return canRelease(paymentInfo);
+        return canCapture(paymentInfo);
     }
 }
 ```
@@ -592,7 +592,7 @@ contract AndCondition is ICondition {
 // Combined hook + condition with freeze/unfreeze
 contract EscrowPeriod is AuthorizationTimeHook, ICondition {
     // record() inherited from AuthorizationTimeHook
-    // check() delegates to canRelease()
+    // check() delegates to canCapture()
     // freeze()/unfreeze() for dispute handling
 }
 ```
@@ -644,7 +644,7 @@ Before deploying a PaymentOperator:
 ### 3. Integration Testing ✅
 
 - [ ] Test with actual tokens (USDC, DAI, WETH)
-- [ ] Test all operation paths (authorize, release, refund)
+- [ ] Test all operation paths (authorize, capture, void, refund)
 - [ ] Test edge cases (pause, revert, out-of-gas)
 - [ ] Test with malicious actor scenarios
 - [ ] Gas profiling completed
@@ -671,7 +671,7 @@ Before deploying a PaymentOperator:
 
 ### Warning: Immediate Capture Without Escrow Period
 
-When deploying a PaymentOperator with `CAPTURE_PRE_ACTION_CONDITION = address(0)`, **anyone can release funds immediately after authorization**. This is the default behavior and is dangerous for most payment use cases.
+When deploying a PaymentOperator with `CAPTURE_PRE_ACTION_CONDITION = address(0)`, **anyone can capture funds immediately after authorization**. This is the default behavior and is dangerous for most payment use cases.
 
 ### Attack Scenario: Front-Running Refund Requests
 
@@ -681,10 +681,10 @@ When deploying a PaymentOperator with `CAPTURE_PRE_ACTION_CONDITION = address(0)
 3. Receiver sees the refund request in the mempool
 4. Receiver front-runs with capture() (no condition to block it)
 5. Funds are captured by receiver before refund can be processed
-6. Payer's refund request becomes meaningless (funds already released)
+6. Payer's refund request becomes meaningless (funds already captured)
 ```
 
-This is a **race condition** inherent to `address(0)` release conditions. The RefundRequest contract only tracks request status — it does not prevent releases.
+This is a **race condition** inherent to `address(0)` capture conditions. The RefundRequest contract only tracks request status — it does not prevent captures.
 
 ### When address(0) is Acceptable
 
@@ -709,7 +709,7 @@ Use `EscrowPeriod` as `CAPTURE_PRE_ACTION_CONDITION` for any payment flow that i
 // SAFE: Capture blocked until escrow period passes
 config.capturePreActionCondition = address(escrowPeriod);
 
-// DANGEROUS: Immediate release, refund requests easily front-run
+// DANGEROUS: Immediate capture, refund requests easily front-run
 config.capturePreActionCondition = address(0);
 ```
 

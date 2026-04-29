@@ -204,9 +204,9 @@ Echidna randomly calls these functions with various inputs:
 - Action: Creates and authorizes new payment
 - Coverage: Authorization flow, PreApprovalPaymentCollector, token collection
 
-### release_fuzz(uint256 paymentIndex, uint128 amount)
+### capture_fuzz(uint256 paymentIndex, uint128 amount)
 - Bounds: Valid payment index
-- Action: Releases captured funds to receiver
+- Action: Captures authorized funds to receiver
 - Coverage: Capture conditions, fee distribution, balance updates
 
 ### refund_fuzz(uint256 paymentIndex, uint120 amount)
@@ -248,7 +248,7 @@ echidna_solvency: passing
 echidna_no_double_spend: failed!
   Call sequence:
     1. authorize_fuzz(0x123..., 0x456..., 1000, 42)
-    2. release_fuzz(0, 500)
+    2. capture_fuzz(0, 500)
     3. refund_fuzz(0, 600)
 ```
 

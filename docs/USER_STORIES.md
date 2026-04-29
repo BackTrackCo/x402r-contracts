@@ -9,7 +9,7 @@ Formal user stories for all payment flows in x402r-contracts.
 ### US-1: Authorize a Payment
 **As a** payer,
 **I want to** authorize a payment to a receiver with a maximum amount,
-**so that** funds are held in escrow until the receiver releases or I request a refund.
+**so that** funds are held in escrow until the receiver captures or I request a refund.
 
 **Acceptance criteria:**
 - Payer pre-approves via `collector.preApprove(paymentInfo)`
@@ -19,7 +19,7 @@ Formal user stories for all payment flows in x402r-contracts.
 - If an `AUTHORIZE_PRE_ACTION_CONDITION` is set, it must return `true`
 - If an `AUTHORIZE_POST_ACTION_HOOK` is set, it is called after authorization
 
-### US-2: Charge (Authorize + Immediate Release)
+### US-2: Charge (Authorize + Immediate Capture)
 **As a** receiver in a point-of-sale scenario,
 **I want to** charge a payer in a single transaction,
 **so that** I receive funds immediately without an escrow hold.
@@ -35,33 +35,33 @@ Formal user stories for all payment flows in x402r-contracts.
 
 ## Capture
 
-### US-3: Full Release
+### US-3: Full Capture
 **As a** receiver (merchant),
-**I want to** release the full authorized amount,
+**I want to** capture the full authorized amount,
 **so that** I receive payment minus fees.
 
 **Acceptance criteria:**
 - Caller passes the `CAPTURE_PRE_ACTION_CONDITION` check (or condition is `address(0)`)
-- Full `capturableAmount` is released to receiver
-- Protocol fee and operator fee are deducted from the released amount
+- Full `capturableAmount` is captured to receiver
+- Protocol fee and operator fee are deducted from the captured amount
 - `accumulatedProtocolFees[token]` increases by the protocol fee share
 - Payment state transitions to `Captured`
 - `CAPTURE_POST_ACTION_HOOK` is called if set
 
-### US-4: Partial Release
+### US-4: Partial Capture
 **As a** receiver,
-**I want to** release a portion of the authorized amount,
+**I want to** capture a portion of the authorized amount,
 **so that** I can capture partial payment while leaving the remainder refundable.
 
 **Acceptance criteria:**
 - Capture amount < `capturableAmount`
-- `capturableAmount` decreases by the released amount
+- `capturableAmount` decreases by the captured amount
 - Payment remains in `InEscrow` state
-- Multiple partial releases are allowed until `capturableAmount` reaches 0
+- Multiple partial captures are allowed until `capturableAmount` reaches 0
 
 ### US-5: Capture After Escrow Period
 **As a** receiver using an escrow period,
-**I want to** release funds after the escrow period expires,
+**I want to** capture funds after the escrow period expires,
 **so that** the payer had a dispute window before I receive funds.
 
 **Acceptance criteria:**
@@ -90,7 +90,7 @@ Formal user stories for all payment flows in x402r-contracts.
 **so that** I can resolve a dispute or correct an error.
 
 **Acceptance criteria:**
-- `capturableAmount == 0` (all funds released or refunded from escrow)
+- `capturableAmount == 0` (all funds captured or refunded from escrow)
 - Receiver transfers tokens back and calls `refund()`
 - `REFUND_PRE_ACTION_CONDITION` is checked if set
 
@@ -143,7 +143,7 @@ Formal user stories for all payment flows in x402r-contracts.
 
 ### US-12: Freeze a Payment
 **As a** payer disputing a transaction,
-**I want to** freeze the escrow to prevent release during my dispute,
+**I want to** freeze the escrow to prevent capture during my dispute,
 **so that** the receiver cannot drain funds while I seek resolution.
 
 **Acceptance criteria:**
@@ -156,7 +156,7 @@ Formal user stories for all payment flows in x402r-contracts.
 ### US-13: Unfreeze a Payment
 **As a** payer or arbiter who has resolved a dispute,
 **I want to** unfreeze a payment,
-**so that** the receiver can proceed with release.
+**so that** the receiver can proceed with capture.
 
 **Acceptance criteria:**
 - Freeze policy's `canUnfreeze()` returns `true` for the caller
@@ -219,7 +219,7 @@ Formal user stories for all payment flows in x402r-contracts.
 ### US-18: Deploy Escrow Period Infrastructure
 **As a** service provider requiring dispute windows,
 **I want to** deploy an escrow period condition + hook pair,
-**so that** I can configure my operator with a release delay.
+**so that** I can configure my operator with a capture delay.
 
 **Acceptance criteria:**
 - Call `EscrowPeriodFactory.deploy(escrowPeriod, freezePolicy, codehash)`

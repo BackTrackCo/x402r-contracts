@@ -170,7 +170,7 @@ Conditions are composable plugins that control access to operator actions:
 
 Freeze and EscrowPeriod are now **separate, composable modules**:
 
-- **EscrowPeriod**: ICondition that blocks release during the escrow period
+- **EscrowPeriod**: ICondition that blocks capture during the escrow period
 - **Freeze**: Standalone ICondition with `freeze()`/`unfreeze()` methods
 
 Compose them via `AndCondition([escrowPeriod, freeze])` when you want both behaviors.
@@ -397,7 +397,7 @@ address escrowPeriod = escrowPeriodFactory.deploy(7 days, bytes32(0));
 // 2. Deploy Freeze (payer can freeze/unfreeze, 3-day duration, constrained to escrow period)
 address freeze = freezeFactory.deploy(payerCondition, payerCondition, 3 days, escrowPeriod);
 
-// 3. Compose for release condition: must pass both escrow period AND not be frozen
+// 3. Compose for capture condition: must pass both escrow period AND not be frozen
 address capturePreActionCondition = address(new AndCondition([ICondition(escrowPeriod), ICondition(freeze)]));
 ```
 

@@ -104,7 +104,7 @@ function _collectTokens(...) internal {
 - **Examples**: AMPL (Ampleforth), stETH (Lido Staked ETH), RAI
 - **Status**: ❌ NOT SUPPORTED
 - **Why Rejected**: Balance changes break accounting invariants
-- **Behavior**: Accounting corruption, incorrect refunds/releases
+- **Behavior**: Accounting corruption, incorrect refunds/captures
 
 **Problem**:
 ```solidity

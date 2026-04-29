@@ -21,7 +21,7 @@ import {
 /// @notice Mock hook for testing HookCombinator. Records every arg of the most recent
 ///         run() so combinator-forwarding tests can assert that paymentInfo / amount /
 ///         caller / data flow through unmangled.
-contract MockPostActionHook is IHook {
+contract MockHook is IHook {
     uint256 public recordCount;
     AuthCaptureEscrow.PaymentInfo internal _lastPaymentInfo;
     uint256 public lastAmount;
@@ -180,8 +180,8 @@ contract PreActionConditionsCoverageTest is Test {
     // ============ HookCombinator Tests ============
 
     function test_HookCombinator_CallsAllHooks() public {
-        MockPostActionHook hook1 = new MockPostActionHook();
-        MockPostActionHook hook2 = new MockPostActionHook();
+        MockHook hook1 = new MockHook();
+        MockHook hook2 = new MockHook();
 
         IHook[] memory hooks = new IHook[](2);
         hooks[0] = hook1;
@@ -267,7 +267,7 @@ contract PreActionConditionsCoverageTest is Test {
     function test_HookCombinator_RevertsOnTooManyHooks() public {
         IHook[] memory hooks = new IHook[](11);
         for (uint256 i = 0; i < 11; i++) {
-            hooks[i] = new MockPostActionHook();
+            hooks[i] = new MockHook();
         }
 
         vm.expectRevert(abi.encodeWithSelector(HookCombinator.TooManyHooks.selector, 11, 10));
@@ -276,7 +276,7 @@ contract PreActionConditionsCoverageTest is Test {
 
     function test_HookCombinator_RevertsOnZeroHook() public {
         IHook[] memory hooks = new IHook[](2);
-        hooks[0] = new MockPostActionHook();
+        hooks[0] = new MockHook();
         hooks[1] = IHook(address(0));
 
         vm.expectRevert(abi.encodeWithSelector(HookCombinator.ZeroHook.selector, 1));
@@ -284,8 +284,8 @@ contract PreActionConditionsCoverageTest is Test {
     }
 
     function test_HookCombinator_GetHooks() public {
-        MockPostActionHook hook1 = new MockPostActionHook();
-        MockPostActionHook hook2 = new MockPostActionHook();
+        MockHook hook1 = new MockHook();
+        MockHook hook2 = new MockHook();
 
         IHook[] memory hooks = new IHook[](2);
         hooks[0] = hook1;
@@ -300,7 +300,7 @@ contract PreActionConditionsCoverageTest is Test {
     }
 
     function test_HookCombinator_GetRecorderCount() public {
-        MockPostActionHook hook1 = new MockPostActionHook();
+        MockHook hook1 = new MockHook();
 
         IHook[] memory hooks = new IHook[](1);
         hooks[0] = hook1;
@@ -310,8 +310,8 @@ contract PreActionConditionsCoverageTest is Test {
     }
 
     function test_HookCombinator_AccessHooksByIndex() public {
-        MockPostActionHook hook1 = new MockPostActionHook();
-        MockPostActionHook hook2 = new MockPostActionHook();
+        MockHook hook1 = new MockHook();
+        MockHook hook2 = new MockHook();
 
         IHook[] memory hooks = new IHook[](2);
         hooks[0] = hook1;
