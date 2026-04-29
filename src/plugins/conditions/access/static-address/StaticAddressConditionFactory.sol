@@ -14,8 +14,11 @@ import {StaticAddressCondition} from "./StaticAddressCondition.sol";
 contract StaticAddressConditionFactory {
     error ZeroAddress();
 
+    /// @notice Salt prefix for CREATE2
+    bytes32 private constant SALT_PREFIX = "staticAddressCondition";
+
     /// @notice Deployed condition addresses
-    /// @dev Key: keccak256(abi.encodePacked(designatedAddress))
+    /// @dev Key: keccak256(abi.encode(designatedAddress))
     mapping(bytes32 => address) public conditions;
 
     /// @notice Emitted when a new condition is deployed
@@ -38,7 +41,7 @@ contract StaticAddressConditionFactory {
 
         // ============ EFFECTS ============
         // Pre-compute deterministic CREATE2 address (CEI pattern)
-        bytes32 salt = keccak256(abi.encodePacked("staticAddressCondition", key));
+        bytes32 salt = keccak256(abi.encode(SALT_PREFIX, key));
         bytes memory bytecode =
             abi.encodePacked(type(StaticAddressCondition).creationCode, abi.encode(designatedAddress));
         condition = address(
@@ -72,7 +75,7 @@ contract StaticAddressConditionFactory {
      */
     function computeAddress(address designatedAddress) external view returns (address condition) {
         bytes32 key = getKey(designatedAddress);
-        bytes32 salt = keccak256(abi.encodePacked("staticAddressCondition", key));
+        bytes32 salt = keccak256(abi.encode(SALT_PREFIX, key));
         bytes memory bytecode =
             abi.encodePacked(type(StaticAddressCondition).creationCode, abi.encode(designatedAddress));
         bytes32 hash = keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)));
@@ -85,6 +88,6 @@ contract StaticAddressConditionFactory {
      * @return The mapping key
      */
     function getKey(address designatedAddress) public pure returns (bytes32) {
-        return keccak256(abi.encodePacked(designatedAddress));
+        return keccak256(abi.encode(designatedAddress));
     }
 }

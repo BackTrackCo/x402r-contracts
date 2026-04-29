@@ -209,7 +209,7 @@ contract GasBenchmark is Test {
         fullOperator = PaymentOperator(operatorFactory.deployOperator(fullConfig));
 
         // Deploy dispute system
-        refundRequest = new RefundRequest(arbiter);
+        refundRequest = new RefundRequest(arbiter, address(escrow));
         refundRequestEvidence = new RefundRequestEvidence(address(refundRequest));
 
         // Fund accounts

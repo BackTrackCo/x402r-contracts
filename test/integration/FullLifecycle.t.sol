@@ -105,8 +105,8 @@ contract FullLifecycleTest is Test {
         escrowConditions[1] = ICondition(address(freeze));
         escrowReleaseCondition = new AndCondition(escrowConditions);
 
-        // Deploy RefundRequest with arbiter
-        refundRequest = new RefundRequest(arbiter);
+        // Deploy RefundRequest with arbiter and canonical escrow
+        refundRequest = new RefundRequest(arbiter, address(escrow));
 
         // Build VOID_PRE_ACTION_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)
         StaticAddressCondition arbiterCondition = new StaticAddressCondition(arbiter);

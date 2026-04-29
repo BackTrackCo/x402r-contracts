@@ -140,7 +140,7 @@ contract PaymentOperatorFactory {
 
     function _computeKey(OperatorConfig memory config) internal pure returns (bytes32) {
         return keccak256(
-            abi.encodePacked(
+            abi.encode(
                 config.feeReceiver,
                 config.feeCalculator,
                 config.authorizePreActionCondition,

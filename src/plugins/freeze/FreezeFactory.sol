@@ -25,6 +25,9 @@ import {ZeroAddress} from "../../types/Errors.sol";
  *      - Anyone freeze, Receiver unfreeze: deploy(AlwaysTrueCondition, ReceiverCondition, 7 days, escrowPeriod)
  */
 contract FreezeFactory {
+    /// @notice Salt prefix for CREATE2
+    bytes32 private constant SALT_PREFIX = "freeze";
+
     /// @notice Escrow contract shared by all deployments
     AuthCaptureEscrow public immutable ESCROW;
 
@@ -34,7 +37,7 @@ contract FreezeFactory {
     }
 
     /// @notice Deployed Freeze addresses
-    /// @dev Key: keccak256(abi.encodePacked(freezeCondition, unfreezeCondition, freezeDuration, escrowPeriodContract))
+    /// @dev Key: keccak256(abi.encode(freezeCondition, unfreezeCondition, freezeDuration, escrowPeriodContract))
     mapping(bytes32 => address) public deployments;
 
     /**
@@ -64,7 +67,7 @@ contract FreezeFactory {
 
         // ============ EFFECTS ============
         // Pre-compute deterministic CREATE2 address (CEI pattern)
-        bytes32 salt = keccak256(abi.encodePacked("freeze", key));
+        bytes32 salt = keccak256(abi.encode(SALT_PREFIX, key));
         bytes memory bytecode = abi.encodePacked(
             type(Freeze).creationCode,
             abi.encode(freezeCondition, unfreezeCondition, freezeDuration, escrowPeriodContract, address(ESCROW))
@@ -120,7 +123,7 @@ contract FreezeFactory {
         address escrowPeriodContract
     ) external view returns (address) {
         bytes32 key = getKey(freezeCondition, unfreezeCondition, freezeDuration, escrowPeriodContract);
-        bytes32 salt = keccak256(abi.encodePacked("freeze", key));
+        bytes32 salt = keccak256(abi.encode(SALT_PREFIX, key));
         bytes memory bytecode = abi.encodePacked(
             type(Freeze).creationCode,
             abi.encode(freezeCondition, unfreezeCondition, freezeDuration, escrowPeriodContract, address(ESCROW))
@@ -143,6 +146,6 @@ contract FreezeFactory {
         uint256 freezeDuration,
         address escrowPeriodContract
     ) public pure returns (bytes32) {
-        return keccak256(abi.encodePacked(freezeCondition, unfreezeCondition, freezeDuration, escrowPeriodContract));
+        return keccak256(abi.encode(freezeCondition, unfreezeCondition, freezeDuration, escrowPeriodContract));
     }
 }

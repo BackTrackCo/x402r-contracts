@@ -197,8 +197,10 @@ contract DeployCreate2 is Create2Deployer {
         // =============================================
         console.log("\n--- 6. Refund-side ---");
 
-        address refundReqFactory =
-            _deploy2("x402r-canonical-v1::RefundRequestFactory", type(RefundRequestFactory).creationCode);
+        address refundReqFactory = _deploy2(
+            "x402r-canonical-v1::RefundRequestFactory",
+            abi.encodePacked(type(RefundRequestFactory).creationCode, abi.encode(escrow))
+        );
         console.log("RefundRequestFactory:", refundReqFactory);
 
         address receiverRefundCollector = _deploy2(

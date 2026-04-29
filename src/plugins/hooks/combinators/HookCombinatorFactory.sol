@@ -9,7 +9,7 @@ import {HookCombinator} from "./HookCombinator.sol";
  * @notice Factory for deploying HookCombinator instances with deterministic addresses.
  *         Uses CREATE2 for address predictability.
  *
- * @dev Key is keccak256(abi.encodePacked(hooks)). Each unique combination gets one canonical deployment.
+ * @dev Key is keccak256(abi.encode(hooks)). Each unique combination gets one canonical deployment.
  */
 contract HookCombinatorFactory {
     error EmptyHooks();
@@ -18,8 +18,11 @@ contract HookCombinatorFactory {
     /// @notice Maximum hooks allowed (matches HookCombinator.MAX_POST_ACTION_HOOKS)
     uint256 public constant MAX_POST_ACTION_HOOKS = 10;
 
+    /// @notice Salt prefix for CREATE2
+    bytes32 private constant SALT_PREFIX = "hookCombinator";
+
     /// @notice Deployed combinator addresses
-    /// @dev Key: keccak256(abi.encodePacked(hooks))
+    /// @dev Key: keccak256(abi.encode(hooks))
     mapping(bytes32 => address) public combinators;
 
     /// @notice Emitted when a new HookCombinator is deployed
@@ -43,7 +46,7 @@ contract HookCombinatorFactory {
 
         // ============ EFFECTS ============
         // Pre-compute deterministic CREATE2 address (CEI pattern)
-        bytes32 salt = keccak256(abi.encodePacked("hookCombinator", key));
+        bytes32 salt = keccak256(abi.encode(SALT_PREFIX, key));
         bytes memory bytecode = abi.encodePacked(type(HookCombinator).creationCode, abi.encode(_hooks));
         combinator = address(
             uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)))))
@@ -76,7 +79,7 @@ contract HookCombinatorFactory {
      */
     function computeAddress(IHook[] calldata _hooks) external view returns (address combinator) {
         bytes32 key = getKey(_hooks);
-        bytes32 salt = keccak256(abi.encodePacked("hookCombinator", key));
+        bytes32 salt = keccak256(abi.encode(SALT_PREFIX, key));
         bytes memory bytecode = abi.encodePacked(type(HookCombinator).creationCode, abi.encode(_hooks));
         bytes32 hash = keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)));
         combinator = address(uint160(uint256(hash)));
@@ -88,6 +91,6 @@ contract HookCombinatorFactory {
      * @return The mapping key
      */
     function getKey(IHook[] calldata _hooks) public pure returns (bytes32) {
-        return keccak256(abi.encodePacked(_hooks));
+        return keccak256(abi.encode(_hooks));
     }
 }

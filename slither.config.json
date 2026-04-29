@@ -27,7 +27,7 @@
     "unused-return": "Some return values intentionally unused (e.g., SafeERC20 always reverts on failure)",
     "calls-loop": "External calls in loops are intentional for fee distribution - bounded by MAX_CONDITIONS",
     "similar-names": "Variable names follow consistent patterns, not confusing",
-    "solc-version": "Locked to 0.8.28 for consistency",
+    "solc-version": "Locked to 0.8.33 for consistency",
     "low-level-calls": "SafeTransferLib uses low-level calls for gas efficiency - audited",
     "naming-convention": "Following Solidity style guide",
     "external-function": "Public functions needed for testing and flexibility"

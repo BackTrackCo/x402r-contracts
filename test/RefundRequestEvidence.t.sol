@@ -54,8 +54,8 @@ contract RefundRequestEvidenceTest is Test {
         // Deploy PreApprovalPaymentCollector
         collector = new PreApprovalPaymentCollector(address(escrow));
 
-        // Deploy RefundRequest with arbiter
-        refundRequest = new RefundRequest(designatedAddress);
+        // Deploy RefundRequest with arbiter and canonical escrow
+        refundRequest = new RefundRequest(designatedAddress, address(escrow));
 
         // Build condition tree:
         // VOID_PRE_ACTION_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)

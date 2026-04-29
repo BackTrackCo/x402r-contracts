@@ -14,8 +14,11 @@ import {SignatureCondition} from "./SignatureCondition.sol";
 contract SignatureConditionFactory {
     error ZeroSigner();
 
+    /// @notice Salt prefix for CREATE2
+    bytes32 private constant SALT_PREFIX = "signatureCondition";
+
     /// @notice Deployed condition addresses
-    /// @dev Key: keccak256(abi.encodePacked(signer))
+    /// @dev Key: keccak256(abi.encode(signer))
     mapping(bytes32 => address) public conditions;
 
     /// @notice Emitted when a new condition is deployed
@@ -38,7 +41,7 @@ contract SignatureConditionFactory {
 
         // ============ EFFECTS ============
         // Pre-compute deterministic CREATE2 address (CEI pattern)
-        bytes32 salt = keccak256(abi.encodePacked("signatureCondition", key));
+        bytes32 salt = keccak256(abi.encode(SALT_PREFIX, key));
         bytes memory bytecode = abi.encodePacked(type(SignatureCondition).creationCode, abi.encode(signer));
         condition = address(
             uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)))))
@@ -71,7 +74,7 @@ contract SignatureConditionFactory {
      */
     function computeAddress(address signer) external view returns (address condition) {
         bytes32 key = getKey(signer);
-        bytes32 salt = keccak256(abi.encodePacked("signatureCondition", key));
+        bytes32 salt = keccak256(abi.encode(SALT_PREFIX, key));
         bytes memory bytecode = abi.encodePacked(type(SignatureCondition).creationCode, abi.encode(signer));
         bytes32 hash = keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)));
         condition = address(uint160(uint256(hash)));
@@ -83,6 +86,6 @@ contract SignatureConditionFactory {
      * @return The mapping key
      */
     function getKey(address signer) public pure returns (bytes32) {
-        return keccak256(abi.encodePacked(signer));
+        return keccak256(abi.encode(signer));
     }
 }

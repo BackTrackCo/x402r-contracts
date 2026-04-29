@@ -18,7 +18,7 @@ contract RefundRequestEvidenceFactory {
     bytes32 private constant SALT_PREFIX = "refundRequestEvidence";
 
     /// @notice Deployed evidence contract addresses
-    /// @dev Key: keccak256(abi.encodePacked(refundRequest))
+    /// @dev Key: keccak256(abi.encode(refundRequest))
     mapping(bytes32 => address) public refundRequestEvidences;
 
     /// @notice Emitted when a new evidence contract is deployed
@@ -40,7 +40,7 @@ contract RefundRequestEvidenceFactory {
         }
 
         // ============ EFFECTS ============
-        bytes32 salt = keccak256(abi.encodePacked(SALT_PREFIX, key));
+        bytes32 salt = keccak256(abi.encode(SALT_PREFIX, key));
         bytes memory bytecode = abi.encodePacked(type(RefundRequestEvidence).creationCode, abi.encode(refundRequest));
         evidence = address(
             uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)))))
@@ -73,7 +73,7 @@ contract RefundRequestEvidenceFactory {
      */
     function computeAddress(address refundRequest) external view returns (address evidence) {
         bytes32 key = getKey(refundRequest);
-        bytes32 salt = keccak256(abi.encodePacked(SALT_PREFIX, key));
+        bytes32 salt = keccak256(abi.encode(SALT_PREFIX, key));
         bytes memory bytecode = abi.encodePacked(type(RefundRequestEvidence).creationCode, abi.encode(refundRequest));
         bytes32 hash = keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)));
         evidence = address(uint160(uint256(hash)));
@@ -85,6 +85,6 @@ contract RefundRequestEvidenceFactory {
      * @return The mapping key
      */
     function getKey(address refundRequest) public pure returns (bytes32) {
-        return keccak256(abi.encodePacked(refundRequest));
+        return keccak256(abi.encode(refundRequest));
     }
 }

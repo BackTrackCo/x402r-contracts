@@ -9,7 +9,7 @@ import {OrCondition} from "./OrCondition.sol";
  * @notice Factory for deploying OrCondition instances with deterministic addresses.
  *         Uses CREATE2 for address predictability.
  *
- * @dev Key is keccak256(abi.encodePacked(conditions)). Each unique combination gets one canonical deployment.
+ * @dev Key is keccak256(abi.encode(conditions)). Each unique combination gets one canonical deployment.
  */
 contract OrConditionFactory {
     error NoConditions();
@@ -18,8 +18,11 @@ contract OrConditionFactory {
     /// @notice Maximum conditions allowed (matches OrCondition.MAX_PRE_ACTION_CONDITIONS)
     uint256 public constant MAX_PRE_ACTION_CONDITIONS = 10;
 
+    /// @notice Salt prefix for CREATE2
+    bytes32 private constant SALT_PREFIX = "orCondition";
+
     /// @notice Deployed condition addresses
-    /// @dev Key: keccak256(abi.encodePacked(conditions))
+    /// @dev Key: keccak256(abi.encode(conditions))
     mapping(bytes32 => address) public conditions;
 
     /// @notice Emitted when a new OrCondition is deployed
@@ -43,7 +46,7 @@ contract OrConditionFactory {
 
         // ============ EFFECTS ============
         // Pre-compute deterministic CREATE2 address (CEI pattern)
-        bytes32 salt = keccak256(abi.encodePacked("orCondition", key));
+        bytes32 salt = keccak256(abi.encode(SALT_PREFIX, key));
         bytes memory bytecode = abi.encodePacked(type(OrCondition).creationCode, abi.encode(_conditions));
         condition = address(
             uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)))))
@@ -76,7 +79,7 @@ contract OrConditionFactory {
      */
     function computeAddress(ICondition[] calldata _conditions) external view returns (address condition) {
         bytes32 key = getKey(_conditions);
-        bytes32 salt = keccak256(abi.encodePacked("orCondition", key));
+        bytes32 salt = keccak256(abi.encode(SALT_PREFIX, key));
         bytes memory bytecode = abi.encodePacked(type(OrCondition).creationCode, abi.encode(_conditions));
         bytes32 hash = keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)));
         condition = address(uint160(uint256(hash)));
@@ -88,6 +91,6 @@ contract OrConditionFactory {
      * @return The mapping key
      */
     function getKey(ICondition[] calldata _conditions) public pure returns (bytes32) {
-        return keccak256(abi.encodePacked(_conditions));
+        return keccak256(abi.encode(_conditions));
     }
 }

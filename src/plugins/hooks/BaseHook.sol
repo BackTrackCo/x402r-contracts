@@ -19,6 +19,20 @@ import {OnlyOperator, ZeroAddress, PaymentDoesNotExist} from "../../types/Errors
  *        runtime codehash must match AUTHORIZED_CODEHASH (e.g. HookCombinator)
  *      - Escrow existence: payment must exist in the trusted immutable ESCROW
  *      - Both checks together ensure only real operators running real payments can write state
+ *
+ *      CODEHASH GATING IS FORGEABLE — DEPLOY-TIME RESPONSIBILITY:
+ *        EXTCODEHASH is the keccak256 of runtime bytecode. Anyone can redeploy a contract
+ *        with byte-identical runtime code and pass the codehash check. This is acceptable
+ *        ONLY when the authorized contract has no externally-callable path that lets a
+ *        caller forward an attacker-chosen `paymentInfo` into a hook (e.g. HookCombinator
+ *        forwards calldata verbatim, but only on its own trusted entry that already
+ *        enforces `msg.sender == paymentInfo.operator`).
+ *
+ *        Before setting AUTHORIZED_CODEHASH to a non-zero value, audit the authorized
+ *        contract for: (a) any function that accepts a user-supplied `paymentInfo` and
+ *        forwards it to a hook; (b) lack of its own caller authentication. If either is
+ *        true, codehash gating becomes a wide-open door — set AUTHORIZED_CODEHASH to
+ *        bytes32(0) and gate solely on `msg.sender == paymentInfo.operator` instead.
  */
 abstract contract BaseHook is IHook {
     /// @notice Escrow contract for payment hash calculation and existence verification

@@ -50,8 +50,8 @@ contract RefundRequestTest is Test {
         token = new MockERC20("Test Token", "TEST");
         collector = new PreApprovalPaymentCollector(address(escrow));
 
-        // Deploy RefundRequest with arbiter
-        refundRequest = new RefundRequest(arbiter);
+        // Deploy RefundRequest with arbiter and canonical escrow
+        refundRequest = new RefundRequest(arbiter, address(escrow));
 
         // Build condition tree:
         // VOID_PRE_ACTION_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)
@@ -116,7 +116,7 @@ contract RefundRequestTest is Test {
 
     function test_constructor_zeroArbiter() public {
         vm.expectRevert(RefundRequest.ZeroArbiter.selector);
-        new RefundRequest(address(0));
+        new RefundRequest(address(0), address(escrow));
     }
 
     function test_constructor_setsArbiter() public view {
@@ -644,12 +644,14 @@ contract RefundRequestTest is Test {
 
 contract RefundRequestFactoryTest is Test {
     RefundRequestFactory public factory;
+    AuthCaptureEscrow public escrow;
 
     address public arbiter1;
     address public arbiter2;
 
     function setUp() public {
-        factory = new RefundRequestFactory();
+        escrow = new AuthCaptureEscrow();
+        factory = new RefundRequestFactory(address(escrow));
         arbiter1 = makeAddr("arbiter1");
         arbiter2 = makeAddr("arbiter2");
     }
