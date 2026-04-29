@@ -41,4 +41,4 @@ Operator stores only `authorizedFees[hash]` and `accumulatedProtocolFees[token]`
 
 ## Deploy
 
-Single CREATE2 canonical deploy via CreateX guarded salts: `script/DeployCreate2.s.sol`. Both `CANONICAL_OWNER` and `CANONICAL_FEE_RECIPIENT` constants in the script must be set before running. Salt namespaces: `commerce-payments::v1::*` for upstream primitives (vendored unchanged), `x402r-canonical-v1::*` for x402r-authored contracts.
+Single CREATE2 canonical deploy via CreateX permissionless salts: `script/DeployCreate2.s.sol`. Both `CANONICAL_OWNER` and `CANONICAL_FEE_RECIPIENT` constants in the script must be set before running. Salt namespaces: `commerce-payments::v1::*` for upstream primitives (vendored unchanged from `base/commerce-payments` v1.0.0), `x402r-canonical-v1::*` for x402r-authored contracts.

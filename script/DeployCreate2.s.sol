@@ -35,19 +35,21 @@ import {RefundRequestEvidenceFactory} from "../src/evidence/RefundRequestEvidenc
 
 /**
  * @title DeployCreate2
- * @notice Deterministic CREATE2 deployment of x402r canonical contracts via CreateX guarded salts.
- *         Same deployer EOA + same salt + byte-identical initCode = same address on every chain.
+ * @notice Deterministic CREATE2 deployment of x402r canonical contracts via CreateX permissionless salts.
+ *         Same salt + byte-identical initCode = same address on every chain, regardless of who broadcasts.
  *
  * @dev Two salt namespaces:
  *
  *      `commerce-payments::v1::<ContractName>` — upstream audited bytecode, vendored unchanged
- *      from base/commerce-payments. The bytecode hash here MUST match the upstream artifact;
- *      any compiler/dep drift moves the canonical address.
+ *      from base/commerce-payments at the pinned submodule commit. The bytecode hash here MUST
+ *      match the upstream artifact; any compiler/dep drift moves the canonical address.
  *
  *      `x402r-canonical-v1::<ContractName>` — x402r-authored contracts.
  *
- *      Both namespaces are guarded by the deployer EOA encoded in the CreateX salt; only that
- *      EOA can use the salt, preventing canonical-address squatting.
+ *      Both namespaces use CreateX permissionless salts (`bytes20(0) || 0x00 || bytes11(label)`).
+ *      Anyone with the same source can reproduce the address; first-mover convention applies per
+ *      chain. We rely on bytecode reproducibility (not address ACL) as the canonical-deployment
+ *      trust root, matching Permit2 / UniversalRouter / Seaport / EntryPoint / commerce-payments.
  *
  *      Reproducibility requirements (see foundry.toml):
  *      - solc version locked
@@ -222,7 +224,7 @@ contract DeployCreate2 is Create2Deployer {
         console.log("\n========================================");
         console.log("  DEPLOYMENT SUMMARY (CREATE2)");
         console.log("========================================");
-        console.log("  Same address on every chain (deployer-guarded):");
+        console.log("  Same address on every chain (permissionless salt + locked bytecode):");
         console.log("");
         console.log("  -- commerce-payments primitives --");
         console.log("    AuthCaptureEscrow:", escrow);

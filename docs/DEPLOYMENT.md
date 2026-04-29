@@ -6,7 +6,9 @@ Deploy x402r smart contracts to EVM networks via a single CREATE2 canonical-depl
 
 ## Overview
 
-x402r uses **deterministic CREATE2 deployment via CreateX guarded salts**. Same deployer EOA + same byte-identical initCode = same address on every chain. The deploy script lives at `script/DeployCreate2.s.sol` and covers every canonical contract in one run.
+x402r uses **deterministic CREATE2 deployment via CreateX permissionless salts**. Same salt + byte-identical initCode = same address on every chain, regardless of who broadcasts. The deploy script lives at `script/DeployCreate2.s.sol` and covers every canonical contract in one run.
+
+This matches the convention used by Permit2, UniversalRouter, Seaport, EntryPoint, and upstream `base/commerce-payments`: anyone with the source can verify and reproduce the deployment. The trust root is bytecode reproducibility — anyone deploying the exact x402r bytecode at the canonical salt is, by definition, deploying x402r.
 
 > **Note:** New to x402r contracts? Start with [README.md](../README.md) to understand the architecture and plugin model.
 
@@ -16,7 +18,7 @@ x402r uses **deterministic CREATE2 deployment via CreateX guarded salts**. Same 
 
 Before deploying, ensure you have:
 - **Foundry** installed (`curl -L https://foundry.paradigm.xyz | bash && foundryup`)
-- **Private key** for the deployer EOA (must be the same EOA on every chain — its address is encoded into the CreateX guarded salt)
+- **Private key** for a deployer EOA with gas on the target chain. The salt is permissionless, so the deployer's identity does not affect the resulting address — but you should still treat the canonical deploy as a one-time event per chain to avoid duplicates.
 - **CreateX** deployed at `0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed` on the target chain (it's deployed on most major chains; verify before running)
 - **Block explorer API key** for verification (optional but recommended)
 - **Multisig wallet** address for `CANONICAL_OWNER`
@@ -148,8 +150,8 @@ Before deploying to mainnet:
 
 - [ ] `CANONICAL_OWNER` is a multisig wallet (Gnosis Safe) — pinned in `DeployCreate2.s.sol`
 - [ ] `CANONICAL_FEE_RECIPIENT` is configured — pinned in `DeployCreate2.s.sol`
-- [ ] Deployer EOA is the same one used on previous chains (CreateX guarded salts encode it)
 - [ ] CreateX is deployed on the target chain
+- [ ] Foundry submodule pin matches the manifest commit (lib/commerce-payments at v1.0.0)
 - [ ] Foundry compiler config matches the manifest (solc, evm_version, optimizer_runs, bytecode_hash)
 - [ ] Deployer account has sufficient gas tokens
 - [ ] Block explorer API key is configured
@@ -171,9 +173,8 @@ cast balance $DEPLOYER_ADDRESS --rpc-url $RPC_URL
 CREATE2 addresses are sensitive to bytecode. Common causes:
 - Different solc version (must match `foundry.toml` lock)
 - Different optimizer settings (`optimizer_runs = 100000` is required)
-- Different library / submodule commits
+- Different library / submodule commits (verify `lib/commerce-payments` is at the manifest commit)
 - `bytecode_hash` not stripped (must be `bytecode_hash = "none"` in `foundry.toml`)
-- Different deployer EOA (CreateX guarded salts encode the deployer; only the same EOA can use them)
 
 ### Verification Fails
 
