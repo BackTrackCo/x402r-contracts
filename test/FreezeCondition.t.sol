@@ -6,6 +6,7 @@ import {PaymentOperator} from "../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
 import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
 import {EscrowPeriod} from "../src/plugins/escrow-period/EscrowPeriod.sol";
+import {PreActionConditionNotMet} from "../src/operator/types/Errors.sol";
 import {EscrowPeriodFactory} from "../src/plugins/escrow-period/EscrowPeriodFactory.sol";
 import {Freeze} from "../src/plugins/freeze/Freeze.sol";
 import {ICondition} from "../src/plugins/conditions/ICondition.sol";
@@ -24,7 +25,7 @@ contract FreezeConditionTest is Test {
     PreApprovalPaymentCollector public collector;
     EscrowPeriod public escrowPeriod;
     Freeze public freeze;
-    AndCondition public releaseCondition;
+    AndCondition public captureCondition;
     MockERC20 public token;
 
     address public owner;
@@ -61,24 +62,24 @@ contract FreezeConditionTest is Test {
         ICondition[] memory conditions = new ICondition[](2);
         conditions[0] = ICondition(address(escrowPeriod));
         conditions[1] = ICondition(address(freeze));
-        releaseCondition = new AndCondition(conditions);
+        captureCondition = new AndCondition(conditions);
 
         protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
         operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: protocolFeeRecipient,
+            feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
-            authorizeCondition: address(0),
-            authorizeRecorder: address(escrowPeriod),
-            chargeCondition: address(0),
-            chargeRecorder: address(0),
-            releaseCondition: address(releaseCondition),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(0),
-            refundInEscrowRecorder: address(0),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(escrowPeriod),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(0),
+            capturePreActionCondition: address(captureCondition),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(0),
+            voidPostActionHook: address(0),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
 
@@ -148,18 +149,18 @@ contract FreezeConditionTest is Test {
         PaymentOperatorFactory opFactory2 = new PaymentOperatorFactory(address(escrow), address(pfc2));
 
         PaymentOperatorFactory.OperatorConfig memory config2 = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: protocolFeeRecipient,
+            feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
-            authorizeCondition: address(0),
-            authorizeRecorder: address(ep2),
-            chargeCondition: address(0),
-            chargeRecorder: address(0),
-            releaseCondition: address(relCond),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(0),
-            refundInEscrowRecorder: address(0),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(ep2),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(0),
+            capturePreActionCondition: address(relCond),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(0),
+            voidPostActionHook: address(0),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
         PaymentOperator op2 = PaymentOperator(opFactory2.deployOperator(config2));
 
@@ -192,8 +193,8 @@ contract FreezeConditionTest is Test {
         // Still frozen (permanent), release should revert
         assertTrue(freeze2.isFrozen(pi));
         vm.prank(receiver);
-        vm.expectRevert();
-        op2.release(pi, PAYMENT_AMOUNT, "");
+        vm.expectRevert(PreActionConditionNotMet.selector);
+        op2.capture(pi, PAYMENT_AMOUNT, "");
     }
 
     // ============ Freeze Edge Cases ============
@@ -264,7 +265,7 @@ contract FreezeConditionTest is Test {
 
         // Release should work
         vm.prank(receiver);
-        operator.release(paymentInfo, PAYMENT_AMOUNT, "");
+        operator.capture(paymentInfo, PAYMENT_AMOUNT, "");
         assertTrue(token.balanceOf(receiver) > 0);
     }
 
@@ -385,18 +386,18 @@ contract FreezeConditionTest is Test {
         PaymentOperatorFactory opFactory2 = new PaymentOperatorFactory(address(escrow), address(pfc2));
 
         PaymentOperatorFactory.OperatorConfig memory config2 = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: protocolFeeRecipient,
+            feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
-            authorizeCondition: address(0),
-            authorizeRecorder: address(ep2),
-            chargeCondition: address(0),
-            chargeRecorder: address(0),
-            releaseCondition: address(relCond),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(0),
-            refundInEscrowRecorder: address(0),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(ep2),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(0),
+            capturePreActionCondition: address(relCond),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(0),
+            voidPostActionHook: address(0),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
         PaymentOperator op2 = PaymentOperator(opFactory2.deployOperator(config2));
 
@@ -432,8 +433,8 @@ contract FreezeConditionTest is Test {
 
         // Release should revert
         vm.prank(receiver);
-        vm.expectRevert();
-        op2.release(pi, PAYMENT_AMOUNT, "");
+        vm.expectRevert(PreActionConditionNotMet.selector);
+        op2.capture(pi, PAYMENT_AMOUNT, "");
     }
 
     function test_CanReleaseAfterFreezeExpiresAndEscrowPeriodPasses() public {
@@ -451,7 +452,7 @@ contract FreezeConditionTest is Test {
 
         // Release should succeed
         vm.prank(receiver);
-        operator.release(paymentInfo, PAYMENT_AMOUNT, "");
+        operator.capture(paymentInfo, PAYMENT_AMOUNT, "");
         assertTrue(token.balanceOf(receiver) > 0);
     }
 

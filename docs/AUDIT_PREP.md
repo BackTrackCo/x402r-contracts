@@ -12,7 +12,7 @@
 
 ### Security Objectives
 
-**Primary Goal**: Validate security of generic payment operator architecture with flexible condition/recorder system for beta release.
+**Primary Goal**: Validate security of generic payment operator architecture with flexible condition/hook system for beta release.
 
 **Specific Objectives**:
 1. **Verify partialVoid() Addition**: Custom addition to Base Commerce Payments - ensure no edge cases or state inconsistencies
@@ -33,14 +33,14 @@
   - State consistency after partial void?
   - Amount validation edge cases?
 
-**2. Condition/Recorder System**
+**2. Condition/Hook System**
 - **Location**: `src/commerce-payments/operator/arbitration/PaymentOperator.sol` (10 slots)
 - **Concern**: Arbitrary external contracts can be called in critical paths
 - **Questions**:
   - Can malicious conditions cause DoS?
-  - Can recorder state corruption affect escrow?
+  - Can hook state corruption affect escrow?
   - Cross-operator interference risks?
-  - Reentrancy through recorder callbacks?
+  - Reentrancy through hook callbacks?
 
 **3. Fee Distribution**
 - **Location**: `PaymentOperator._distributeFees()`
@@ -50,7 +50,7 @@
   - Fee calculation overflow risks?
   - Protocol fee evasion vectors?
 
-**4. Freeze/Release Race Condition**
+**4. Freeze/Capture Race Condition**
 - **Location**: `EscrowPeriod.freeze()` + `EscrowPeriod.check()`
 - **Concern**: MEV exploitation at escrow period expiry boundary
 - **Questions**:
@@ -68,7 +68,7 @@
 
 ### Worst-Case Scenarios
 
-**1. Funds Loss**: Malicious condition/recorder drains escrowed funds or causes permanent lock
+**1. Funds Loss**: Malicious condition/hook drains escrowed funds or causes permanent lock
 **2. Fee Evasion**: Protocol fees bypassed through rounding exploits
 **3. State Corruption**: partialVoid() causes accounting mismatch between operator and escrow
 **4. DoS Attack**: Malicious condition bricks operator for all users
@@ -85,14 +85,14 @@
 
 1. **partialVoid() Addition**: Is our custom addition to AuthCaptureEscrow secure? Any edge cases with partial vs full void?
 2. **Condition System**: Any security concerns with allowing arbitrary external condition contracts?
-3. **Recorder Reentrancy**: Can recorder reentrancy cause issues despite operator reentrancy guard?
+3. **Hook Reentrancy**: Can hook reentrancy cause issues despite operator reentrancy guard?
 4. **Mapping + Counter**: Any edge cases with the optimized indexing pattern?
 5. **Fee Distribution**: Is the split calculation secure against rounding exploits?
 6. **Freeze Race**: Beyond documentation, any way to mitigate the MEV risk at escrow boundary?
 7. **Solady Assembly**: Any concerns with using Solady's assembly-optimized libraries?
 8. **Immutable Design**: Any upgrade scenarios we're missing by being immutable?
 9. **Token Handling**: Are our weird token checks (balance verification, rebase detection) sufficient?
-10. **partialVoid Integration**: Does refundInEscrow() correctly integrate with partialVoid()? Any state inconsistency risks?
+10. **partialVoid Integration**: Does void() correctly integrate with partialVoid()? Any state inconsistency risks?
 
 ---
 
@@ -135,7 +135,7 @@
 #### 2. Unused Return Values (unused-return)
 
 **Findings**:
-- `RefundRequest._updateStatus()`: Ignores `(None,capturableAmount,refundableAmount)`
+- `RefundRequest._setStatus()`: Ignores `(None,capturableAmount,refundableAmount)`
 - `RefundRequestAccess.onlyAuthorizedForRefundStatus()`: Ignores `(None,capturableAmount,None)`
 
 **Status**: ✅ **INTENTIONAL**
@@ -171,8 +171,8 @@
 
 **Finding**:
 - `EscrowPeriod.check()`: Uses `block.timestamp` for comparisons
-  - `RECORDER.frozenUntil(paymentInfoHash) > block.timestamp`
-  - `block.timestamp < authTime + RECORDER.ESCROW_PERIOD()`
+  - `Freeze.frozenUntil(paymentInfoHash) > block.timestamp`
+  - `block.timestamp < authTime + POST_ACTION_HOOK.ESCROW_PERIOD()`
 
 **Status**: ✅ **ACCEPTABLE**
 
@@ -253,7 +253,7 @@
    - Complex condition chains
 
 3. **EscrowPeriodTest** (3 tests)
-   - Time-based release logic
+   - Time-based capture logic
    - Freeze/unfreeze scenarios
    - Escrow period validation
 
@@ -416,7 +416,7 @@ src/commerce-payments/plugins/freeze/
 
 src/commerce-payments/conditions/
   ├── ICondition.sol (interface)
-  ├── IRecorder.sol (interface)
+  ├── IHook.sol (interface)
   ├── access/ (3 simple conditions)
   ├── combinators/ (3 combinator conditions)
 
@@ -492,19 +492,19 @@ lib/commerce-payments/src/AuthCaptureEscrow.sol
 ```
 PaymentOperatorFactory
     └── deploys → PaymentOperator (immutable, no upgrade)
-                      ├── AUTHORIZE_CONDITION (optional)
-                      ├── AUTHORIZE_RECORDER (optional)
-                      ├── CHARGE_CONDITION (optional)
-                      ├── CHARGE_RECORDER (optional)
-                      ├── RELEASE_CONDITION (optional)
-                      ├── RELEASE_RECORDER (optional)
-                      ├── REFUND_IN_ESCROW_CONDITION (optional)
-                      ├── REFUND_IN_ESCROW_RECORDER (optional)
-                      ├── REFUND_POST_ESCROW_CONDITION (optional)
-                      └── REFUND_POST_ESCROW_RECORDER (optional)
+                      ├── AUTHORIZE_PRE_ACTION_CONDITION (optional)
+                      ├── AUTHORIZE_POST_ACTION_HOOK (optional)
+                      ├── CHARGE_PRE_ACTION_CONDITION (optional)
+                      ├── CHARGE_POST_ACTION_HOOK (optional)
+                      ├── CAPTURE_PRE_ACTION_CONDITION (optional)
+                      ├── CAPTURE_POST_ACTION_HOOK (optional)
+                      ├── VOID_PRE_ACTION_CONDITION (optional)
+                      ├── VOID_POST_ACTION_HOOK (optional)
+                      ├── REFUND_PRE_ACTION_CONDITION (optional)
+                      └── REFUND_POST_ACTION_HOOK (optional)
 
 EscrowPeriodFactory
-    └── deploys → EscrowPeriod (combined condition + recorder)
+    └── deploys → EscrowPeriod (combined condition + hook)
 
 FreezeFactory
     └── deploys → Freeze instances (with freeze/unfreeze conditions passed directly)
@@ -512,23 +512,23 @@ FreezeFactory
 
 **Key Patterns**:
 1. **Immutable Operators**: No upgrade path (deploy new if needed)
-2. **Condition/Recorder Slots**: 10 flexible hooks for custom logic
+2. **Condition/Hook Slots**: 10 flexible hooks for custom logic
 3. **Mapping + Counter**: Gas-efficient payment indexing
 4. **Fee Distribution**: Protocol/operator split with timelock
 5. **Escrow Period**: Time-based holds with freeze capability
 
 ### User Stories (Payment Flows)
 
-**Story 1: Standard Authorization → Release**
+**Story 1: Standard Authorization → Capture**
 ```
 1. Payer authorizes payment (escrow funds)
    → Condition checks: Pass
-   → Recorder logs: Authorization time
+   → Hook logs: Authorization time
    → Result: Funds escrowed, 7-day timer starts
 
 2. Escrow period passes (7 days)
    → Condition checks: Time passed, not frozen
-   → Receiver calls release()
+   → Receiver calls capture()
    → Result: Funds transferred to receiver
 ```
 
@@ -537,23 +537,23 @@ FreezeFactory
 1. Payer authorizes payment
 2. Payer freezes payment (within escrow period)
    → Freeze policy checks: Payer authorized
-   → Result: Payment locked, receiver cannot release
+   → Result: Payment locked, receiver cannot capture
 3. Dispute resolved off-chain
 4. Receiver creates refund request (50% refund)
    → RefundRequest state: PENDING
 5. Payer approves refund
    → RefundRequest state: APPROVED
 6. Receiver executes refund
-   → Calls PaymentOperator.refundInEscrow()
+   → Calls PaymentOperator.void()
    → Calls ESCROW.partialVoid() with 50% amount
    → Result: 50% to payer, 50% remains escrowed
 7. Payer unfreezes payment
-8. Receiver releases remaining 50%
+8. Receiver captures remaining 50%
 ```
 
 **Story 3: Post-Escrow Refund**
 ```
-1. Payer authorizes, receiver releases immediately
+1. Payer authorizes, receiver captures immediately
    → Funds transferred to receiver
 2. Product issue discovered
 3. Receiver creates refund request (100%)
@@ -578,13 +578,13 @@ FreezeFactory
 |-----------|-------|----------|----------------|--------|
 | authorize() | ✅ | ❌ | ❌ | ❌ |
 | charge() | ❌ | ✅ | ❌ | ❌ |
-| release() | ❌ | ✅ | ❌ | ❌ |
+| capture() | ❌ | ✅ | ❌ | ❌ |
 | freeze() | ✅* | ❌ | ❌ | ❌ |
 | unfreeze() | ✅* | ❌ | ❌ | ❌ |
 | createRefundRequest() | ❌ | ✅ | ❌ | ❌ |
 | updateRefundStatus() | ✅ | ✅ | ❌ | ❌ |
-| refundInEscrow() | ❌ | ✅ | ❌ | ❌ |
-| refundPostEscrow() | ❌ | ✅ | ❌ | ❌ |
+| void() | ❌ | ✅ | ❌ | ❌ |
+| refund() | ❌ | ✅ | ❌ | ❌ |
 | setFeeParameters() | ❌ | ❌ | ✅ | ❌ |
 | withdrawFees() | ❌ | ❌ | ✅ | ❌ |
 
@@ -599,7 +599,7 @@ FreezeFactory
 
 **Trust Boundaries**:
 1. **Trusted**: Operator owner (multisig for production)
-2. **Trusted**: Deployed condition/recorder contracts (validated at deployment)
+2. **Trusted**: Deployed condition/hook contracts (validated at deployment)
 3. **Untrusted**: Payers and receivers (adversarial model)
 4. **Untrusted**: Token contracts (validated before accepting payments)
 
@@ -611,17 +611,17 @@ FreezeFactory
 ### Glossary
 
 **Core Concepts**:
-- **Payment Operator**: Contract orchestrating payment lifecycle with condition/recorder hooks
-- **Escrow**: Base Commerce Payments mechanism holding funds until authorized release
-- **Condition**: Contract that gates an operation (authorize, charge, release, refund)
-- **Recorder**: Contract that logs state during an operation (hooks)
+- **Payment Operator**: Contract orchestrating payment lifecycle with condition/hook hooks
+- **Escrow**: Base Commerce Payments mechanism holding funds until authorized capture
+- **Condition**: Contract that gates an operation (authorize, charge, capture, void, refund)
+- **Hook**: Contract that logs state during an operation (hooks)
 - **Payment Info**: Struct identifying a payment (payer, receiver, token, amount, operator, metadata)
 - **Payment Hash**: `keccak256(abi.encode(PaymentInfo))` used as unique identifier
 
 **Escrow Period**:
 - **Authorization Time**: `block.timestamp` when payment authorized
-- **Escrow Period**: Duration before receiver can release (e.g., 7 days)
-- **Freeze**: Payer-initiated lock preventing release during escrow
+- **Escrow Period**: Duration before receiver can capture (e.g., 7 days)
+- **Freeze**: Payer-initiated lock preventing capture during escrow
 - **Frozen Until**: Timestamp until which payment remains frozen
 
 **Fee System**:
@@ -633,7 +633,7 @@ FreezeFactory
 **Refund System**:
 - **Refund Request**: Receiver-initiated request for payer approval
 - **In-Escrow Refund**: Refund while funds still in escrow (uses `partialVoid()`)
-- **Post-Escrow Refund**: Refund after release (receiver sends from own balance)
+- **Post-Escrow Refund**: Refund after capture (receiver sends from own balance)
 - **Refund Status**: PENDING, APPROVED, DENIED, CANCELLED
 
 **Storage Optimization**:
@@ -722,7 +722,7 @@ FreezeFactory
 - Lower gas costs (no proxy)
 - Users can deploy new operator if needed
 
-**3. Why Flexible Condition/Recorder Slots?**
+**3. Why Flexible Condition/Hook Slots?**
 - Composability (mix and match logic)
 - Extensibility (custom conditions without redeployment)
 - Separation of concerns
@@ -752,7 +752,7 @@ FreezeFactory
 **Deployment**:
 - [ ] Deploy to mainnet with correct owner (multisig)
 - [ ] Verify contracts on block explorer
-- [ ] Test basic operations (authorize, release) with small amounts
+- [ ] Test basic operations (authorize, capture) with small amounts
 - [ ] Validate deployment addresses match expected
 - [ ] Transfer ownership to multisig (if needed)
 

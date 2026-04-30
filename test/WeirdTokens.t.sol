@@ -46,18 +46,18 @@ contract WeirdTokensTest is Test {
 
         // Deploy operator
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: protocolFeeRecipient,
+            feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
-            authorizeCondition: address(0),
-            authorizeRecorder: address(0),
-            chargeCondition: address(0),
-            chargeRecorder: address(0),
-            releaseCondition: address(0),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(0),
-            refundInEscrowRecorder: address(0),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(0),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(0),
+            capturePreActionCondition: address(0),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(0),
+            voidPostActionHook: address(0),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
         operator = PaymentOperator(factory.deployOperator(config));
 
@@ -234,7 +234,7 @@ contract WeirdTokensTest is Test {
         // Attempting to release full amount would fail (insufficient balance)
         vm.prank(receiver);
         vm.expectRevert();
-        operator.release(paymentInfo, PAYMENT_AMOUNT, "");
+        operator.capture(paymentInfo, PAYMENT_AMOUNT, "");
     }
 
     function test_RebasingToken_DocumentedRisk() public {
@@ -258,7 +258,7 @@ contract WeirdTokensTest is Test {
 
         // 3. Release succeeds (takes 1000 out of 1100)
         vm.prank(receiver);
-        operator.release(paymentInfo, PAYMENT_AMOUNT, "");
+        operator.capture(paymentInfo, PAYMENT_AMOUNT, "");
 
         // 4. Now there's 100 tokens stuck in escrow that no one owns!
         address tokenStore = escrow.getTokenStore(address(operator));

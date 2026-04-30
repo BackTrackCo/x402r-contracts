@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 import {Test, console} from "forge-std/Test.sol";
 import {PaymentOperator} from "../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
-import {PaymentIndexRecorder} from "../src/plugins/recorders/PaymentIndexRecorder.sol";
+import {PaymentIndexHook} from "../src/plugins/hooks/PaymentIndexHook.sol";
 import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
@@ -18,7 +18,7 @@ import {MockERC20} from "./mocks/MockERC20.sol";
 contract PaymentIndexingTest is Test {
     PaymentOperator public operator;
     PaymentOperatorFactory public operatorFactory;
-    PaymentIndexRecorder public indexRecorder;
+    PaymentIndexHook public indexPostActionHook;
     ProtocolFeeConfig public protocolFeeConfig;
     AuthCaptureEscrow public escrow;
     PreApprovalPaymentCollector public collector;
@@ -48,23 +48,23 @@ contract PaymentIndexingTest is Test {
         // Deploy operator factory
         operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
-        // Deploy payment index recorder
-        indexRecorder = new PaymentIndexRecorder(address(escrow), bytes32(0));
+        // Deploy payment index hook
+        indexPostActionHook = new PaymentIndexHook(address(escrow), bytes32(0));
 
-        // Deploy operator with index recorder
+        // Deploy operator with index hook
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: protocolFeeRecipient,
+            feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
-            authorizeCondition: address(0),
-            authorizeRecorder: address(indexRecorder), // Use index recorder
-            chargeCondition: address(0),
-            chargeRecorder: address(indexRecorder), // Use index recorder
-            releaseCondition: address(0),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(0),
-            refundInEscrowRecorder: address(0),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(indexPostActionHook), // Use index hook
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(indexPostActionHook), // Use index hook
+            capturePreActionCondition: address(0),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(0),
+            voidPostActionHook: address(0),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
 
@@ -85,11 +85,11 @@ contract PaymentIndexingTest is Test {
         _authorizePayment(payer, receiver, PAYMENT_AMOUNT, 1);
 
         // Check counter
-        assertEq(indexRecorder.payerPaymentCount(payer), 1, "Should have 1 payment");
-        assertEq(indexRecorder.receiverPaymentCount(receiver), 1, "Should have 1 payment");
+        assertEq(indexPostActionHook.payerPaymentCount(payer), 1, "Should have 1 payment");
+        assertEq(indexPostActionHook.receiverPaymentCount(receiver), 1, "Should have 1 payment");
 
         // Get payment by index — now returns full PaymentInfo
-        AuthCaptureEscrow.PaymentInfo memory info = indexRecorder.getPayerPayment(payer, 0);
+        AuthCaptureEscrow.PaymentInfo memory info = indexPostActionHook.getPayerPayment(payer, 0);
         assertEq(info.payer, payer, "Payer should match");
         assertEq(info.receiver, receiver, "Receiver should match");
     }
@@ -108,11 +108,11 @@ contract PaymentIndexingTest is Test {
         }
 
         // Check counter
-        assertEq(indexRecorder.payerPaymentCount(payer), numPayments, "Should have correct count");
+        assertEq(indexPostActionHook.payerPaymentCount(payer), numPayments, "Should have correct count");
 
         // Verify each payment returns correct PaymentInfo
         for (uint256 i = 0; i < numPayments; i++) {
-            AuthCaptureEscrow.PaymentInfo memory info = indexRecorder.getPayerPayment(payer, i);
+            AuthCaptureEscrow.PaymentInfo memory info = indexPostActionHook.getPayerPayment(payer, i);
             assertEq(info.salt, i + 1, "Salt should match payment index");
             assertEq(info.payer, payer, "Payer should match");
         }
@@ -130,13 +130,15 @@ contract PaymentIndexingTest is Test {
         }
 
         // Get first 5 payments
-        (AuthCaptureEscrow.PaymentInfo[] memory payments, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 5);
+        (AuthCaptureEscrow.PaymentInfo[] memory payments, uint256 total) =
+            indexPostActionHook.getPayerPayments(payer, 0, 5);
 
         assertEq(total, 10, "Total should be 10");
         assertEq(payments.length, 5, "Should return 5 payments");
 
         // Get next 5 payments
-        (AuthCaptureEscrow.PaymentInfo[] memory payments2, uint256 total2) = indexRecorder.getPayerPayments(payer, 5, 5);
+        (AuthCaptureEscrow.PaymentInfo[] memory payments2, uint256 total2) =
+            indexPostActionHook.getPayerPayments(payer, 5, 5);
 
         assertEq(total2, 10, "Total should still be 10");
         assertEq(payments2.length, 5, "Should return 5 payments");
@@ -159,7 +161,8 @@ contract PaymentIndexingTest is Test {
         }
 
         // Request 10 payments (only 3 exist)
-        (AuthCaptureEscrow.PaymentInfo[] memory payments, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 10);
+        (AuthCaptureEscrow.PaymentInfo[] memory payments, uint256 total) =
+            indexPostActionHook.getPayerPayments(payer, 0, 10);
 
         assertEq(total, 3, "Total should be 3");
         assertEq(payments.length, 3, "Should return only 3 payments");
@@ -175,7 +178,8 @@ contract PaymentIndexingTest is Test {
         }
 
         // Request from offset 10 (beyond total of 5)
-        (AuthCaptureEscrow.PaymentInfo[] memory payments, uint256 total) = indexRecorder.getPayerPayments(payer, 10, 5);
+        (AuthCaptureEscrow.PaymentInfo[] memory payments, uint256 total) =
+            indexPostActionHook.getPayerPayments(payer, 10, 5);
 
         assertEq(total, 5, "Total should still be 5");
         assertEq(payments.length, 0, "Should return empty array");
@@ -194,14 +198,14 @@ contract PaymentIndexingTest is Test {
 
         // Check receiver1 has 2 payments
         (AuthCaptureEscrow.PaymentInfo[] memory payments, uint256 total) =
-            indexRecorder.getReceiverPayments(receiver, 0, 10);
+            indexPostActionHook.getReceiverPayments(receiver, 0, 10);
         assertEq(total, 2, "Receiver should have 2 payments");
         assertEq(payments.length, 2, "Should return 2 payments");
         assertEq(payments[0].receiver, receiver, "Receiver should match");
 
         // Check receiver2 has 1 payment
         (AuthCaptureEscrow.PaymentInfo[] memory payments2, uint256 total2) =
-            indexRecorder.getReceiverPayments(receiver2, 0, 10);
+            indexPostActionHook.getReceiverPayments(receiver2, 0, 10);
         assertEq(total2, 1, "Receiver2 should have 1 payment");
         assertEq(payments2.length, 1, "Should return 1 payment");
         assertEq(payments2[0].receiver, receiver2, "Receiver2 should match");
@@ -214,8 +218,8 @@ contract PaymentIndexingTest is Test {
         _authorizePayment(payer, receiver, PAYMENT_AMOUNT, 1);
 
         // Should revert when accessing index 1 (only index 0 exists)
-        vm.expectRevert(PaymentIndexRecorder.IndexOutOfBounds.selector);
-        indexRecorder.getPayerPayment(payer, 1);
+        vm.expectRevert(PaymentIndexHook.IndexOutOfBounds.selector);
+        indexPostActionHook.getPayerPayment(payer, 1);
     }
 
     /**
@@ -225,8 +229,8 @@ contract PaymentIndexingTest is Test {
         _authorizePayment(payer, receiver, PAYMENT_AMOUNT, 1);
 
         // Should revert when accessing index 1 (only index 0 exists)
-        vm.expectRevert(PaymentIndexRecorder.IndexOutOfBounds.selector);
-        indexRecorder.getReceiverPayment(receiver, 1);
+        vm.expectRevert(PaymentIndexHook.IndexOutOfBounds.selector);
+        indexPostActionHook.getReceiverPayment(receiver, 1);
     }
 
     // ============================================================
@@ -241,7 +245,7 @@ contract PaymentIndexingTest is Test {
         bytes32 hash = escrow.getHash(original);
         _authorizePaymentWithInfo(original);
 
-        AuthCaptureEscrow.PaymentInfo memory retrieved = indexRecorder.getPaymentInfo(hash);
+        AuthCaptureEscrow.PaymentInfo memory retrieved = indexPostActionHook.getPaymentInfo(hash);
 
         assertEq(retrieved.operator, original.operator, "operator mismatch");
         assertEq(retrieved.payer, original.payer, "payer mismatch");
@@ -261,7 +265,7 @@ contract PaymentIndexingTest is Test {
      * @notice Test getPaymentInfo returns zeros for unknown hash
      */
     function test_GetPaymentInfo_UnknownHash() public view {
-        AuthCaptureEscrow.PaymentInfo memory info = indexRecorder.getPaymentInfo(bytes32(uint256(999)));
+        AuthCaptureEscrow.PaymentInfo memory info = indexPostActionHook.getPaymentInfo(bytes32(uint256(999)));
         assertEq(info.operator, address(0), "Should return zero struct");
     }
 
@@ -272,7 +276,8 @@ contract PaymentIndexingTest is Test {
         _authorizePayment(payer, receiver, PAYMENT_AMOUNT, 1);
         _authorizePayment(payer, receiver, PAYMENT_AMOUNT, 2);
 
-        (AuthCaptureEscrow.PaymentInfo[] memory infos, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 10);
+        (AuthCaptureEscrow.PaymentInfo[] memory infos, uint256 total) =
+            indexPostActionHook.getPayerPayments(payer, 0, 10);
 
         assertEq(total, 2, "Should have 2 payments");
         assertEq(infos.length, 2, "Should return 2 infos");
@@ -341,19 +346,19 @@ contract PaymentIndexingTest is Test {
 
         // Get first 10
         uint256 gasBefore = gasleft();
-        indexRecorder.getPayerPayments(payer, 0, 10);
+        indexPostActionHook.getPayerPayments(payer, 0, 10);
         uint256 gasUsed = gasBefore - gasleft();
         console.log("Get 10 PaymentInfos gas:", gasUsed);
 
         // Get first 50
         gasBefore = gasleft();
-        indexRecorder.getPayerPayments(payer, 0, 50);
+        indexPostActionHook.getPayerPayments(payer, 0, 50);
         gasUsed = gasBefore - gasleft();
         console.log("Get 50 PaymentInfos gas:", gasUsed);
 
         // Get single payment
         gasBefore = gasleft();
-        indexRecorder.getPayerPayment(payer, 0);
+        indexPostActionHook.getPayerPayment(payer, 0);
         gasUsed = gasBefore - gasleft();
         console.log("Get single PaymentInfo gas:", gasUsed);
 
@@ -361,7 +366,7 @@ contract PaymentIndexingTest is Test {
         AuthCaptureEscrow.PaymentInfo memory info = _createPaymentInfo(PAYMENT_AMOUNT, 1);
         bytes32 hash = escrow.getHash(info);
         gasBefore = gasleft();
-        indexRecorder.getPaymentInfo(hash);
+        indexPostActionHook.getPaymentInfo(hash);
         gasUsed = gasBefore - gasleft();
         console.log("Get PaymentInfo by hash gas:", gasUsed);
     }
@@ -374,7 +379,8 @@ contract PaymentIndexingTest is Test {
      * @notice Test pagination with zero payments
      */
     function test_Pagination_ZeroPayments() public view {
-        (AuthCaptureEscrow.PaymentInfo[] memory payments, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 10);
+        (AuthCaptureEscrow.PaymentInfo[] memory payments, uint256 total) =
+            indexPostActionHook.getPayerPayments(payer, 0, 10);
 
         assertEq(total, 0, "Total should be 0");
         assertEq(payments.length, 0, "Should return empty array");
@@ -386,7 +392,8 @@ contract PaymentIndexingTest is Test {
     function test_Pagination_ZeroCount() public {
         _authorizePayment(payer, receiver, PAYMENT_AMOUNT, 1);
 
-        (AuthCaptureEscrow.PaymentInfo[] memory payments, uint256 total) = indexRecorder.getPayerPayments(payer, 0, 0);
+        (AuthCaptureEscrow.PaymentInfo[] memory payments, uint256 total) =
+            indexPostActionHook.getPayerPayments(payer, 0, 0);
 
         assertEq(total, 1, "Total should be 1");
         assertEq(payments.length, 0, "Should return empty array");
@@ -404,14 +411,15 @@ contract PaymentIndexingTest is Test {
         }
 
         // Verify count
-        assertEq(indexRecorder.payerPaymentCount(payer), numPayments, "Should have correct count");
+        assertEq(indexPostActionHook.payerPaymentCount(payer), numPayments, "Should have correct count");
 
         // Verify we can get all payments via pagination
         uint256 pageSize = 10;
         uint256 totalRetrieved = 0;
 
         for (uint256 offset = 0; offset < numPayments; offset += pageSize) {
-            (AuthCaptureEscrow.PaymentInfo[] memory payments,) = indexRecorder.getPayerPayments(payer, offset, pageSize);
+            (AuthCaptureEscrow.PaymentInfo[] memory payments,) =
+                indexPostActionHook.getPayerPayments(payer, offset, pageSize);
             totalRetrieved += payments.length;
 
             // Verify each returned PaymentInfo has correct payer

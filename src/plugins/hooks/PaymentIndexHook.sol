@@ -3,14 +3,14 @@
 pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {BaseRecorder} from "./BaseRecorder.sol";
+import {BaseHook} from "./BaseHook.sol";
 
 /**
- * @title PaymentIndexRecorder
- * @notice Recorder that indexes payments by payer and receiver for on-chain lookups,
+ * @title PaymentIndexHook
+ * @notice PostActionHook that indexes payments by payer and receiver for on-chain lookups,
  *         and stores full PaymentInfo for retrieval.
  * @dev Extracted from PaymentOperator for optional gas optimization.
- *      Deploy this recorder when you want on-chain payment queries.
+ *      Deploy this hook when you want on-chain payment queries.
  *      Skip (use address(0)) when using external indexer (The Graph).
  *
  *      NOTE: The escrow contract only allows one authorization per paymentInfo hash
@@ -22,13 +22,13 @@ import {BaseRecorder} from "./BaseRecorder.sol";
  *
  * USAGE:
  *   // Deploy once, share across operators
- *   PaymentIndexRecorder indexRecorder = new PaymentIndexRecorder(address(escrow));
+ *   PaymentIndexHook indexPostActionHook = new PaymentIndexHook(address(escrow));
  *
  *   // Query payments with full PaymentInfo
- *   (AuthCaptureEscrow.PaymentInfo[] memory infos, uint256 total) = indexRecorder.getPayerPayments(alice, 0, 10);
- *   AuthCaptureEscrow.PaymentInfo memory info = indexRecorder.getPaymentInfo(hash);
+ *   (AuthCaptureEscrow.PaymentInfo[] memory infos, uint256 total) = indexHook.getPayerPayments(alice, 0, 10);
+ *   AuthCaptureEscrow.PaymentInfo memory info = indexHook.getPaymentInfo(hash);
  */
-contract PaymentIndexRecorder is BaseRecorder {
+contract PaymentIndexHook is BaseHook {
     // ============ Errors ============
     error IndexOutOfBounds();
 
@@ -56,14 +56,14 @@ contract PaymentIndexRecorder is BaseRecorder {
         uint256 receiverIndex
     );
 
-    constructor(address escrow, bytes32 authorizedCodehash) BaseRecorder(escrow, authorizedCodehash) {}
+    constructor(address escrow, bytes32 authorizedCodehash) BaseHook(escrow, authorizedCodehash) {}
 
     /**
      * @notice Records payment by indexing it for both payer and receiver, and storing full PaymentInfo
      * @dev Amount and caller are ignored - only paymentInfo is used for indexing.
      * @param paymentInfo Payment information to index and store
      */
-    function record(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address, bytes calldata)
+    function run(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address, bytes calldata)
         external
         override
     {

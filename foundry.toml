@@ -2,15 +2,22 @@
 src = "src"
 out = "out"
 libs = ["lib"]
-evm_version = "prague"
+# Match upstream commerce-payments deploy profile so the canonical AuthCaptureEscrow
+# bytecode we deploy is byte-identical to what the upstream deploy profile produces.
+# Any drift here moves the CREATE2 canonical address.
+evm_version = "cancun"
 solc = "0.8.33"
 optimizer = true
-optimizer_runs = 200
+optimizer_runs = 100000
 via_ir = true
+# Strip metadata hash for cross-machine reproducibility — without this, the IPFS
+# hash of source-path metadata leaks into the bytecode and varies per developer.
+bytecode_hash = "none"
 
 # Remappings
 remappings = [
     "commerce-payments/=lib/commerce-payments/src/",
+    "permit2/=lib/commerce-payments/lib/permit2/src/",
     "solady/=lib/solady/src/",
     "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/"
 ]
@@ -44,18 +51,6 @@ celo = { key = "${CELOSCAN_API_KEY}", url = "https://api.celoscan.io/api" }
 monad = { key = "${MONADSCAN_API_KEY}", url = "https://api.monadscan.com/api" }
 avalanche = { key = "${SNOWSCAN_API_KEY}", url = "https://api.snowscan.xyz/api" }
 optimism = { key = "${OPTIMISM_ETHERSCAN_API_KEY}", url = "https://api-optimistic.etherscan.io/api" }
-
-# Shanghai profile — for pre-Cancun chains (e.g. SKALE Base)
-# 1. evm_version = "shanghai" → compiler avoids MCOPY (EIP-5656)
-# 2. Remaps solady/ → compat/solady-nontransient/ (SSTORE-only ReentrancyGuardTransient,
-#    all other files symlinked to real Solady)
-[profile.shanghai]
-evm_version = "shanghai"
-remappings = [
-    "commerce-payments/=lib/commerce-payments/src/",
-    "solady/=compat/solady-nontransient/src/",
-    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/"
-]
 
 # CI profile - used in GitHub Actions
 # Coverage threshold enforced in .github/workflows/ci.yml (target: 80%)

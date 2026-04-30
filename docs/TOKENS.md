@@ -104,7 +104,7 @@ function _collectTokens(...) internal {
 - **Examples**: AMPL (Ampleforth), stETH (Lido Staked ETH), RAI
 - **Status**: ❌ NOT SUPPORTED
 - **Why Rejected**: Balance changes break accounting invariants
-- **Behavior**: Accounting corruption, incorrect refunds/releases
+- **Behavior**: Accounting corruption, incorrect refunds/captures
 
 **Problem**:
 ```solidity
@@ -291,7 +291,7 @@ collector.preApprove(paymentInfo);
 operator.authorize(paymentInfo, 1000e6, address(collector), ""); // Note: 6 decimals
 
 // 3. Handle potential pauses
-try operator.release(paymentInfo, 1000e6) {
+try operator.capture(paymentInfo, 1000e6) {
     // Success
 } catch {
     // Could be paused or sender is blocklisted
@@ -333,7 +333,7 @@ try operator.release(paymentInfo, 1000e6) {
 
 When deploying a PaymentOperator, ensure:
 
-1. **Only use trusted recorders** - Malicious recorders can reenter during callbacks
+1. **Only use trusted hooks** - Malicious hooks can reenter during callbacks
 2. **Only use trusted conditions** - Malicious conditions can block operations
 3. **Verify token compatibility** - Test with actual token before production
 4. **Monitor token upgrades** - Upgradeable tokens could change behavior

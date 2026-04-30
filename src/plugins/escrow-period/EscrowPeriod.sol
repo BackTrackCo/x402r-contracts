@@ -3,17 +3,17 @@
 pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {AuthorizationTimeRecorder} from "../recorders/AuthorizationTimeRecorder.sol";
+import {AuthorizationTimeHook} from "../hooks/AuthorizationTimeHook.sol";
 import {ICondition} from "../conditions/ICondition.sol";
 import {InvalidEscrowPeriod} from "./types/Errors.sol";
 
 /**
  * @title EscrowPeriod
- * @notice Combined escrow period recorder and condition. Extends AuthorizationTimeRecorder
+ * @notice Combined escrow period hook and condition. Extends AuthorizationTimeHook
  *         with escrow period enforcement and ICondition implementation.
  *
- * @dev Implements both IRecorder (via AuthorizationTimeRecorder inheritance) and ICondition.
- *      Use the same address for both the AUTHORIZE_RECORDER and RELEASE_CONDITION slots
+ * @dev Implements both IHook (via AuthorizationTimeHook inheritance) and ICondition.
+ *      Use the same address for both the AUTHORIZE_POST_ACTION_HOOK and RELEASE_PRE_ACTION_CONDITION slots
  *      on PaymentOperator.
  *
  *      For freeze functionality, deploy a separate Freeze condition contract and compose
@@ -22,18 +22,18 @@ import {InvalidEscrowPeriod} from "./types/Errors.sol";
  * TRUST ASSUMPTIONS:
  *      - Timestamp: Uses block.timestamp for time-based escrow periods.
  */
-contract EscrowPeriod is AuthorizationTimeRecorder, ICondition {
+contract EscrowPeriod is AuthorizationTimeHook, ICondition {
     /// @notice Duration of the escrow period in seconds
     uint256 public immutable ESCROW_PERIOD;
 
     constructor(uint256 _escrowPeriod, address _escrow, bytes32 _authorizedCodehash)
-        AuthorizationTimeRecorder(_escrow, _authorizedCodehash)
+        AuthorizationTimeHook(_escrow, _authorizedCodehash)
     {
         if (_escrowPeriod == 0) revert InvalidEscrowPeriod();
         ESCROW_PERIOD = _escrowPeriod;
     }
 
-    // Note: record() inherited from AuthorizationTimeRecorder
+    // Note: record() inherited from AuthorizationTimeHook
 
     // ============ ICondition Implementation ============
 
@@ -53,7 +53,7 @@ contract EscrowPeriod is AuthorizationTimeRecorder, ICondition {
 
     // ============ View Functions ============
 
-    // Note: getAuthorizationTime() inherited from AuthorizationTimeRecorder
+    // Note: getAuthorizationTime() inherited from AuthorizationTimeHook
 
     /**
      * @notice Check if a payment is currently within its escrow period

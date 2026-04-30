@@ -6,46 +6,95 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 
 // Conditions
 import {ICondition} from "../src/plugins/conditions/ICondition.sol";
-import {IRecorder} from "../src/plugins/recorders/IRecorder.sol";
+import {IHook} from "../src/plugins/hooks/IHook.sol";
 import {AlwaysTrueCondition} from "../src/plugins/conditions/access/AlwaysTrueCondition.sol";
 import {ReceiverCondition} from "../src/plugins/conditions/access/ReceiverCondition.sol";
 import {PayerCondition} from "../src/plugins/conditions/access/PayerCondition.sol";
 import {NotCondition} from "../src/plugins/conditions/combinators/NotCondition.sol";
-import {RecorderCombinator} from "../src/plugins/recorders/combinators/RecorderCombinator.sol";
+import {AndCondition} from "../src/plugins/conditions/combinators/AndCondition.sol";
+import {HookCombinator} from "../src/plugins/hooks/combinators/HookCombinator.sol";
 import {StaticAddressCondition} from "../src/plugins/conditions/access/static-address/StaticAddressCondition.sol";
 import {
     StaticAddressConditionFactory
 } from "../src/plugins/conditions/access/static-address/StaticAddressConditionFactory.sol";
 
-/// @notice Mock recorder for testing RecorderCombinator
-contract MockRecorder is IRecorder {
+/// @notice Mock hook for testing HookCombinator. Records every arg of the most recent
+///         run() so combinator-forwarding tests can assert that paymentInfo / amount /
+///         caller / data flow through unmangled.
+contract MockHook is IHook {
     uint256 public recordCount;
-    AuthCaptureEscrow.PaymentInfo public lastPaymentInfo;
+    AuthCaptureEscrow.PaymentInfo internal _lastPaymentInfo;
+    uint256 public lastAmount;
+    address public lastCaller;
+    bytes public lastData;
 
-    function record(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address, bytes calldata) external {
+    function run(
+        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
+        uint256 amount,
+        address caller,
+        bytes calldata data
+    ) external {
         recordCount++;
-        lastPaymentInfo = paymentInfo;
+        _lastPaymentInfo = paymentInfo;
+        lastAmount = amount;
+        lastCaller = caller;
+        lastData = data;
+    }
+
+    /// @notice Returns the last paymentInfo as a struct (vs. the auto-getter, which
+    ///         returns a tuple that abi.encode can't accept). Lets tests do an
+    ///         end-to-end struct-equality check via keccak256(abi.encode(...)).
+    function getLastPaymentInfo() external view returns (AuthCaptureEscrow.PaymentInfo memory) {
+        return _lastPaymentInfo;
     }
 }
 
-/// @notice Mock condition that can be toggled
+/// @notice Mock condition for testing combinators. Toggleable result + expectation
+///         registry so combinator-forwarding tests can prove every arg passes through:
+///         setExpected() sets what we expect to receive; check() compares and returns
+///         false if anything mismatches (overrides `result` if expectations are set).
 contract MockCondition is ICondition {
     bool public result = true;
+    bool public expectationSet;
+    bytes32 public expectedPaymentInfoHash;
+    uint256 public expectedAmount;
+    address public expectedCaller;
+    bytes32 public expectedDataHash;
 
     function setResult(bool _result) external {
         result = _result;
     }
 
-    function check(AuthCaptureEscrow.PaymentInfo calldata, uint256, address, bytes calldata)
-        external
-        view
-        returns (bool)
-    {
+    function setExpected(
+        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
+        uint256 amount,
+        address caller,
+        bytes calldata data
+    ) external {
+        expectationSet = true;
+        expectedPaymentInfoHash = keccak256(abi.encode(paymentInfo));
+        expectedAmount = amount;
+        expectedCaller = caller;
+        expectedDataHash = keccak256(data);
+    }
+
+    function check(
+        AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
+        uint256 amount,
+        address caller,
+        bytes calldata data
+    ) external view returns (bool) {
+        if (expectationSet) {
+            if (keccak256(abi.encode(paymentInfo)) != expectedPaymentInfoHash) return false;
+            if (amount != expectedAmount) return false;
+            if (caller != expectedCaller) return false;
+            if (keccak256(data) != expectedDataHash) return false;
+        }
         return result;
     }
 }
 
-contract ConditionsCoverageTest is Test {
+contract PreActionConditionsCoverageTest is Test {
     AlwaysTrueCondition public alwaysTrue;
     ReceiverCondition public receiverCondition;
     PayerCondition public payerCondition;
@@ -128,90 +177,150 @@ contract ConditionsCoverageTest is Test {
         assertEq(address(notCondition.CONDITION()), address(mockCondition));
     }
 
-    // ============ RecorderCombinator Tests ============
+    // ============ HookCombinator Tests ============
 
-    function test_RecorderCombinator_CallsAllRecorders() public {
-        MockRecorder recorder1 = new MockRecorder();
-        MockRecorder recorder2 = new MockRecorder();
+    function test_HookCombinator_CallsAllHooks() public {
+        MockHook hook1 = new MockHook();
+        MockHook hook2 = new MockHook();
 
-        IRecorder[] memory recorders = new IRecorder[](2);
-        recorders[0] = recorder1;
-        recorders[1] = recorder2;
+        IHook[] memory hooks = new IHook[](2);
+        hooks[0] = hook1;
+        hooks[1] = hook2;
 
-        RecorderCombinator combinator = new RecorderCombinator(recorders);
+        HookCombinator combinator = new HookCombinator(hooks);
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+        bytes memory data = abi.encode(bytes32(uint256(0xdeadbeef)));
+        uint256 amount = 500;
+
         vm.prank(operator);
-        combinator.record(paymentInfo, 500, payer, "");
+        combinator.run(paymentInfo, amount, payer, data);
 
-        assertEq(recorder1.recordCount(), 1);
-        assertEq(recorder2.recordCount(), 1);
+        // Both hooks invoked.
+        assertEq(hook1.recordCount(), 1);
+        assertEq(hook2.recordCount(), 1);
+
+        // Combinator forwards every arg to every inner hook unmangled.
+        assertEq(
+            keccak256(abi.encode(hook1.getLastPaymentInfo())), keccak256(abi.encode(paymentInfo)), "hook1 paymentInfo"
+        );
+        assertEq(hook1.lastAmount(), amount, "hook1 amount");
+        assertEq(hook1.lastCaller(), payer, "hook1 caller");
+        assertEq(keccak256(hook1.lastData()), keccak256(data), "hook1 data");
+        assertEq(
+            keccak256(abi.encode(hook2.getLastPaymentInfo())), keccak256(abi.encode(paymentInfo)), "hook2 paymentInfo"
+        );
+        assertEq(hook2.lastAmount(), amount, "hook2 amount");
+        assertEq(hook2.lastCaller(), payer, "hook2 caller");
+        assertEq(keccak256(hook2.lastData()), keccak256(data), "hook2 data");
     }
 
-    function test_RecorderCombinator_RevertsOnEmptyRecorders() public {
-        IRecorder[] memory recorders = new IRecorder[](0);
+    /// @notice Pins that combinator-style condition wrappers (And/Or/Not) forward
+    ///         every arg to every inner condition. Each MockCondition is loaded
+    ///         with an expectation; check() returns false if any received arg
+    ///         differs from the expectation, so a wrapper that loses or mangles
+    ///         an arg would flip this assertion.
+    function test_ConditionCombinatorForwarding_AllArgsReachInnerConditions() public {
+        MockCondition c1 = new MockCondition();
+        MockCondition c2 = new MockCondition();
 
-        vm.expectRevert(RecorderCombinator.EmptyRecorders.selector);
-        new RecorderCombinator(recorders);
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+        uint256 amount = 7777;
+        address caller = makeAddr("caller");
+        bytes memory data = abi.encode("forwarded-data", uint256(42));
+
+        // Both conditions expect the same args; the wrapper must forward identically.
+        c1.setExpected(paymentInfo, amount, caller, data);
+        c2.setExpected(paymentInfo, amount, caller, data);
+
+        // And-combinator: passes only if both inner conditions return true.
+        ICondition[] memory conds = new ICondition[](2);
+        conds[0] = c1;
+        conds[1] = c2;
+        AndCondition andCond = new AndCondition(conds);
+
+        assertTrue(andCond.check(paymentInfo, amount, caller, data), "AndCondition must forward all args to both");
+
+        // Mangling any arg makes the inner check fail, which propagates.
+        assertFalse(andCond.check(paymentInfo, amount + 1, caller, data), "mangled amount must fail");
+        assertFalse(andCond.check(paymentInfo, amount, makeAddr("otherCaller"), data), "mangled caller must fail");
+        assertFalse(andCond.check(paymentInfo, amount, caller, abi.encode("different")), "mangled data must fail");
+
+        // Same proof for Not (negates a single inner): inner must see the args.
+        MockCondition c3 = new MockCondition();
+        c3.setExpected(paymentInfo, amount, caller, data);
+        NotCondition notCond = new NotCondition(c3);
+        // c3 returns true when expectations match → Not negates → returns false.
+        assertFalse(
+            notCond.check(paymentInfo, amount, caller, data),
+            "NotCondition forwards args; inner sees them, Not negates true to false"
+        );
     }
 
-    function test_RecorderCombinator_RevertsOnTooManyRecorders() public {
-        IRecorder[] memory recorders = new IRecorder[](11);
+    function test_HookCombinator_RevertsOnEmptyHooks() public {
+        IHook[] memory hooks = new IHook[](0);
+
+        vm.expectRevert(HookCombinator.EmptyHooks.selector);
+        new HookCombinator(hooks);
+    }
+
+    function test_HookCombinator_RevertsOnTooManyHooks() public {
+        IHook[] memory hooks = new IHook[](11);
         for (uint256 i = 0; i < 11; i++) {
-            recorders[i] = new MockRecorder();
+            hooks[i] = new MockHook();
         }
 
-        vm.expectRevert(abi.encodeWithSelector(RecorderCombinator.TooManyRecorders.selector, 11, 10));
-        new RecorderCombinator(recorders);
+        vm.expectRevert(abi.encodeWithSelector(HookCombinator.TooManyHooks.selector, 11, 10));
+        new HookCombinator(hooks);
     }
 
-    function test_RecorderCombinator_RevertsOnZeroRecorder() public {
-        IRecorder[] memory recorders = new IRecorder[](2);
-        recorders[0] = new MockRecorder();
-        recorders[1] = IRecorder(address(0));
+    function test_HookCombinator_RevertsOnZeroHook() public {
+        IHook[] memory hooks = new IHook[](2);
+        hooks[0] = new MockHook();
+        hooks[1] = IHook(address(0));
 
-        vm.expectRevert(abi.encodeWithSelector(RecorderCombinator.ZeroRecorder.selector, 1));
-        new RecorderCombinator(recorders);
+        vm.expectRevert(abi.encodeWithSelector(HookCombinator.ZeroHook.selector, 1));
+        new HookCombinator(hooks);
     }
 
-    function test_RecorderCombinator_GetRecorders() public {
-        MockRecorder recorder1 = new MockRecorder();
-        MockRecorder recorder2 = new MockRecorder();
+    function test_HookCombinator_GetHooks() public {
+        MockHook hook1 = new MockHook();
+        MockHook hook2 = new MockHook();
 
-        IRecorder[] memory recorders = new IRecorder[](2);
-        recorders[0] = recorder1;
-        recorders[1] = recorder2;
+        IHook[] memory hooks = new IHook[](2);
+        hooks[0] = hook1;
+        hooks[1] = hook2;
 
-        RecorderCombinator combinator = new RecorderCombinator(recorders);
+        HookCombinator combinator = new HookCombinator(hooks);
 
-        IRecorder[] memory result = combinator.getRecorders();
+        IHook[] memory result = combinator.getHooks();
         assertEq(result.length, 2);
-        assertEq(address(result[0]), address(recorder1));
-        assertEq(address(result[1]), address(recorder2));
+        assertEq(address(result[0]), address(hook1));
+        assertEq(address(result[1]), address(hook2));
     }
 
-    function test_RecorderCombinator_GetRecorderCount() public {
-        MockRecorder recorder1 = new MockRecorder();
+    function test_HookCombinator_GetRecorderCount() public {
+        MockHook hook1 = new MockHook();
 
-        IRecorder[] memory recorders = new IRecorder[](1);
-        recorders[0] = recorder1;
+        IHook[] memory hooks = new IHook[](1);
+        hooks[0] = hook1;
 
-        RecorderCombinator combinator = new RecorderCombinator(recorders);
-        assertEq(combinator.getRecorderCount(), 1);
+        HookCombinator combinator = new HookCombinator(hooks);
+        assertEq(combinator.getHookCount(), 1);
     }
 
-    function test_RecorderCombinator_AccessRecordersByIndex() public {
-        MockRecorder recorder1 = new MockRecorder();
-        MockRecorder recorder2 = new MockRecorder();
+    function test_HookCombinator_AccessHooksByIndex() public {
+        MockHook hook1 = new MockHook();
+        MockHook hook2 = new MockHook();
 
-        IRecorder[] memory recorders = new IRecorder[](2);
-        recorders[0] = recorder1;
-        recorders[1] = recorder2;
+        IHook[] memory hooks = new IHook[](2);
+        hooks[0] = hook1;
+        hooks[1] = hook2;
 
-        RecorderCombinator combinator = new RecorderCombinator(recorders);
+        HookCombinator combinator = new HookCombinator(hooks);
 
-        assertEq(address(combinator.recorders(0)), address(recorder1));
-        assertEq(address(combinator.recorders(1)), address(recorder2));
+        assertEq(address(combinator.hooks(0)), address(hook1));
+        assertEq(address(combinator.hooks(1)), address(hook2));
     }
 
     // ============ StaticAddressConditionFactory Tests ============

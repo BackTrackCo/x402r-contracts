@@ -52,18 +52,18 @@ contract FoundryPaymentOperatorInvariants is Test {
         PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: operatorFeeRecipient,
+            feeReceiver: operatorFeeRecipient,
             feeCalculator: address(opCalc),
-            authorizeCondition: address(0),
-            authorizeRecorder: address(0),
-            chargeCondition: address(0),
-            chargeRecorder: address(0),
-            releaseCondition: address(0),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(0),
-            refundInEscrowRecorder: address(0),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(0),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(0),
+            capturePreActionCondition: address(0),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(0),
+            voidPostActionHook: address(0),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
         operator = PaymentOperator(factory.deployOperator(config));
 

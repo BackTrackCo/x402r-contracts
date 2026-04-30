@@ -46,7 +46,6 @@ contract MockEscrow {
     );
     event PaymentCaptured(bytes32 indexed paymentInfoHash, uint256 amount, uint16 feeBps, address feeReceiver);
     event PaymentVoided(bytes32 indexed paymentInfoHash, uint256 amount);
-    event PaymentPartiallyVoided(bytes32 indexed paymentInfoHash, uint256 amount, uint256 remainingCapturable);
     event PaymentRefunded(bytes32 indexed paymentInfoHash, uint256 amount, address tokenCollector);
 
     // Errors
@@ -55,7 +54,6 @@ contract MockEscrow {
     error PaymentAlreadyCollected(bytes32 paymentInfoHash);
     error InsufficientAuthorization(bytes32 paymentInfoHash, uint256 authorizedAmount, uint256 requestedAmount);
     error ZeroAuthorization(bytes32 paymentInfoHash);
-    error PartialVoidExceedsCapturable(uint256 requested, uint256 available);
     error RefundExceedsCapture(uint256 refund, uint256 captured);
 
     function authorize(
@@ -158,23 +156,6 @@ contract MockEscrow {
         paymentInfo.token.safeTransfer(paymentInfo.payer, authorizedAmount);
 
         emit PaymentVoided(paymentInfoHash, authorizedAmount);
-    }
-
-    function partialVoid(PaymentInfo calldata paymentInfo, uint120 amount) external {
-        if (msg.sender != paymentInfo.operator) revert InvalidSender(msg.sender, paymentInfo.operator);
-        if (amount == 0) revert ZeroAmount();
-
-        bytes32 paymentInfoHash = getHash(paymentInfo);
-        uint120 capturableAmount = paymentState[paymentInfoHash].capturableAmount;
-
-        if (amount > capturableAmount) revert PartialVoidExceedsCapturable(amount, capturableAmount);
-
-        paymentState[paymentInfoHash].capturableAmount = capturableAmount - amount;
-
-        // Return tokens to payer
-        paymentInfo.token.safeTransfer(paymentInfo.payer, amount);
-
-        emit PaymentPartiallyVoided(paymentInfoHash, amount, capturableAmount - amount);
     }
 
     function refund(

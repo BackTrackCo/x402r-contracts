@@ -3,29 +3,43 @@
 pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {IRecorder} from "./IRecorder.sol";
+import {IHook} from "./IHook.sol";
 import {OnlyOperator, ZeroAddress, PaymentDoesNotExist} from "../../types/Errors.sol";
 
 /**
- * @title BaseRecorder
- * @notice Abstract base for all recorders with operator verification and escrow existence checks.
- * @dev Subclasses implement IRecorder.record() and call _verifyAndHash() to get a validated
- *      payment hash. This prevents fake operators from poisoning recorder state, since
+ * @title BaseHook
+ * @notice Abstract base for all hooks with operator verification and escrow existence checks.
+ * @dev Subclasses implement IHook.run() and call _verifyAndHash() to get a validated
+ *      payment hash. This prevents fake operators from poisoning hook state, since
  *      paymentInfo.operator is part of the payment hash — a fake operator produces a hash
  *      that doesn't exist in the real escrow.
  *
  * SECURITY:
  *      - OnlyOperator: msg.sender must equal paymentInfo.operator, or msg.sender's
- *        runtime codehash must match AUTHORIZED_CODEHASH (e.g. RecorderCombinator)
+ *        runtime codehash must match AUTHORIZED_CODEHASH (e.g. HookCombinator)
  *      - Escrow existence: payment must exist in the trusted immutable ESCROW
- *      - Both checks together ensure only real operators recording real payments can write state
+ *      - Both checks together ensure only real operators running real payments can write state
+ *
+ *      CODEHASH GATING IS FORGEABLE — DEPLOY-TIME RESPONSIBILITY:
+ *        EXTCODEHASH is the keccak256 of runtime bytecode. Anyone can redeploy a contract
+ *        with byte-identical runtime code and pass the codehash check. This is acceptable
+ *        ONLY when the authorized contract has no externally-callable path that lets a
+ *        caller forward an attacker-chosen `paymentInfo` into a hook (e.g. HookCombinator
+ *        forwards calldata verbatim, but only on its own trusted entry that already
+ *        enforces `msg.sender == paymentInfo.operator`).
+ *
+ *        Before setting AUTHORIZED_CODEHASH to a non-zero value, audit the authorized
+ *        contract for: (a) any function that accepts a user-supplied `paymentInfo` and
+ *        forwards it to a hook; (b) lack of its own caller authentication. If either is
+ *        true, codehash gating becomes a wide-open door — set AUTHORIZED_CODEHASH to
+ *        bytes32(0) and gate solely on `msg.sender == paymentInfo.operator` instead.
  */
-abstract contract BaseRecorder is IRecorder {
+abstract contract BaseHook is IHook {
     /// @notice Escrow contract for payment hash calculation and existence verification
     AuthCaptureEscrow public immutable ESCROW;
 
-    /// @notice Runtime codehash of authorized caller contract (e.g. RecorderCombinator)
-    /// @dev bytes32(0) means no authorized codehash — only the operator itself can call record().
+    /// @notice Runtime codehash of authorized caller contract (e.g. HookCombinator)
+    /// @dev bytes32(0) means no authorized codehash — only the operator itself can call run().
     ///      Uses EXTCODEHASH to verify caller bytecode, which is unforgeable (unlike ERC-165).
     bytes32 public immutable AUTHORIZED_CODEHASH;
 
@@ -37,7 +51,7 @@ abstract contract BaseRecorder is IRecorder {
 
     /**
      * @notice Verify caller is the operator and payment exists in escrow
-     * @dev Returns the payment hash for use by subclass record() implementations.
+     * @dev Returns the payment hash for use by subclass run() implementations.
      *      Reverts with OnlyOperator if caller != paymentInfo.operator.
      *      Reverts with PaymentDoesNotExist if payment not found in escrow.
      * @param paymentInfo PaymentInfo struct
@@ -63,7 +77,7 @@ abstract contract BaseRecorder is IRecorder {
 
     /**
      * @notice Internal helper to get payment hash without verification
-     * @dev Used by subclass view functions and non-record operations (e.g. freeze/unfreeze)
+     * @dev Used by subclass view functions and non-run operations (e.g. freeze/unfreeze)
      * @param paymentInfo PaymentInfo struct
      * @return Payment hash
      */

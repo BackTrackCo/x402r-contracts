@@ -64,18 +64,18 @@ contract ArithmeticEdgeCasesTest is Test {
 
         // Deploy operator with operator fee calculator
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: operatorFeeRecipient,
+            feeReceiver: operatorFeeRecipient,
             feeCalculator: address(operatorCalculator),
-            authorizeCondition: address(0),
-            authorizeRecorder: address(0),
-            chargeCondition: address(0),
-            chargeRecorder: address(0),
-            releaseCondition: address(0),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(0),
-            refundInEscrowRecorder: address(0),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(0),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(0),
+            capturePreActionCondition: address(0),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(0),
+            voidPostActionHook: address(0),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
     }
@@ -131,7 +131,7 @@ contract ArithmeticEdgeCasesTest is Test {
         vm.stopPrank();
 
         // Release and verify fee calculation doesn't overflow
-        operator.release(paymentInfo, maxAmount, "");
+        operator.capture(paymentInfo, maxAmount, "");
 
         // Calculate expected fee (50 bps = 0.5%)
         uint256 expectedTotalFee = (uint256(maxAmount) * MAX_TOTAL_FEE_RATE) / 10000;
@@ -201,7 +201,7 @@ contract ArithmeticEdgeCasesTest is Test {
      * @dev Escrow REJECTS zero amount releases with ZeroAmount error
      *      This prevents gas waste on no-op releases
      */
-    function test_Release_ZeroAmount_Reverts() public {
+    function test_Capture_ZeroAmount_Reverts() public {
         uint120 authorizeAmount = 1000 ether;
         uint120 releaseAmount = 0;
 
@@ -211,7 +211,7 @@ contract ArithmeticEdgeCasesTest is Test {
 
         // Release zero amount - REVERTS with ZeroAmount error
         vm.expectRevert(); // Expecting ZeroAmount() error
-        operator.release(paymentInfo, releaseAmount, "");
+        operator.capture(paymentInfo, releaseAmount, "");
     }
 
     /**
@@ -269,7 +269,7 @@ contract ArithmeticEdgeCasesTest is Test {
         vm.stopPrank();
 
         // Release dust amount
-        operator.release(paymentInfo, dustAmount, "");
+        operator.capture(paymentInfo, dustAmount, "");
 
         // Verify fee is zero (rounds down)
         // Fee = (1 * 50) / 10000 = 0.005 -> rounds to 0
@@ -298,7 +298,7 @@ contract ArithmeticEdgeCasesTest is Test {
         operator.authorize(paymentInfo, minAmount, address(collector), "");
         vm.stopPrank();
 
-        operator.release(paymentInfo, minAmount, "");
+        operator.capture(paymentInfo, minAmount, "");
 
         // Fee = (200 * 50) / 10000 = 1 wei
         operator.distributeFees(address(token));
@@ -326,7 +326,7 @@ contract ArithmeticEdgeCasesTest is Test {
         operator.authorize(paymentInfo, belowMin, address(collector), "");
         vm.stopPrank();
 
-        operator.release(paymentInfo, belowMin, "");
+        operator.capture(paymentInfo, belowMin, "");
 
         // Fee = (199 * 50) / 10000 = 0.995 -> rounds to 0
         operator.distributeFees(address(token));
@@ -358,7 +358,7 @@ contract ArithmeticEdgeCasesTest is Test {
         operator.authorize(paymentInfo, amount, address(collector), "");
         vm.stopPrank();
 
-        operator.release(paymentInfo, amount, "");
+        operator.capture(paymentInfo, amount, "");
 
         // distributeFees() splits tracked protocol amount + remainder to operator
         operator.distributeFees(address(token));

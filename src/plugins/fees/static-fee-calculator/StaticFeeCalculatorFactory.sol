@@ -14,8 +14,11 @@ import {StaticFeeCalculator} from "./StaticFeeCalculator.sol";
 contract StaticFeeCalculatorFactory {
     error FeeTooHigh();
 
+    /// @notice Salt prefix for CREATE2
+    bytes32 private constant SALT_PREFIX = "staticFeeCalculator";
+
     /// @notice Deployed calculator addresses
-    /// @dev Key: keccak256(abi.encodePacked(feeBps))
+    /// @dev Key: keccak256(abi.encode(feeBps))
     mapping(bytes32 => address) public calculators;
 
     /// @notice Emitted when a new calculator is deployed
@@ -38,7 +41,7 @@ contract StaticFeeCalculatorFactory {
 
         // ============ EFFECTS ============
         // Pre-compute deterministic CREATE2 address (CEI pattern)
-        bytes32 salt = keccak256(abi.encodePacked("staticFeeCalculator", key));
+        bytes32 salt = keccak256(abi.encode(SALT_PREFIX, key));
         bytes memory bytecode = abi.encodePacked(type(StaticFeeCalculator).creationCode, abi.encode(feeBps));
         calculator = address(
             uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)))))
@@ -71,7 +74,7 @@ contract StaticFeeCalculatorFactory {
      */
     function computeAddress(uint256 feeBps) external view returns (address calculator) {
         bytes32 key = getKey(feeBps);
-        bytes32 salt = keccak256(abi.encodePacked("staticFeeCalculator", key));
+        bytes32 salt = keccak256(abi.encode(SALT_PREFIX, key));
         bytes memory bytecode = abi.encodePacked(type(StaticFeeCalculator).creationCode, abi.encode(feeBps));
         bytes32 hash = keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)));
         calculator = address(uint160(uint256(hash)));
@@ -83,6 +86,6 @@ contract StaticFeeCalculatorFactory {
      * @return The mapping key
      */
     function getKey(uint256 feeBps) public pure returns (bytes32) {
-        return keccak256(abi.encodePacked(feeBps));
+        return keccak256(abi.encode(feeBps));
     }
 }

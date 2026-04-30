@@ -13,7 +13,7 @@ Formal specification of all arithmetic operations in x402r-contracts, mapping fo
 fee = amount * feeBps / 10000
 ```
 
-**Code location:** `PaymentOperator.sol` — fee is computed by the escrow layer during `release()` and `charge()`. The operator provides the fee BPS to the escrow, which performs the arithmetic.
+**Code location:** `PaymentOperator.sol` — fee is computed by the escrow layer during `capture()` and `charge()`. The operator provides the fee BPS to the escrow, which performs the arithmetic.
 
 **Bounds:**
 - `amount`: `uint120` (max 1,329,227,995,784,915,872,903,807,060,280,344,575)
@@ -76,29 +76,29 @@ paymentInfo.maxAmount: uint120
 
 **Test coverage:** `PaymentOperatorInvariants.sol:echidna_no_double_spend`, `FoundryPaymentOperatorInvariants.t.sol:invariant_noDoubleSpend`
 
-### 2.2 Release Amount
+### 2.2 Capture Amount
 
 **Constraint:**
 ```
-0 < releaseAmount <= capturableAmount
+0 < captureAmount <= capturableAmount
 ```
 
-**After release:**
+**After capture:**
 ```
-capturableAmount' = capturableAmount - releaseAmount
-receiverGets = releaseAmount - fee
-fee = releaseAmount * combinedFeeBps / 10000
+capturableAmount' = capturableAmount - captureAmount
+receiverGets = captureAmount - fee
+fee = captureAmount * combinedFeeBps / 10000
 ```
 
 **Code location:** Escrow layer (`capture` function)
 
-**Invariant:** `capturableAmount` is monotonically non-increasing per payment (can only decrease via release or refund).
+**Invariant:** `capturableAmount` is monotonically non-increasing per payment (can only decrease via capture or refund).
 
 ### 2.3 Refund Amount
 
 **Constraint:**
 ```
-0 < refundAmount <= capturableAmount  (for refundInEscrow)
+0 < refundAmount <= capturableAmount  (for void)
 ```
 
 **After refund:**
@@ -109,7 +109,7 @@ refundableAmount' = refundableAmount + refundAmount
 
 **Code location:** Escrow layer (`refund` function)
 
-**Invariant:** `capturableAmount + refundableAmount` is conserved during refundInEscrow (tokens don't leave escrow, they change bucket).
+**Invariant:** `capturableAmount + refundableAmount` is conserved during void (tokens don't leave escrow, they change bucket).
 
 ### 2.4 Refund Request Amount
 
@@ -129,7 +129,7 @@ nonce must be unique per (payer, paymentHash) pair
 
 **Formula:**
 ```
-canRelease = (block.timestamp >= authorizationTime + ESCROW_PERIOD) && !frozen
+canCapture = (block.timestamp >= authorizationTime + ESCROW_PERIOD) && !frozen
 ```
 
 **Code location:** `EscrowPeriod.sol:check()`
@@ -185,7 +185,7 @@ remaining = total - offset
 actualCount = min(remaining, count)
 ```
 
-**Code location:** `PaymentIndexRecorder.sol:getPayerPayments()`, `getReceiverPayments()`
+**Code location:** `PaymentIndexHook.sol:getPayerPayments()`, `getReceiverPayments()`
 
 **Edge cases:**
 - `offset >= total`: returns empty array
@@ -201,7 +201,7 @@ payerPaymentCount[payer]++
 receiverPaymentCount[receiver]++
 ```
 
-**Code location:** `PaymentIndexRecorder.sol:record()`
+**Code location:** `PaymentIndexHook.sol:run()`
 
 **Overflow safety:** `uint256` counters. Would need 10^77 calls to overflow — practically impossible.
 
@@ -235,7 +235,7 @@ address = uint160(uint256(keccak256(
 | A1 | Fee never exceeds payment | `fee <= amount` | `feeBps <= 10000` enforced |
 | A2 | No double-spend | `captured + refunded <= authorized` | Echidna + Foundry invariant tests |
 | A3 | Solvency | `escrowBalance >= Σ(capturable + refundable)` | Echidna + Foundry invariant tests |
-| A4 | Fee conservation | `protocolFee + operatorFee + receiverAmount == releaseAmount` | Fuzz tests |
+| A4 | Fee conservation | `protocolFee + operatorFee + receiverAmount == captureAmount` | Fuzz tests |
 | A5 | Protocol fees bounded | `accumulatedProtocolFees <= operatorBalance` | Echidna + Foundry invariant tests |
 | A6 | Fee recipient monotonic | `recipientBalance` only increases | Echidna invariant test |
 | A7 | Timestamp monotonic | `block.timestamp` never decreases | EVM guarantee |

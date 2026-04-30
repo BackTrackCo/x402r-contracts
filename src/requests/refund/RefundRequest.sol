@@ -3,36 +3,59 @@
 pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {IRecorder} from "../../plugins/recorders/IRecorder.sol";
-import {PaymentOperator} from "../../operator/payment/PaymentOperator.sol";
-import {InvalidOperator, NotPayer} from "../../types/Errors.sol";
+import {IHook} from "../../plugins/hooks/IHook.sol";
+import {InvalidOperator, NotPayer, PaymentDoesNotExist, ZeroAddress} from "../../types/Errors.sol";
 import {RequestStatus} from "../types/Types.sol";
 import {RequestAlreadyExists, RequestDoesNotExist, RequestNotPending, ZeroRefundAmount} from "../types/Errors.sol";
 import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} from "../types/Events.sol";
 
 /**
  * @title RefundRequest
- * @notice Refund request lifecycle as an IRecorder plugin for PaymentOperator.
+ * @notice Refund request lifecycle as an IHook plugin for PaymentOperator.
  * @dev ARBITER is an immutable address for deny/refuse gating. Approval happens via
- *      operator.refundInEscrow() which triggers record() on this contract as the
- *      REFUND_IN_ESCROW_RECORDER.
+ *      operator.void() which triggers run() on this contract as the
+ *      VOID_POST_ACTION_HOOK.
  *
  *      State machine:
- *        Pending  -> Approved  (operator calls record() after refundInEscrow)
- *        Approved -> Approved  (cumulative top-up via subsequent record() calls)
+ *        Pending  -> Approved  (operator calls run() after void)
  *        Pending  -> Denied    (onlyArbiter)
  *        Pending  -> Refused   (onlyArbiter)
  *        Pending  -> Cancelled (payer only)
  *
+ *      Note: under the canonical wiring (VOID_POST_ACTION_HOOK), void() empties the
+ *      entire authorization in one shot, so a request goes from Pending -> Approved
+ *      on the first run() call and the authorization is gone after that — subsequent
+ *      run() invocations from VOID would revert at the escrow level (no capturable
+ *      funds left). The cumulative-top-up branch in this contract's accounting is
+ *      unreachable in that wiring.
+ *
+ *      IHook is generic and plugin slots on PaymentOperator are permissionlessly
+ *      configurable: an operator can wire RefundRequest to CHARGE_POST_ACTION_HOOK
+ *      or REFUND_POST_ACTION_HOOK, both of which fire repeatedly for the same
+ *      paymentInfoHash. Under those wirings the cumulative branch IS reachable;
+ *      cappedAmount is bounded by (request.amount - request.approvedAmount) so it
+ *      cannot exceed the original request, and the run() bailouts preserve the
+ *      no-op-on-mismatch contract.
+ *
  *      Keying: paymentInfoHash only (no nonce). One active request per payment.
  *
- *      record() behavior: Called by operator after refund. No-op if no request exists
- *      or not approvable. Caps approved amount at requested amount. Never reverts on
- *      state mismatches.
+ *      run() behavior: No-op if no request exists or request is not approvable.
+ *      Caps approved amount at requested amount. Never reverts on state mismatches.
+ *
+ *      HASH PROVENANCE: paymentInfoHash is always computed via the canonical immutable
+ *      ESCROW (set at construction), never via paymentInfo.operator. This blocks an
+ *      attacker who supplies a malicious operator from forging hash slots or pre-occupying
+ *      legitimate paymentInfoHashes. requestRefund() additionally requires the payment
+ *      to exist in ESCROW (paymentState.hasCollected || authorizedAmount > 0).
  */
-contract RefundRequest is IRecorder {
+contract RefundRequest is IHook {
     /// @notice The arbiter address that can deny and refuse refund requests
     address public immutable ARBITER;
+
+    /// @notice Canonical escrow used to compute paymentInfoHash. Bound at construction so
+    ///         attackers cannot supply a malicious paymentInfo.operator returning an
+    ///         attacker-controlled escrow to forge or collide hashes.
+    AuthCaptureEscrow public immutable ESCROW;
 
     struct RefundRequestData {
         bytes32 paymentInfoHash;
@@ -101,20 +124,23 @@ contract RefundRequest is IRecorder {
         if (paymentInfo.operator == address(0)) revert InvalidOperator();
     }
 
-    constructor(address _arbiter) {
+    constructor(address _arbiter, address _escrow) {
         if (_arbiter == address(0)) revert ZeroArbiter();
+        if (_escrow == address(0)) revert ZeroAddress();
         ARBITER = _arbiter;
+        ESCROW = AuthCaptureEscrow(_escrow);
     }
 
-    // ============ IRecorder Implementation ============
+    // ============ IHook Implementation ============
 
-    /// @notice Called by PaymentOperator after refundInEscrow succeeds.
+    /// @notice Called by PaymentOperator after void succeeds.
     ///         No-op if no request exists or request is not approvable.
     ///         Caps approved amount at requested amount. Never reverts on state mismatches.
     /// @param paymentInfo PaymentInfo struct
     /// @param amount Amount that was refunded
-    /// @param caller The address that called operator.refundInEscrow()
-    function record(
+    /// @param caller The address that called operator.void()
+    /// @dev Only the operator in the paymentInfo is allowed to invoke run().
+    function run(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint256 amount,
         address caller,
@@ -122,11 +148,10 @@ contract RefundRequest is IRecorder {
     )
         external
     {
-        // Only the operator in the paymentInfo can call record()
+        // Only the operator in the paymentInfo can call run()
         if (msg.sender != paymentInfo.operator) return;
 
-        PaymentOperator op = PaymentOperator(paymentInfo.operator);
-        bytes32 paymentInfoHash = op.ESCROW().getHash(paymentInfo);
+        bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
 
         RefundRequestData storage request = refundRequests[paymentInfoHash];
 
@@ -136,12 +161,13 @@ contract RefundRequest is IRecorder {
         // No-op if not approvable
         if (request.status != RequestStatus.Pending && request.status != RequestStatus.Approved) return;
 
-        // Cap amount at remaining requestable amount
-        uint120 cappedAmount = uint120(amount);
+        // Cap amount at remaining requestable amount.
+        // IHook.run takes uint256 amount, but RefundRequestData stores uint120. Solidity
+        // 0.8 does NOT auto-revert on explicit uint256->uint120 narrowing, so an upstream
+        // caller passing an out-of-range value would silently truncate and corrupt
+        // approvedAmount. Saturate to `remaining` first (the only legitimate ceiling).
         uint120 remaining = request.amount - request.approvedAmount;
-        if (cappedAmount > remaining) {
-            cappedAmount = remaining;
-        }
+        uint120 cappedAmount = amount >= remaining ? remaining : uint120(amount);
         if (cappedAmount == 0) return;
 
         // Update state
@@ -166,8 +192,13 @@ contract RefundRequest is IRecorder {
     {
         if (amount == 0) revert ZeroRefundAmount();
 
-        PaymentOperator op = PaymentOperator(paymentInfo.operator);
-        bytes32 paymentInfoHash = op.ESCROW().getHash(paymentInfo);
+        bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
+
+        // Verify the payment exists in the canonical escrow. Without this check, any address
+        // willing to author its own paymentInfo (with itself as payer) could file a refund
+        // request against a non-existent payment and clutter the indexes.
+        (bool hasCollected, uint120 capturableAmount,) = ESCROW.paymentState(paymentInfoHash);
+        if (!hasCollected && capturableAmount == 0) revert PaymentDoesNotExist();
 
         // Check if request already exists (allow re-requesting if cancelled)
         RefundRequestData storage existingRequest = refundRequests[paymentInfoHash];
@@ -200,8 +231,7 @@ contract RefundRequest is IRecorder {
         operatorNotZero(paymentInfo)
         onlyPayer(paymentInfo)
     {
-        PaymentOperator op = PaymentOperator(paymentInfo.operator);
-        bytes32 paymentInfoHash = op.ESCROW().getHash(paymentInfo);
+        bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
 
         RefundRequestData storage request = refundRequests[paymentInfoHash];
         if (request.paymentInfoHash == bytes32(0)) revert RequestDoesNotExist();
@@ -244,8 +274,7 @@ contract RefundRequest is IRecorder {
     // ============ Internal ============
 
     function _setStatus(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, RequestStatus newStatus) internal {
-        PaymentOperator op = PaymentOperator(paymentInfo.operator);
-        bytes32 paymentInfoHash = op.ESCROW().getHash(paymentInfo);
+        bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
 
         RefundRequestData storage request = refundRequests[paymentInfoHash];
         if (request.paymentInfoHash == bytes32(0)) revert RequestDoesNotExist();
@@ -292,16 +321,14 @@ contract RefundRequest is IRecorder {
         view
         returns (RefundRequestData memory)
     {
-        PaymentOperator op = PaymentOperator(paymentInfo.operator);
-        bytes32 paymentInfoHash = op.ESCROW().getHash(paymentInfo);
+        bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
         RefundRequestData memory request = refundRequests[paymentInfoHash];
         if (request.paymentInfoHash == bytes32(0)) revert RequestDoesNotExist();
         return request;
     }
 
     function hasRefundRequest(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external view returns (bool) {
-        PaymentOperator op = PaymentOperator(paymentInfo.operator);
-        bytes32 paymentInfoHash = op.ESCROW().getHash(paymentInfo);
+        bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
         return refundRequests[paymentInfoHash].paymentInfoHash != bytes32(0);
     }
 
@@ -310,8 +337,7 @@ contract RefundRequest is IRecorder {
         view
         returns (RequestStatus)
     {
-        PaymentOperator op = PaymentOperator(paymentInfo.operator);
-        bytes32 paymentInfoHash = op.ESCROW().getHash(paymentInfo);
+        bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
         return refundRequests[paymentInfoHash].status;
     }
 
@@ -394,8 +420,7 @@ contract RefundRequest is IRecorder {
     // ============ Cancel History View Functions ============
 
     function getCancelCount(AuthCaptureEscrow.PaymentInfo calldata paymentInfo) external view returns (uint256) {
-        PaymentOperator op = PaymentOperator(paymentInfo.operator);
-        bytes32 paymentInfoHash = op.ESCROW().getHash(paymentInfo);
+        bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
         return cancelCount[paymentInfoHash];
     }
 
@@ -404,8 +429,7 @@ contract RefundRequest is IRecorder {
         view
         returns (uint120)
     {
-        PaymentOperator op = PaymentOperator(paymentInfo.operator);
-        bytes32 paymentInfoHash = op.ESCROW().getHash(paymentInfo);
+        bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
         if (cancelIndex >= cancelCount[paymentInfoHash]) revert IndexOutOfBounds();
         return cancelledAmounts[paymentInfoHash][cancelIndex];
     }

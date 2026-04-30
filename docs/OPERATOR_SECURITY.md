@@ -2,7 +2,7 @@
 
 ## Overview
 
-PaymentOperator is a **permissionless, pluggable architecture** that allows anyone to deploy custom payment logic using **conditions** and **recorders**. While this provides maximum flexibility, it also introduces security risks if malicious or buggy condition/recorder contracts are used.
+PaymentOperator is a **permissionless, pluggable architecture** that allows anyone to deploy custom payment logic using **conditions** and **hooks**. While this provides maximum flexibility, it also introduces security risks if malicious or buggy condition/hook contracts are used.
 
 **This document is CRITICAL for anyone deploying a PaymentOperator.**
 
@@ -12,7 +12,7 @@ PaymentOperator is a **permissionless, pluggable architecture** that allows anyo
 
 1. [Threat Model](#threat-model)
 2. [Malicious Condition Risks](#malicious-condition-risks)
-3. [Malicious Recorder Risks](#malicious-recorder-risks)
+3. [Malicious Hook Risks](#malicious-hook-risks)
 4. [Reentrancy Considerations](#reentrancy-considerations)
 5. [Safe Condition Library](#safe-condition-library)
 6. [Deployment Checklist](#deployment-checklist)
@@ -26,10 +26,10 @@ PaymentOperator is a **permissionless, pluggable architecture** that allows anyo
 
 **PaymentOperator deployment is TRUSTED by design:**
 
-- Operator deployer chooses all conditions and recorders
-- Once deployed, conditions/recorders are **immutable** (cannot be changed)
-- Users must trust the operator deployer's choice of conditions/recorders
-- Malicious conditions/recorders can **block, front-run, or manipulate** payment flows
+- Operator deployer chooses all conditions and hooks
+- Once deployed, conditions/hooks are **immutable** (cannot be changed)
+- Users must trust the operator deployer's choice of conditions/hooks
+- Malicious conditions/hooks can **block, front-run, or manipulate** payment flows
 
 **AuthCaptureEscrow is TRUSTLESS:**
 
@@ -44,12 +44,12 @@ PaymentOperator is a **permissionless, pluggable architecture** that allows anyo
 User → PaymentOperator → AuthCaptureEscrow → TokenStore
           ↓                      ↓
      Conditions             Collectors
-     Recorders
+     Hooks
 ```
 
 **Attack vectors:**
 1. **Malicious Condition**: Blocks operations, censors users, front-runs
-2. **Malicious Recorder**: Reenters during callback, manipulates state
+2. **Malicious Hook**: Reenters during callback, manipulates state
 3. **Buggy Condition**: Accidentally blocks legitimate operations
 4. **Gas Griefing**: Infinite loop in condition check
 5. **Front-Running**: MEV extraction via condition logic
@@ -72,19 +72,19 @@ interface ICondition {
 }
 
 // Usage in PaymentOperator
-if (address(RELEASE_CONDITION) != address(0)) {
-    if (!RELEASE_CONDITION.check(paymentInfo, msg.sender)) {
-        revert ConditionNotMet();
+if (address(CAPTURE_PRE_ACTION_CONDITION) != address(0)) {
+    if (!CAPTURE_PRE_ACTION_CONDITION.check(paymentInfo, msg.sender)) {
+        revert PreActionConditionNotMet();
     }
 }
 ```
 
 **Condition slots** (all immutable after deployment):
-- `AUTHORIZE_CONDITION`
-- `CHARGE_CONDITION`
-- `RELEASE_CONDITION`
-- `REFUND_IN_ESCROW_CONDITION`
-- `REFUND_POST_ESCROW_CONDITION`
+- `AUTHORIZE_PRE_ACTION_CONDITION`
+- `CHARGE_PRE_ACTION_CONDITION`
+- `CAPTURE_PRE_ACTION_CONDITION`
+- `VOID_PRE_ACTION_CONDITION`
+- `REFUND_PRE_ACTION_CONDITION`
 
 ---
 
@@ -101,7 +101,7 @@ contract MaliciousDOSCondition is ICondition {
 ```
 
 **Impact:**
-- ❌ Users cannot release payments
+- ❌ Users cannot capture payments
 - ❌ Merchants cannot receive funds
 - ❌ Funds stuck in escrow until refundExpiry
 
@@ -232,22 +232,22 @@ AndCondition(
 - ❌ Hidden backdoors in complex logic
 
 **Mitigation:**
-- Protocol enforces `MAX_CONDITIONS = 10` depth limit
+- Protocol enforces `MAX_PRE_ACTION_CONDITIONS = 10` depth limit
 - Avoid complex combinator trees
 - Prefer simple, audited conditions
 
 ---
 
-## Malicious Recorder Risks
+## Malicious Hook Risks
 
-### What are Recorders?
+### What are Hooks?
 
-Recorders are **post-action hooks** that run AFTER operations:
+Hooks are **post-action hooks** that run AFTER operations:
 
 ```solidity
-// Recorder interface
-interface IRecorder {
-    function record(
+// Hook interface
+interface IHook {
+    function run(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint256 amount,
         address caller
@@ -257,43 +257,43 @@ interface IRecorder {
 // Usage in PaymentOperator
 ESCROW.authorize(...);  // Main action
 
-if (address(AUTHORIZE_RECORDER) != address(0)) {
-    AUTHORIZE_RECORDER.record(paymentInfo, amount, msg.sender);  // Callback
+if (address(AUTHORIZE_POST_ACTION_HOOK) != address(0)) {
+    AUTHORIZE_POST_ACTION_HOOK.run(paymentInfo, amount, msg.sender);  // Callback
 }
 ```
 
-**Recorder slots** (all immutable):
-- `AUTHORIZE_RECORDER`
-- `CHARGE_RECORDER`
-- `RELEASE_RECORDER`
-- `REFUND_IN_ESCROW_RECORDER`
-- `REFUND_POST_ESCROW_RECORDER`
+**Hook slots** (all immutable):
+- `AUTHORIZE_POST_ACTION_HOOK`
+- `CHARGE_POST_ACTION_HOOK`
+- `CAPTURE_POST_ACTION_HOOK`
+- `VOID_POST_ACTION_HOOK`
+- `REFUND_POST_ACTION_HOOK`
 
 ---
 
 ### Attack 6: Reentrancy Manipulation ❌ CRITICAL
 
-**Malicious recorder reenters PaymentOperator during callback**:
+**Malicious hook reenters PaymentOperator during callback**:
 
 ```solidity
-contract MaliciousReentrantRecorder is IRecorder {
+contract MaliciousReentrantHook is IHook {
     PaymentOperator public targetOperator;
 
-    function record(
+    function run(
         PaymentInfo calldata paymentInfo,
         uint256 amount,
         address caller
     ) external {
         // Reenter during callback!
         // Note: PaymentOperator does NOT have nonReentrant guards
-        targetOperator.release(paymentInfo, amount);
+        targetOperator.capture(paymentInfo, amount);
     }
 }
 ```
 
 **Impact:**
-- ❌ **CRITICAL**: Recorder can manipulate payment state during callback
-- ❌ Example: Call `release()` during `authorize()` callback
+- ❌ **CRITICAL**: Hook can manipulate payment state during callback
+- ❌ Example: Call `capture()` during `authorize()` callback
 - ❌ Bypass business logic, create unexpected state
 
 **Evidence from tests**:
@@ -301,39 +301,39 @@ contract MaliciousReentrantRecorder is IRecorder {
 ```solidity
 // test/ReentrancyAttack.t.sol:90-106
 function test_ReentrancyOnAuthorize_SameFunction() public {
-    // Malicious recorder successfully calls release() during authorize callback
+    // Malicious hook successfully calls capture() during authorize callback
     // Because PaymentOperator doesn't have reentrancy protection at operator level
 
-    assertEq(capturableAmount, 0); // Already captured by malicious release
+    assertEq(capturableAmount, 0); // Already captured by malicious capture
     assertEq(refundableAmount, PAYMENT_AMOUNT); // Now in refundable state
-    assertEq(maliciousRecorder.reentrancyCount(), 1);
+    assertEq(maliciousHook.reentrancyCount(), 1);
 }
 ```
 
 **Why this works:**
 1. `operator.authorize()` is called
 2. Escrow authorizes payment (has `nonReentrant`)
-3. **Operator calls recorder.record()** (no reentrancy guard)
-4. Malicious recorder calls `operator.release()`
+3. **Operator calls hook.run()** (no reentrancy guard)
+4. Malicious hook calls `operator.capture()`
 5. PaymentOperator allows it (no guard)
-6. Escrow processes release (separate `nonReentrant` context)
+6. Escrow processes capture (separate `nonReentrant` context)
 
 **Mitigation:**
-- ✅ **Use only trusted recorders**
-- ✅ **Audit recorder source code thoroughly**
+- ✅ **Use only trusted hooks**
+- ✅ **Audit hook source code thoroughly**
 - ⚠️ PaymentOperator should add `nonReentrant` guards (see Recommendation #4)
 
 ---
 
 ### Attack 7: State Manipulation
 
-**Malicious recorder modifies external state**:
+**Malicious hook modifies external state**:
 
 ```solidity
-contract MaliciousStateRecorder is IRecorder {
+contract MaliciousStateHook is IHook {
     mapping(bytes32 => bool) public paymentProcessed;
 
-    function record(
+    function run(
         PaymentInfo calldata paymentInfo,
         uint256 amount,
         address caller
@@ -350,24 +350,24 @@ contract MaliciousStateRecorder is IRecorder {
 ```
 
 **Impact:**
-- ⚠️ Recorder could coordinate with other contracts
+- ⚠️ Hook could coordinate with other contracts
 - ⚠️ Privacy leak (payment data sent elsewhere)
 - ⚠️ Unexpected side effects
 
 **Detection:**
 - Review for storage writes
 - Check for external calls
-- Ensure recorder is stateless
+- Ensure hook is stateless
 
 ---
 
-### Attack 8: Gas Griefing via Recorder
+### Attack 8: Gas Griefing via Hook
 
-**Malicious recorder consumes excessive gas**:
+**Malicious hook consumes excessive gas**:
 
 ```solidity
-contract MaliciousGasRecorder is IRecorder {
-    function record(PaymentInfo calldata, uint256, address) external {
+contract MaliciousGasHook is IHook {
+    function run(PaymentInfo calldata, uint256, address) external {
         // Infinite loop
         while (true) {}
     }
@@ -380,8 +380,8 @@ contract MaliciousGasRecorder is IRecorder {
 - ❌ Effective DOS
 
 **Mitigation:**
-- Test recorder with gas profiling
-- Use trusted, simple recorders only
+- Test hook with gas profiling
+- Use trusted, simple hooks only
 
 ---
 
@@ -405,7 +405,7 @@ contract PaymentOperator is Ownable, PaymentOperatorAccess, IOperator {
 
     function authorize(...) external {
         ESCROW.authorize(...);  // Escrow is protected
-        AUTHORIZE_RECORDER.record(...);  // Callback - can reenter!
+        AUTHORIZE_POST_ACTION_HOOK.run(...);  // Callback - can reenter!
     }
 }
 ```
@@ -415,12 +415,12 @@ contract PaymentOperator is Ownable, PaymentOperatorAccess, IOperator {
 ```
 1. User calls operator.authorize()
 2.   ├─> ESCROW.authorize() [PROTECTED by nonReentrant]
-3.   └─> AUTHORIZE_RECORDER.record() [CALLBACK]
-4.        └─> Malicious recorder calls operator.release() [NO GUARD]
+3.   └─> AUTHORIZE_POST_ACTION_HOOK.run() [CALLBACK]
+4.        └─> Malicious hook calls operator.capture() [NO GUARD]
 5.             └─> ESCROW.capture() [PROTECTED by nonReentrant - separate context]
 ```
 
-**Result**: Payment authorized and immediately released in same transaction, bypassing business logic.
+**Result**: Payment authorized and immediately captured in same transaction, bypassing business logic.
 
 ---
 
@@ -432,10 +432,10 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 contract PaymentOperator is Ownable, PaymentOperatorAccess, ReentrancyGuard, IOperator {
 
     function authorize(...) external nonReentrant validOperator(...) validFees(...) {
-        // Protected against malicious recorder reentrancy
+        // Protected against malicious hook reentrancy
     }
 
-    function release(...) external nonReentrant validOperator(...) validFees(...) {
+    function capture(...) external nonReentrant validOperator(...) validFees(...) {
         // Protected
     }
 
@@ -444,7 +444,7 @@ contract PaymentOperator is Ownable, PaymentOperatorAccess, ReentrancyGuard, IOp
 ```
 
 **Benefits:**
-- Prevents recorder reentrancy manipulation
+- Prevents hook reentrancy manipulation
 - Adds defense-in-depth
 - Matches escrow protection level
 
@@ -508,7 +508,7 @@ contract ReceiverCondition is ICondition {
 }
 ```
 
-**Use case**: Receiver-only operations (e.g., only merchant can release)
+**Use case**: Receiver-only operations (e.g., only merchant can capture)
 **Risk**: None
 
 ---
@@ -541,8 +541,8 @@ contract StaticAddressCondition is ICondition {
 
 #### 5. EscrowPeriod ✅
 ```solidity
-// Combined recorder + condition: records auth time, blocks release until escrow period expires
-contract EscrowPeriod is AuthorizationTimeRecorder, ICondition {
+// Combined hook + condition: records auth time, blocks capture until escrow period expires
+contract EscrowPeriod is AuthorizationTimeHook, ICondition {
     uint256 public immutable ESCROW_PERIOD;
 
     function check(PaymentInfo calldata paymentInfo, uint256, address)
@@ -550,14 +550,14 @@ contract EscrowPeriod is AuthorizationTimeRecorder, ICondition {
         view
         returns (bool)
     {
-        return canRelease(paymentInfo);
+        return canCapture(paymentInfo);
     }
 }
 ```
 
 **Use case**: Payment escrow with dispute period
-**Risk**: None (if recorder is trusted)
-**NOTE**: Use the same EscrowPeriod address for both AUTHORIZE_RECORDER and RELEASE_CONDITION
+**Risk**: None (if hook is trusted)
+**NOTE**: Use the same EscrowPeriod address for both AUTHORIZE_POST_ACTION_HOOK and CAPTURE_PRE_ACTION_CONDITION
 
 ---
 
@@ -585,14 +585,14 @@ contract AndCondition is ICondition {
 
 ---
 
-### Safe Recorders
+### Safe Hooks
 
 #### 1. EscrowPeriod ✅ (also serves as condition)
 ```solidity
-// Combined recorder + condition with freeze/unfreeze
-contract EscrowPeriod is AuthorizationTimeRecorder, ICondition {
-    // record() inherited from AuthorizationTimeRecorder
-    // check() delegates to canRelease()
+// Combined hook + condition with freeze/unfreeze
+contract EscrowPeriod is AuthorizationTimeHook, ICondition {
+    // record() inherited from AuthorizationTimeHook
+    // check() delegates to canCapture()
     // freeze()/unfreeze() for dispute handling
 }
 ```
@@ -604,7 +604,7 @@ contract EscrowPeriod is AuthorizationTimeRecorder, ICondition {
 
 ### ⚠️ Unsafe Patterns to Avoid
 
-❌ **DO NOT use recorders that**:
+❌ **DO NOT use hooks that**:
 - Make external calls to unknown contracts
 - Have loops or heavy computation
 - Store sensitive data
@@ -633,18 +633,18 @@ Before deploying a PaymentOperator:
 - [ ] Gas tested (< 100k gas per condition)
 - [ ] Combinator depth < 5 levels (protocol enforces < 10)
 
-### 2. Recorder Review ✅
+### 2. Hook Review ✅
 
-- [ ] All recorders are from safe library OR audited
+- [ ] All hooks are from safe library OR audited
 - [ ] No reentrancy (no calls to operator/escrow)
 - [ ] No external calls to unknown contracts
 - [ ] Minimal state storage
-- [ ] Gas tested (< 100k gas per recorder)
+- [ ] Gas tested (< 100k gas per hook)
 
 ### 3. Integration Testing ✅
 
 - [ ] Test with actual tokens (USDC, DAI, WETH)
-- [ ] Test all operation paths (authorize, release, refund)
+- [ ] Test all operation paths (authorize, capture, void, refund)
 - [ ] Test edge cases (pause, revert, out-of-gas)
 - [ ] Test with malicious actor scenarios
 - [ ] Gas profiling completed
@@ -652,7 +652,7 @@ Before deploying a PaymentOperator:
 ### 4. Documentation ✅
 
 - [ ] Document all conditions used and their purpose
-- [ ] Document all recorders used and their purpose
+- [ ] Document all hooks used and their purpose
 - [ ] Explain trust assumptions to users
 - [ ] Provide refund mechanism documentation
 - [ ] List supported tokens
@@ -660,18 +660,18 @@ Before deploying a PaymentOperator:
 ### 5. Security Review ✅
 
 - [ ] Code audit by reputable firm
-- [ ] Peer review of condition/recorder choices
+- [ ] Peer review of condition/hook choices
 - [ ] Test coverage > 90%
 - [ ] Invariant testing with Echidna/Medusa
 - [ ] Scenario-based testing
 
 ---
 
-## RELEASE_CONDITION = address(0) Risk
+## CAPTURE_PRE_ACTION_CONDITION = address(0) Risk
 
-### Warning: Immediate Release Without Escrow Period
+### Warning: Immediate Capture Without Escrow Period
 
-When deploying a PaymentOperator with `RELEASE_CONDITION = address(0)`, **anyone can release funds immediately after authorization**. This is the default behavior and is dangerous for most payment use cases.
+When deploying a PaymentOperator with `CAPTURE_PRE_ACTION_CONDITION = address(0)`, **anyone can capture funds immediately after authorization**. This is the default behavior and is dangerous for most payment use cases.
 
 ### Attack Scenario: Front-Running Refund Requests
 
@@ -679,12 +679,12 @@ When deploying a PaymentOperator with `RELEASE_CONDITION = address(0)`, **anyone
 1. Payer authorizes payment (funds enter escrow)
 2. Payer realizes an issue and submits requestRefund() to the RefundRequest contract
 3. Receiver sees the refund request in the mempool
-4. Receiver front-runs with release() (no condition to block it)
+4. Receiver front-runs with capture() (no condition to block it)
 5. Funds are captured by receiver before refund can be processed
-6. Payer's refund request becomes meaningless (funds already released)
+6. Payer's refund request becomes meaningless (funds already captured)
 ```
 
-This is a **race condition** inherent to `address(0)` release conditions. The RefundRequest contract only tracks request status — it does not prevent releases.
+This is a **race condition** inherent to `address(0)` capture conditions. The RefundRequest contract only tracks request status — it does not prevent captures.
 
 ### When address(0) is Acceptable
 
@@ -700,17 +700,17 @@ This is a **race condition** inherent to `address(0)` release conditions. The Re
 
 ### Recommendation
 
-Use `EscrowPeriod` as `RELEASE_CONDITION` for any payment flow that involves:
+Use `EscrowPeriod` as `CAPTURE_PRE_ACTION_CONDITION` for any payment flow that involves:
 - Refund requests (RefundRequest contract)
 - Dispute resolution
 - Delivery-based settlement
 
 ```solidity
-// SAFE: Release blocked until escrow period passes
-config.releaseCondition = address(escrowPeriod);
+// SAFE: Capture blocked until escrow period passes
+config.capturePreActionCondition = address(escrowPeriod);
 
-// DANGEROUS: Immediate release, refund requests easily front-run
-config.releaseCondition = address(0);
+// DANGEROUS: Immediate capture, refund requests easily front-run
+config.capturePreActionCondition = address(0);
 ```
 
 See [SECURITY.md](./SECURITY.md) for the full escrow trust boundary analysis.
@@ -719,7 +719,7 @@ See [SECURITY.md](./SECURITY.md) for the full escrow trust boundary analysis.
 
 ## Incident Response
 
-### If Malicious Condition/Recorder Detected
+### If Malicious Condition/Hook Detected
 
 **Operator is immutable** - cannot be upgraded or changed after deployment.
 
@@ -738,7 +738,7 @@ See [SECURITY.md](./SECURITY.md) for the full escrow trust boundary analysis.
 Because operators are immutable:
 - ✅ Audit BEFORE deployment
 - ✅ Test thoroughly
-- ✅ Use safe library conditions/recorders
+- ✅ Use safe library conditions/hooks
 - ✅ Minimize custom logic
 
 ---

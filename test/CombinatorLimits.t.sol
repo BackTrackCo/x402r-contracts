@@ -3,20 +3,20 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {ICondition} from "../src/plugins/conditions/ICondition.sol";
-import {IRecorder} from "../src/plugins/recorders/IRecorder.sol";
+import {IHook} from "../src/plugins/hooks/IHook.sol";
 import {AndCondition} from "../src/plugins/conditions/combinators/AndCondition.sol";
 import {OrCondition} from "../src/plugins/conditions/combinators/OrCondition.sol";
 import {NotCondition} from "../src/plugins/conditions/combinators/NotCondition.sol";
-import {RecorderCombinator} from "../src/plugins/recorders/combinators/RecorderCombinator.sol";
+import {HookCombinator} from "../src/plugins/hooks/combinators/HookCombinator.sol";
 import {AlwaysTrueCondition} from "../src/plugins/conditions/access/AlwaysTrueCondition.sol";
 import {PayerCondition} from "../src/plugins/conditions/access/PayerCondition.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {AuthorizationTimeRecorder} from "../src/plugins/recorders/AuthorizationTimeRecorder.sol";
+import {AuthorizationTimeHook} from "../src/plugins/hooks/AuthorizationTimeHook.sol";
 
 /**
  * @title CombinatorLimitsTest
  * @notice Tests for condition combinator array length limits and nesting
- * @dev Ensures MAX_CONDITIONS (10) / MAX_RECORDERS (10) are enforced,
+ * @dev Ensures MAX_PRE_ACTION_CONDITIONS (10) / MAX_POST_ACTION_HOOKS (10) are enforced,
  *      and nested combinators (Not wrapping And/Or) behave correctly
  */
 contract CombinatorLimitsTest is Test {
@@ -38,7 +38,7 @@ contract CombinatorLimitsTest is Test {
             conditions[i] = alwaysTrue;
         }
 
-        // Should succeed with exactly MAX_CONDITIONS (10)
+        // Should succeed with exactly MAX_PRE_ACTION_CONDITIONS (10)
         AndCondition andCond = new AndCondition(conditions);
         assertEq(andCond.conditionCount(), 10);
     }
@@ -70,7 +70,7 @@ contract CombinatorLimitsTest is Test {
             conditions[i] = alwaysTrue;
         }
 
-        // Should succeed with exactly MAX_CONDITIONS (10)
+        // Should succeed with exactly MAX_PRE_ACTION_CONDITIONS (10)
         OrCondition orCond = new OrCondition(conditions);
         assertEq(orCond.conditionCount(), 10);
     }
@@ -94,7 +94,7 @@ contract CombinatorLimitsTest is Test {
         new OrCondition(conditions);
     }
 
-    // ============ MAX_CONDITIONS Constant Tests ============
+    // ============ MAX_PRE_ACTION_CONDITIONS Constant Tests ============
 
     function test_MaxConditionsConstant() public {
         ICondition[] memory conditions = new ICondition[](1);
@@ -103,9 +103,9 @@ contract CombinatorLimitsTest is Test {
         AndCondition andCond = new AndCondition(conditions);
         OrCondition orCond = new OrCondition(conditions);
 
-        // Verify MAX_CONDITIONS is 10 for both
-        assertEq(andCond.MAX_CONDITIONS(), 10);
-        assertEq(orCond.MAX_CONDITIONS(), 10);
+        // Verify MAX_PRE_ACTION_CONDITIONS is 10 for both
+        assertEq(andCond.MAX_PRE_ACTION_CONDITIONS(), 10);
+        assertEq(orCond.MAX_PRE_ACTION_CONDITIONS(), 10);
     }
 
     // ============ NotCondition Wrapping Combinator Tests ============
@@ -265,41 +265,41 @@ contract CombinatorLimitsTest is Test {
         assertLt(gasUsed, 1000000, "Nested combinator (100 leaf) must use < 1M gas");
     }
 
-    // ============ RecorderCombinator Limit Tests ============
+    // ============ HookCombinator Limit Tests ============
 
-    function test_RecorderCombinator_AcceptsMaxRecorders() public {
-        IRecorder[] memory recs = new IRecorder[](10);
+    function test_HookCombinator_AcceptsMaxHooks() public {
+        IHook[] memory recs = new IHook[](10);
         for (uint256 i = 0; i < 10; i++) {
-            recs[i] = IRecorder(address(new AuthorizationTimeRecorder(address(escrow), bytes32(0))));
+            recs[i] = IHook(address(new AuthorizationTimeHook(address(escrow), bytes32(0))));
         }
 
-        RecorderCombinator combinator = new RecorderCombinator(recs);
-        assertEq(combinator.getRecorderCount(), 10, "Should accept exactly MAX_RECORDERS (10)");
+        HookCombinator combinator = new HookCombinator(recs);
+        assertEq(combinator.getHookCount(), 10, "Should accept exactly MAX_POST_ACTION_HOOKS (10)");
     }
 
-    function test_RecorderCombinator_RevertsOnTooManyRecorders() public {
-        IRecorder[] memory recs = new IRecorder[](11);
+    function test_HookCombinator_RevertsOnTooManyHooks() public {
+        IHook[] memory recs = new IHook[](11);
         for (uint256 i = 0; i < 11; i++) {
-            recs[i] = IRecorder(address(new AuthorizationTimeRecorder(address(escrow), bytes32(0))));
+            recs[i] = IHook(address(new AuthorizationTimeHook(address(escrow), bytes32(0))));
         }
 
-        vm.expectRevert(abi.encodeWithSelector(RecorderCombinator.TooManyRecorders.selector, 11, 10));
-        new RecorderCombinator(recs);
+        vm.expectRevert(abi.encodeWithSelector(HookCombinator.TooManyHooks.selector, 11, 10));
+        new HookCombinator(recs);
     }
 
-    function test_RecorderCombinator_RevertsOnEmptyRecorders() public {
-        IRecorder[] memory recs = new IRecorder[](0);
+    function test_HookCombinator_RevertsOnEmptyHooks() public {
+        IHook[] memory recs = new IHook[](0);
 
-        vm.expectRevert(RecorderCombinator.EmptyRecorders.selector);
-        new RecorderCombinator(recs);
+        vm.expectRevert(HookCombinator.EmptyHooks.selector);
+        new HookCombinator(recs);
     }
 
-    function test_RecorderCombinator_MaxRecordersConstant() public {
-        IRecorder[] memory recs = new IRecorder[](1);
-        recs[0] = IRecorder(address(new AuthorizationTimeRecorder(address(escrow), bytes32(0))));
+    function test_HookCombinator_MaxHooksConstant() public {
+        IHook[] memory recs = new IHook[](1);
+        recs[0] = IHook(address(new AuthorizationTimeHook(address(escrow), bytes32(0))));
 
-        RecorderCombinator combinator = new RecorderCombinator(recs);
-        assertEq(combinator.MAX_RECORDERS(), 10, "MAX_RECORDERS should be 10");
+        HookCombinator combinator = new HookCombinator(recs);
+        assertEq(combinator.MAX_POST_ACTION_HOOKS(), 10, "MAX_POST_ACTION_HOOKS should be 10");
     }
 
     // ============ Helpers ============

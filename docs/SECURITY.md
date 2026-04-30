@@ -171,10 +171,10 @@ Monitor these events for anomalies:
 
 | Event | Contract | Alert Condition |
 |-------|----------|-----------------|
-| `AuthorizationCreated` | PaymentOperator | Unusual volume, large amounts |
-| `ReleaseExecuted` | PaymentOperator | Rapid releases, unusual patterns |
-| `RefundInEscrowExecuted` | PaymentOperator | High in-escrow refund rate |
-| `RefundPostEscrowExecuted` | PaymentOperator | High post-escrow refund rate |
+| `AuthorizeExecuted` | PaymentOperator | Unusual volume, large amounts |
+| `CaptureExecuted` | PaymentOperator | Rapid captures, unusual patterns |
+| `VoidExecuted` | PaymentOperator | High in-escrow refund rate |
+| `RefundExecuted` | PaymentOperator | High post-escrow refund rate |
 | `PaymentFrozen` | EscrowPeriod | Mass freezing |
 | `FeesDistributed` | PaymentOperator | Unexpected distribution |
 
@@ -194,15 +194,15 @@ The following security properties MUST hold at all times. These are tested via u
 | **P2** | Payment can only be captured if in escrow (capturableAmount > 0) | Unit tests |
 | **P3** | Payment can only be refunded if refundableAmount > 0 | Unit tests |
 | **P4** | Sum of (captured + refunded) ≤ authorized amount (no double-spend) | Echidna invariant |
-| **P5** | After release/refund, payment is in terminal state (no further actions) | Unit tests |
+| **P5** | After capture/refund, payment is in terminal state (no further actions) | Unit tests |
 
 ### Escrow Period Invariants
 
 | ID | Property | Test Coverage |
 |----|----------|---------------|
 | **P6** | Freeze can only occur during escrow period | EscrowPeriodCondition.t.sol |
-| **P7** | Release cannot occur before escrow period expires (unless unfrozen) | EscrowPeriodCondition.t.sol |
-| **P8** | Frozen payments cannot be released until unfrozen | EscrowPeriodConditionInvariants.sol |
+| **P7** | Capture cannot occur before escrow period expires (unless unfrozen) | EscrowPeriodCondition.t.sol |
+| **P8** | Frozen payments cannot be captured until unfrozen | EscrowPeriodConditionInvariants.sol |
 
 | **P9** | Escrow period clock starts at authorization time | Unit tests |
 | **P10** | If authTime == 0, payment not yet authorized | Unit tests |
@@ -214,7 +214,7 @@ The following security properties MUST hold at all times. These are tested via u
 | **P11** | Only owner can change fee configuration | Unit tests + Echidna |
 | **P12** | Fee changes require 7-day timelock execution | Unit tests |
 | **P13** | Condition checks are pure/view (no state modification) | Solidity type system |
-| **P14** | Recorders execute after successful action (idempotent) | Code review |
+| **P14** | Hooks execute after successful action (idempotent) | Code review |
 | **P15** | address(0) condition = always allow (default behavior) | Unit tests |
 
 ### Fee Calculation Invariants
@@ -223,7 +223,7 @@ The following security properties MUST hold at all times. These are tested via u
 |----|----------|---------------|
 | **P16** | Protocol fee ≤ configured feeBasisPoints | Echidna invariant |
 | **P17** | Fee split between protocol and receiver | Unit tests |
-| **P18** | Fees only collected on successful release/refund | Unit tests |
+| **P18** | Fees only collected on successful capture/refund | Unit tests |
 | **P19** | Owner can only withdraw accumulated fees (not user funds) | Unit tests |
 
 ### Token Integration Invariants
@@ -277,18 +277,18 @@ The x402r payment system has a clear trust boundary between the trustless escrow
 ┌──────────────────────▼──────────────────────────────┐
 │                   TRUSTED LAYER                      │
 │                                                     │
-│  PaymentOperator + Conditions + Recorders           │
+│  PaymentOperator + Conditions + Hooks           │
 │  - Operator deployer chooses all plugins            │
 │  - Immutable after deployment (no upgrades)         │
 │  - Users must trust operator configuration          │
 │  - Conditions can block/allow operations            │
-│  - Recorders execute post-action callbacks          │
+│  - Hooks execute post-action callbacks          │
 └─────────────────────────────────────────────────────┘
 ```
 
 ### What the Escrow Protects Against
 
-The escrow layer provides hard guarantees that **no operator, condition, or recorder can violate**:
+The escrow layer provides hard guarantees that **no operator, condition, or hook can violate**:
 
 - **Fund extraction**: Escrow enforces `captured + refunded <= authorized` per payment. No amount of operator manipulation can extract more than what was authorized.
 - **Balance manipulation**: Every token transfer is verified via `balanceAfter == balanceBefore + amount`. Fee-on-transfer or rebasing tokens are rejected.
@@ -299,15 +299,15 @@ The escrow layer provides hard guarantees that **no operator, condition, or reco
 
 Operators control the business logic layer. A malicious or buggy operator **can**:
 
-- **Block releases**: A malicious `RELEASE_CONDITION` can return `false` indefinitely, trapping funds until `authorizationExpiry` when the payer can reclaim.
+- **Block captures**: A malicious `CAPTURE_PRE_ACTION_CONDITION` can return `false` indefinitely, trapping funds until `authorizationExpiry` when the payer can reclaim.
 - **Censor users**: Conditions with blocklists can selectively prevent specific addresses from interacting.
 - **Leak MEV**: Non-`view` conditions (should never be used) could emit events or make external calls that leak payment data to MEV bots.
-- **Front-run refunds**: Without an escrow period (`RELEASE_CONDITION = address(0)`), a receiver can release funds before a refund request is processed.
-- **Gas grief**: Conditions or recorders with unbounded loops can make operations fail with out-of-gas.
+- **Front-run refunds**: Without an escrow period (`CAPTURE_PRE_ACTION_CONDITION = address(0)`), a receiver can capture funds before a refund request is processed.
+- **Gas grief**: Conditions or hooks with unbounded loops can make operations fail with out-of-gas.
 
 ### Implications
 
-**For users**: Always verify the operator's condition and recorder contracts before interacting. Use operators deployed by trusted parties with audited conditions from the safe condition library.
+**For users**: Always verify the operator's condition and hook contracts before interacting. Use operators deployed by trusted parties with audited conditions from the safe condition library.
 
 **For operators**: Deploy with audited conditions, use escrow periods for dispute resolution, and document trust assumptions for your users. See [OPERATOR_SECURITY.md](./OPERATOR_SECURITY.md) for the full deployment checklist.
 
@@ -317,7 +317,7 @@ Operators control the business logic layer. A malicious or buggy operator **can*
 
 ### Maximum Combinator Depth Recommendation
 
-**Protocol Enforced Limit**: `MAX_CONDITIONS = 10`
+**Protocol Enforced Limit**: `MAX_PRE_ACTION_CONDITIONS = 10`
 
 The condition combinator architecture (AndCondition, OrCondition, NotCondition) allows nesting but has a hard limit to prevent gas exhaustion and stack depth issues.
 
@@ -351,7 +351,7 @@ AndCondition(
 | 3-4 | ⚠️ Acceptable | Moderate complexity | Moderate gas |
 | 5-7 | ⚠️ Use sparingly | Complex requirements | High gas, hard to audit |
 | 8-10 | ❌ Avoid | Emergency only | Very high gas, difficult to understand |
-| 11+ | ❌ Blocked | N/A | Protocol enforces MAX_CONDITIONS = 10 |
+| 11+ | ❌ Blocked | N/A | Protocol enforces MAX_PRE_ACTION_CONDITIONS = 10 |
 
 #### Best Practices
 
@@ -365,7 +365,7 @@ AndCondition(
 
 **✅ GOOD** (Depth 2):
 ```solidity
-// Receiver can release after escrow period
+// Receiver can capture after escrow period
 AndCondition(
     ReceiverCondition(),
     EscrowPeriod(escrowPeriod, freezePolicy, escrow, codehash)
@@ -374,14 +374,14 @@ AndCondition(
 
 **⚠️ ACCEPTABLE** (Depth 3):
 ```solidity
-// Receiver OR arbiter can release after escrow, but not if frozen
+// Receiver OR arbiter can capture after escrow, but not while frozen
 AndCondition(
     OrCondition(
         ReceiverCondition(),
         StaticAddressCondition(arbiter)
     ),
     NotCondition(
-        FrozenCondition(recorder)
+        Freeze(freezeCond, unfreezeCond, duration, escrowPeriod, escrow)
     )
 )
 ```
@@ -413,7 +413,7 @@ AndCondition(
 // Test gas costs for your combinator tree
 function testCombinatorGas() public {
     uint256 gasBefore = gasleft();
-    bool result = MY_COMPLEX_CONDITION.check(paymentInfo, msg.sender);
+    bool result = MY_COMPLEX_PRE_ACTION_CONDITION.check(paymentInfo, msg.sender);
     uint256 gasUsed = gasBefore - gasleft();
 
     // Ensure reasonable gas usage
@@ -424,9 +424,9 @@ function testCombinatorGas() public {
 #### Enforcement
 
 ```solidity
-// CombinatorDepthChecker.sol enforces MAX_CONDITIONS = 10
+// CombinatorDepthChecker.sol enforces MAX_PRE_ACTION_CONDITIONS = 10
 function _checkDepth(address condition, uint8 depth) internal view {
-    if (depth > MAX_CONDITIONS) revert MaxConditionsExceeded();
+    if (depth > MAX_PRE_ACTION_CONDITIONS) revert MaxConditionsExceeded();
     // Recursively check nested conditions
 }
 ```
@@ -463,29 +463,29 @@ Payment operations can be vulnerable to front-running and MEV (Maximal Extractab
 
 ---
 
-#### Attack Vector 2: Release Front-Running by Receiver
+#### Attack Vector 2: Capture Front-Running by Receiver
 
-**Scenario**: Payer requests refund, receiver front-runs with release
+**Scenario**: Payer requests refund, receiver front-runs with capture
 
 ```
 1. Payer calls: requestRefund(paymentInfo)
 2. Receiver sees request in mempool
-3. Receiver front-runs with: release(paymentInfo, amount)
-4. Release executes first, capturing funds before refund request
+3. Receiver front-runs with: capture(paymentInfo, amount)
+4. Capture executes first, capturing funds before refund request
 ```
 
 **Mitigation**:
 - ✅ RefundRequest contract tracks request status
-- ✅ Release condition can check RefundRequest status
+- ✅ Capture condition can check RefundRequest status
 - ⚠️ Users should use refund conditions that prevent front-running
 - ⚠️ Escrow period provides time for dispute resolution
 
 **Example Safe Configuration**:
 ```solidity
-// Deploy operator with release condition that checks RefundRequest
+// Deploy operator with capture condition that checks RefundRequest
 RefundRequestBlockerCondition {
     function check(PaymentInfo calldata paymentInfo, address) view returns (bool) {
-        // Block release if refund request is pending
+        // Block capture if refund request is pending
         RequestStatus status = REFUND_REQUEST.getRefundRequestStatus(paymentInfo);
         return status != RequestStatus.Pending;
     }
@@ -561,7 +561,7 @@ function check(PaymentInfo calldata paymentInfo, address) view returns (bool) {
 **Risk**: Miners can manipulate timestamp by ~900 seconds (15 minutes)
 
 **Impact**:
-- Release could happen 15 min early
+- Capture could happen 15 min early
 - Escrow period could be shortened by 15 min
 
 **Mitigation**:
@@ -645,7 +645,7 @@ contract BlockNumberCondition {
 **MEV (Maximal Extractable Value)** refers to profit extracted by reordering, inserting, or censoring transactions within a block. While traditional MEV targets DEX swaps and liquidations, payment systems face unique MEV risks.
 
 **Payment-Specific MEV Vectors**:
-1. **Front-running payment releases** to extract value before recipient
+1. **Front-running payment captures** to extract value before recipient
 2. **Sandwiching fee distributions** to manipulate fee calculations
 3. **Back-running authorizations** to immediately trigger related actions
 4. **Censoring refund requests** to force fund capture
@@ -660,13 +660,13 @@ Unlike AMM swaps, payment systems don't have traditional "slippage" (price impac
 
 ```solidity
 // Add deadline to critical operations
-function releaseWithDeadline(
+function captureWithDeadline(
     PaymentInfo calldata paymentInfo,
     uint256 amount,
     uint256 deadline  // Timestamp after which tx reverts
 ) external {
     require(block.timestamp <= deadline, "Transaction expired");
-    release(paymentInfo, amount);
+    capture(paymentInfo, amount);
 }
 ```
 
@@ -692,14 +692,14 @@ function authorizeWithMaxFee(
 
 ```solidity
 // Verify payment state matches expectations
-function releaseWithExpectedState(
+function captureWithExpectedState(
     PaymentInfo calldata paymentInfo,
     uint256 amount,
     uint256 expectedCapturableAmount
 ) external {
     (, uint256 capturable, ) = ESCROW.paymentState(getHash(paymentInfo));
     require(capturable == expectedCapturableAmount, "State changed");
-    release(paymentInfo, amount);
+    capture(paymentInfo, amount);
 }
 ```
 
@@ -748,7 +748,7 @@ Deploy operators with anti-MEV conditions:
 
 ```solidity
 contract AntiMEVReleaseCondition {
-    // Prevent immediate release after authorization
+    // Prevent immediate capture after authorization
     uint256 public constant MIN_DELAY = 2; // 2 blocks (~24 seconds)
 
     function check(PaymentInfo calldata paymentInfo, address) view returns (bool) {
@@ -759,7 +759,7 @@ contract AntiMEVReleaseCondition {
 ```
 
 **Benefits**:
-- Forces delay between authorization and release
+- Forces delay between authorization and capture
 - Gives payers time to react to unexpected authorizations
 - Breaks atomic MEV extraction strategies
 
@@ -768,7 +768,7 @@ contract AntiMEVReleaseCondition {
 Bundle multiple operations to share MEV:
 
 ```solidity
-// Instead of: authorize() -> release() (two separate txs, MEV risk)
+// Instead of: authorize() -> capture() (two separate txs, MEV risk)
 // Use: batchAuthorizeAndRelease() (one atomic tx, no MEV window)
 
 function batchAuthorizeAndRelease(
@@ -777,7 +777,7 @@ function batchAuthorizeAndRelease(
 ) external {
     for (uint256 i = 0; i < payments.length; i++) {
         authorize(payments[i], amounts[i], collector, "");
-        release(payments[i], amounts[i]);
+        capture(payments[i], amounts[i]);
     }
 }
 ```
@@ -809,7 +809,7 @@ contract RateLimitedOperator {
 
 | MEV Type | Likelihood | Impact | Current Mitigation | Recommendation |
 |----------|-----------|--------|-------------------|----------------|
-| **Front-running release** | Medium | Medium | Escrow period, conditions | Use private mempool |
+| **Front-running capture** | Medium | Medium | Escrow period, conditions | Use private mempool |
 | **Sandwich fee distribution** | Low | Low | Timelock, transparent fees | Monitor distribution txs |
 | **Back-running authorization** | Low | Low | Immutable conditions | No action needed |
 | **Censoring refunds** | Very Low | High | Multiple submission channels | Use private mempool |
@@ -859,7 +859,7 @@ await operator.authorizeWithProtection(
 
 **Detection Signals**:
 1. **Unusually high gas prices** on payment operations
-2. **Rapid authorize() → release() sequences** (< 2 blocks)
+2. **Rapid authorize() → capture() sequences** (< 2 blocks)
 3. **Multiple failed transactions** before successful one
 4. **Suspicious condition contracts** with state changes
 
@@ -905,7 +905,7 @@ if (gasPrice > 100 gwei && timeSinceAuth < 2 blocks) {
 | Operation | Front-Run Risk | Mitigation | Residual Risk |
 |-----------|---------------|------------|---------------|
 | `authorize()` | Low | Immutable conditions, salt | Minimal |
-| `release()` | Medium | Escrow period, refund conditions | Low with proper setup |
+| `capture()` | Medium | Escrow period, refund conditions | Low with proper setup |
 | `refund()` | Low | Conditions check authorization | Minimal |
 | `withdrawFees()` | Low | Timelock, multisig | Minimal |
 | Condition evaluation | Critical | View-only, no external calls | Minimal if audited |

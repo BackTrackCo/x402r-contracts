@@ -54,38 +54,38 @@ contract RefundRequestInvariants is Test {
 
         ProtocolFeeConfig protocolFeeConfig = new ProtocolFeeConfig(address(0), address(this), address(this));
 
-        refundRequest = new RefundRequest(arbiter);
+        refundRequest = new RefundRequest(arbiter, address(escrow));
 
-        // Build REFUND_IN_ESCROW_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)
+        // Build VOID_PRE_ACTION_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)
         StaticAddressCondition arbiterCondition = new StaticAddressCondition(arbiter);
         ReceiverCondition receiverCondition = new ReceiverCondition();
-        ICondition[] memory refundConditions = new ICondition[](2);
-        refundConditions[0] = ICondition(address(arbiterCondition));
-        refundConditions[1] = ICondition(address(receiverCondition));
-        OrCondition refundInEscrowCondition = new OrCondition(refundConditions);
+        ICondition[] memory refundPreActionConditions = new ICondition[](2);
+        refundPreActionConditions[0] = ICondition(address(arbiterCondition));
+        refundPreActionConditions[1] = ICondition(address(receiverCondition));
+        OrCondition voidCondition = new OrCondition(refundPreActionConditions);
 
-        // Build RELEASE_CONDITION = Or(StaticAddressCondition(arbiter), PayerCondition)
+        // Build CAPTURE_PRE_ACTION_CONDITION = Or(StaticAddressCondition(arbiter), PayerCondition)
         PayerCondition payerCondition = new PayerCondition();
-        ICondition[] memory releaseConditions = new ICondition[](2);
-        releaseConditions[0] = ICondition(address(arbiterCondition));
-        releaseConditions[1] = ICondition(address(payerCondition));
-        OrCondition releaseCondition = new OrCondition(releaseConditions);
+        ICondition[] memory captureConditions = new ICondition[](2);
+        captureConditions[0] = ICondition(address(arbiterCondition));
+        captureConditions[1] = ICondition(address(payerCondition));
+        OrCondition captureCondition = new OrCondition(captureConditions);
 
         PaymentOperatorFactory operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: address(this),
+            feeReceiver: address(this),
             feeCalculator: address(0),
-            authorizeCondition: address(0),
-            authorizeRecorder: address(0),
-            chargeCondition: address(0),
-            chargeRecorder: address(0),
-            releaseCondition: address(releaseCondition),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(refundInEscrowCondition),
-            refundInEscrowRecorder: address(refundRequest),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(0),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(0),
+            capturePreActionCondition: address(captureCondition),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(voidCondition),
+            voidPostActionHook: address(refundRequest),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
 
@@ -131,9 +131,9 @@ contract RefundRequestInvariants is Test {
 
         RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequestByKey(paymentInfoHash);
 
-        // Arbiter calls operator.refundInEscrow() which triggers record()
+        // Arbiter calls operator.void() which triggers record()
         vm.prank(arbiter);
-        try operator.refundInEscrow(paymentInfo, data.amount, "") {
+        try operator.void(paymentInfo, "") {
             lastKnownStatus[paymentInfoHash] = RequestStatus.Approved;
             wasTerminallyResolved[paymentInfoHash] = true;
         } catch {}

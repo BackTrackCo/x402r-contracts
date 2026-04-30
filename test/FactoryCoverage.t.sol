@@ -18,10 +18,10 @@ import {AndConditionFactory} from "../src/plugins/conditions/combinators/AndCond
 import {NotConditionFactory} from "../src/plugins/conditions/combinators/NotConditionFactory.sol";
 import {OrCondition} from "../src/plugins/conditions/combinators/OrCondition.sol";
 import {OrConditionFactory} from "../src/plugins/conditions/combinators/OrConditionFactory.sol";
-import {IRecorder} from "../src/plugins/recorders/IRecorder.sol";
-import {AuthorizationTimeRecorder} from "../src/plugins/recorders/AuthorizationTimeRecorder.sol";
-import {RecorderCombinator} from "../src/plugins/recorders/combinators/RecorderCombinator.sol";
-import {RecorderCombinatorFactory} from "../src/plugins/recorders/combinators/RecorderCombinatorFactory.sol";
+import {IHook} from "../src/plugins/hooks/IHook.sol";
+import {AuthorizationTimeHook} from "../src/plugins/hooks/AuthorizationTimeHook.sol";
+import {HookCombinator} from "../src/plugins/hooks/combinators/HookCombinator.sol";
+import {HookCombinatorFactory} from "../src/plugins/hooks/combinators/HookCombinatorFactory.sol";
 import {RefundRequestEvidenceFactory} from "../src/evidence/RefundRequestEvidenceFactory.sol";
 import {RefundRequestEvidence} from "../src/evidence/RefundRequestEvidence.sol";
 import {RefundRequest} from "../src/requests/refund/RefundRequest.sol";
@@ -263,8 +263,8 @@ contract FactoryCoverageTest is Test {
         address freezeAddr = factory.deploy(address(payerCond), address(payerCond), 3 days, address(0));
         Freeze freezeContract = Freeze(freezeAddr);
 
-        assertEq(address(freezeContract.FREEZE_CONDITION()), address(payerCond));
-        assertEq(address(freezeContract.UNFREEZE_CONDITION()), address(payerCond));
+        assertEq(address(freezeContract.FREEZE_PRE_ACTION_CONDITION()), address(payerCond));
+        assertEq(address(freezeContract.UNFREEZE_PRE_ACTION_CONDITION()), address(payerCond));
         assertEq(freezeContract.FREEZE_DURATION(), 3 days);
     }
 
@@ -465,79 +465,79 @@ contract FactoryCoverageTest is Test {
         assertTrue(key1 != key2, "Different conditions should produce different keys");
     }
 
-    // ============ RecorderCombinatorFactory ============
+    // ============ HookCombinatorFactory ============
 
-    function test_RecorderCombinatorFactory_Deploy() public {
-        RecorderCombinatorFactory factory = new RecorderCombinatorFactory();
-        IRecorder[] memory recs = new IRecorder[](2);
-        recs[0] = IRecorder(address(new AuthorizationTimeRecorder(address(escrow), bytes32(0))));
-        recs[1] = IRecorder(address(new AuthorizationTimeRecorder(address(escrow), bytes32(0))));
+    function test_HookCombinatorFactory_Deploy() public {
+        HookCombinatorFactory factory = new HookCombinatorFactory();
+        IHook[] memory recs = new IHook[](2);
+        recs[0] = IHook(address(new AuthorizationTimeHook(address(escrow), bytes32(0))));
+        recs[1] = IHook(address(new AuthorizationTimeHook(address(escrow), bytes32(0))));
 
         address deployed = factory.deploy(recs);
-        assertTrue(deployed != address(0), "RecorderCombinator should be deployed");
-        assertEq(RecorderCombinator(deployed).getRecorderCount(), 2, "Should have 2 recorders");
+        assertTrue(deployed != address(0), "HookCombinator should be deployed");
+        assertEq(HookCombinator(deployed).getHookCount(), 2, "Should have 2 hooks");
     }
 
-    function test_RecorderCombinatorFactory_IdempotentDeploy() public {
-        RecorderCombinatorFactory factory = new RecorderCombinatorFactory();
-        IRecorder rec = IRecorder(address(new AuthorizationTimeRecorder(address(escrow), bytes32(0))));
-        IRecorder[] memory recs = new IRecorder[](1);
+    function test_HookCombinatorFactory_IdempotentDeploy() public {
+        HookCombinatorFactory factory = new HookCombinatorFactory();
+        IHook rec = IHook(address(new AuthorizationTimeHook(address(escrow), bytes32(0))));
+        IHook[] memory recs = new IHook[](1);
         recs[0] = rec;
 
         address first = factory.deploy(recs);
         address second = factory.deploy(recs);
-        assertEq(first, second, "Same recorders should return same address");
+        assertEq(first, second, "Same hooks should return same address");
     }
 
-    function test_RecorderCombinatorFactory_ComputeAddress() public {
-        RecorderCombinatorFactory factory = new RecorderCombinatorFactory();
-        IRecorder[] memory recs = new IRecorder[](1);
-        recs[0] = IRecorder(address(new AuthorizationTimeRecorder(address(escrow), bytes32(0))));
+    function test_HookCombinatorFactory_ComputeAddress() public {
+        HookCombinatorFactory factory = new HookCombinatorFactory();
+        IHook[] memory recs = new IHook[](1);
+        recs[0] = IHook(address(new AuthorizationTimeHook(address(escrow), bytes32(0))));
 
         address predicted = factory.computeAddress(recs);
         address actual = factory.deploy(recs);
         assertEq(predicted, actual, "Predicted address should match actual");
     }
 
-    function test_RecorderCombinatorFactory_GetDeployed() public {
-        RecorderCombinatorFactory factory = new RecorderCombinatorFactory();
-        IRecorder[] memory recs = new IRecorder[](1);
-        recs[0] = IRecorder(address(new AuthorizationTimeRecorder(address(escrow), bytes32(0))));
+    function test_HookCombinatorFactory_GetDeployed() public {
+        HookCombinatorFactory factory = new HookCombinatorFactory();
+        IHook[] memory recs = new IHook[](1);
+        recs[0] = IHook(address(new AuthorizationTimeHook(address(escrow), bytes32(0))));
 
         assertEq(factory.getDeployed(recs), address(0), "Should be zero before deployment");
         address deployed = factory.deploy(recs);
         assertEq(factory.getDeployed(recs), deployed, "Should return deployed address");
     }
 
-    function test_RecorderCombinatorFactory_EmptyRecorders_Reverts() public {
-        RecorderCombinatorFactory factory = new RecorderCombinatorFactory();
-        IRecorder[] memory recs = new IRecorder[](0);
-        vm.expectRevert(RecorderCombinatorFactory.EmptyRecorders.selector);
+    function test_HookCombinatorFactory_EmptyHooks_Reverts() public {
+        HookCombinatorFactory factory = new HookCombinatorFactory();
+        IHook[] memory recs = new IHook[](0);
+        vm.expectRevert(HookCombinatorFactory.EmptyHooks.selector);
         factory.deploy(recs);
     }
 
-    function test_RecorderCombinatorFactory_TooManyRecorders_Reverts() public {
-        RecorderCombinatorFactory factory = new RecorderCombinatorFactory();
-        IRecorder[] memory recs = new IRecorder[](11);
+    function test_HookCombinatorFactory_TooManyHooks_Reverts() public {
+        HookCombinatorFactory factory = new HookCombinatorFactory();
+        IHook[] memory recs = new IHook[](11);
         for (uint256 i = 0; i < 11; i++) {
-            recs[i] = IRecorder(address(new AuthorizationTimeRecorder(address(escrow), bytes32(0))));
+            recs[i] = IHook(address(new AuthorizationTimeHook(address(escrow), bytes32(0))));
         }
-        vm.expectRevert(RecorderCombinatorFactory.TooManyRecorders.selector);
+        vm.expectRevert(HookCombinatorFactory.TooManyHooks.selector);
         factory.deploy(recs);
     }
 
-    function test_RecorderCombinatorFactory_GetKey() public {
-        RecorderCombinatorFactory factory = new RecorderCombinatorFactory();
-        IRecorder rec1 = IRecorder(address(new AuthorizationTimeRecorder(address(escrow), bytes32(0))));
-        IRecorder rec2 = IRecorder(address(new AuthorizationTimeRecorder(address(escrow), bytes32(0))));
-        IRecorder[] memory recs1 = new IRecorder[](1);
+    function test_HookCombinatorFactory_GetKey() public {
+        HookCombinatorFactory factory = new HookCombinatorFactory();
+        IHook rec1 = IHook(address(new AuthorizationTimeHook(address(escrow), bytes32(0))));
+        IHook rec2 = IHook(address(new AuthorizationTimeHook(address(escrow), bytes32(0))));
+        IHook[] memory recs1 = new IHook[](1);
         recs1[0] = rec1;
-        IRecorder[] memory recs2 = new IRecorder[](1);
+        IHook[] memory recs2 = new IHook[](1);
         recs2[0] = rec2;
 
         bytes32 key1 = factory.getKey(recs1);
         bytes32 key2 = factory.getKey(recs2);
-        assertTrue(key1 != key2, "Different recorders should produce different keys");
+        assertTrue(key1 != key2, "Different hooks should produce different keys");
     }
 
     // ============ PaymentOperatorFactory ============
@@ -547,7 +547,7 @@ contract FactoryCoverageTest is Test {
 
         PaymentOperatorFactory.OperatorConfig memory config1 = _defaultConfig(address(0));
         PaymentOperatorFactory.OperatorConfig memory config2 = _defaultConfig(address(0));
-        config2.feeRecipient = makeAddr("otherRecipient");
+        config2.feeReceiver = makeAddr("otherRecipient");
 
         address op1 = factory.deployOperator(config1);
         address op2 = factory.deployOperator(config2);
@@ -564,7 +564,7 @@ contract FactoryCoverageTest is Test {
 
     function test_RefundRequestEvidenceFactory_Deploy() public {
         RefundRequestEvidenceFactory factory = new RefundRequestEvidenceFactory();
-        address refundRequest = address(new RefundRequest(makeAddr("arbiter")));
+        address refundRequest = address(new RefundRequest(makeAddr("arbiter"), address(escrow)));
 
         address evidence = factory.deploy(refundRequest);
         assertTrue(evidence != address(0), "Evidence should be deployed");
@@ -573,7 +573,7 @@ contract FactoryCoverageTest is Test {
 
     function test_RefundRequestEvidenceFactory_IdempotentDeploy() public {
         RefundRequestEvidenceFactory factory = new RefundRequestEvidenceFactory();
-        address refundRequest = address(new RefundRequest(makeAddr("arbiter")));
+        address refundRequest = address(new RefundRequest(makeAddr("arbiter"), address(escrow)));
 
         address first = factory.deploy(refundRequest);
         address second = factory.deploy(refundRequest);
@@ -582,8 +582,8 @@ contract FactoryCoverageTest is Test {
 
     function test_RefundRequestEvidenceFactory_DifferentRefundRequests() public {
         RefundRequestEvidenceFactory factory = new RefundRequestEvidenceFactory();
-        address rr1 = address(new RefundRequest(makeAddr("arbiter1")));
-        address rr2 = address(new RefundRequest(makeAddr("arbiter2")));
+        address rr1 = address(new RefundRequest(makeAddr("arbiter1"), address(escrow)));
+        address rr2 = address(new RefundRequest(makeAddr("arbiter2"), address(escrow)));
 
         address ev1 = factory.deploy(rr1);
         address ev2 = factory.deploy(rr2);
@@ -592,7 +592,7 @@ contract FactoryCoverageTest is Test {
 
     function test_RefundRequestEvidenceFactory_ComputeAddress() public {
         RefundRequestEvidenceFactory factory = new RefundRequestEvidenceFactory();
-        address refundRequest = address(new RefundRequest(makeAddr("arbiter")));
+        address refundRequest = address(new RefundRequest(makeAddr("arbiter"), address(escrow)));
 
         address predicted = factory.computeAddress(refundRequest);
         address actual = factory.deploy(refundRequest);
@@ -601,7 +601,7 @@ contract FactoryCoverageTest is Test {
 
     function test_RefundRequestEvidenceFactory_GetDeployed() public {
         RefundRequestEvidenceFactory factory = new RefundRequestEvidenceFactory();
-        address refundRequest = address(new RefundRequest(makeAddr("arbiter")));
+        address refundRequest = address(new RefundRequest(makeAddr("arbiter"), address(escrow)));
 
         assertEq(factory.getDeployed(refundRequest), address(0), "Should be zero before deployment");
         address evidence = factory.deploy(refundRequest);
@@ -626,18 +626,18 @@ contract FactoryCoverageTest is Test {
 
     function _defaultConfig(address feeCalc) internal view returns (PaymentOperatorFactory.OperatorConfig memory) {
         return PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: protocolFeeRecipient,
+            feeReceiver: protocolFeeRecipient,
             feeCalculator: feeCalc,
-            authorizeCondition: address(0),
-            authorizeRecorder: address(0),
-            chargeCondition: address(0),
-            chargeRecorder: address(0),
-            releaseCondition: address(0),
-            releaseRecorder: address(0),
-            refundInEscrowCondition: address(0),
-            refundInEscrowRecorder: address(0),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(0),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(0),
+            capturePreActionCondition: address(0),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(0),
+            voidPostActionHook: address(0),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
     }
 }
