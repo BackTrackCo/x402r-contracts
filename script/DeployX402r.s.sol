@@ -52,6 +52,11 @@ contract DeployX402r is Create2Deployer {
     // Any change here moves the CREATE2 addresses of contracts that take these as
     // constructor args (ProtocolFeeConfig, PaymentOperatorFactory, and everything
     // downstream of them).
+    //
+    // DO NOT broadcast with the placeholder address(0) — the run() pre-flight require()s
+    // below fail-fast on broadcast, but more fundamentally: the canonical address bakes
+    // these constructor args in immutably, so deploying with a placeholder permanently
+    // pins the wrong owner at the canonical address on that chain.
     address constant CANONICAL_OWNER = address(0);
     address constant CANONICAL_FEE_RECIPIENT = address(0);
 

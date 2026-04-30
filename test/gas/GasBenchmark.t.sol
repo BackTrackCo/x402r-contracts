@@ -581,11 +581,11 @@ contract GasBenchmark is Test {
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== x402r UNHAPPY PATH ===");
-        console.log("refundPostEscrow:", gasUsed);
+        console.log("refund:", gasUsed);
     }
 
     // ================================================================
-    //  4b. COLD vs WARM: RELEASE
+    //  4b. COLD vs WARM: CAPTURE
     // ================================================================
 
     function test_gas_x402rCaptureColdVsWarm() public {
@@ -841,24 +841,24 @@ contract GasBenchmark is Test {
 
         uint256 netAmount = PAYMENT_AMOUNT - (PAYMENT_AMOUNT * TOTAL_BPS) / 10000;
 
-        // Cold refundPostEscrow
+        // Cold refund
         uint256 g1 = gasleft();
         fullOperator.refund(pi1, netAmount, address(refundCollector), "");
         uint256 coldGas = g1 - gasleft();
 
-        // Warm refundPostEscrow
+        // Warm refund
         uint256 g2 = gasleft();
         fullOperator.refund(pi2, netAmount, address(refundCollector), "");
         uint256 warmGas = g2 - gasleft();
 
-        console.log("=== REFUND POST ESCROW COLD vs WARM ===");
+        console.log("=== REFUND COLD vs WARM ===");
         console.log("cold:", coldGas);
         console.log("warm:", warmGas);
         console.log("savings:", coldGas - warmGas);
     }
 
     // ================================================================
-    //  4e. COLD vs WARM: OVERHEAD COMPARISON (authorize + release tiers)
+    //  4e. COLD vs WARM: OVERHEAD COMPARISON (authorize + capture tiers)
     // ================================================================
 
     function test_gas_overhead_authorize_coldVsWarm() public {
@@ -1254,7 +1254,7 @@ contract GasBenchmark is Test {
         refundRequest.deny(pi);
         uint256 denyGas = g6 - gasleft();
 
-        // refundPostEscrow
+        // refund
         uint256 netAmount = PAYMENT_AMOUNT - (PAYMENT_AMOUNT * TOTAL_BPS) / 10000;
         uint256 g7 = gasleft();
         fullOperator.refund(pi, netAmount, address(refundCollector), "");
@@ -1265,11 +1265,11 @@ contract GasBenchmark is Test {
         console.log("=== FULL UNHAPPY PATH TOTAL ===");
         console.log("authorize:", authorizeGas);
         console.log("freeze:", freezeGas);
-        console.log("release:", releaseGas);
+        console.log("capture:", releaseGas);
         console.log("requestRefund:", requestGas);
         console.log("submitEvidence:", evidenceGas);
         console.log("deny:", denyGas);
-        console.log("refundPostEscrow:", refundGas);
+        console.log("refund:", refundGas);
         console.log("TOTAL:", total);
     }
 

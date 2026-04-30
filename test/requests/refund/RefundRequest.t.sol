@@ -12,7 +12,7 @@ import {PaymentOperator} from "../../../src/operator/payment/PaymentOperator.sol
 import {PaymentOperatorFactory} from "../../../src/operator/PaymentOperatorFactory.sol";
 import {ProtocolFeeConfig} from "../../../src/plugins/fees/ProtocolFeeConfig.sol";
 import {RequestStatus} from "../../../src/requests/types/Types.sol";
-import {InvalidOperator} from "../../../src/types/Errors.sol";
+import {InvalidOperator, PaymentDoesNotExist} from "../../../src/types/Errors.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
@@ -159,6 +159,24 @@ contract RefundRequestTest is Test {
 
         vm.prank(payer);
         vm.expectRevert(InvalidOperator.selector);
+        refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT));
+    }
+
+    /// @notice H-1 mitigation: requestRefund derives paymentInfoHash via the canonical
+    ///         immutable ESCROW. If the payment does not exist there, the call reverts —
+    ///         regardless of what paymentInfo.operator is. An attacker who supplies a
+    ///         malicious operator (returning a forged ESCROW.getHash) cannot pre-occupy
+    ///         legitimate hash slots, because the lookup never goes through the supplied
+    ///         operator.
+    function test_requestRefund_H1_rejectsPaymentNotInCanonicalEscrow() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo();
+        // Override operator to a non-canonical address. The hash is computed from the
+        // canonical ESCROW regardless, and the canonical escrow has no record of this
+        // paymentInfo (we never called authorize()).
+        paymentInfo.operator = makeAddr("attackerOperator");
+        paymentInfo.payer = address(this);
+
+        vm.expectRevert(PaymentDoesNotExist.selector);
         refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT));
     }
 
