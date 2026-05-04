@@ -13,7 +13,7 @@ import {InvalidEscrowPeriod} from "./types/Errors.sol";
  *         with escrow period enforcement and ICondition implementation.
  *
  * @dev Implements both IHook (via AuthorizationTimeHook inheritance) and ICondition.
- *      Use the same address for both the AUTHORIZE_POST_ACTION_HOOK and RELEASE_PRE_ACTION_CONDITION slots
+ *      Use the same address for both the AUTHORIZE_HOOK and CAPTURE_CONDITION slots
  *      on PaymentOperator.
  *
  *      For freeze functionality, deploy a separate Freeze condition contract and compose

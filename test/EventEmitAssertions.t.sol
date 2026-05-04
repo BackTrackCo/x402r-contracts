@@ -62,16 +62,16 @@ contract EventEmitAssertionsTest is Test {
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: operatorFeeRecipient,
             feeCalculator: address(operatorCalc),
-            authorizePreActionCondition: address(0),
-            authorizePostActionHook: address(0),
-            chargePreActionCondition: address(0),
-            chargePostActionHook: address(0),
-            capturePreActionCondition: address(0),
-            capturePostActionHook: address(0),
-            voidPreActionCondition: address(0),
-            voidPostActionHook: address(0),
-            refundPreActionCondition: address(0),
-            refundPostActionHook: address(0)
+            authorizeCondition: address(0),
+            authorizeHook: address(0),
+            chargeCondition: address(0),
+            chargeHook: address(0),
+            captureCondition: address(0),
+            captureHook: address(0),
+            voidCondition: address(0),
+            voidHook: address(0),
+            refundCondition: address(0),
+            refundHook: address(0)
         });
         operator = PaymentOperator(factory.deployOperator(config));
 
@@ -196,6 +196,55 @@ contract EventEmitAssertionsTest is Test {
         operator.distributeFees(address(token));
     }
 
+    /// @dev Edge case: operator with no operator-fee calculator. Total fee == protocol
+    ///      fee, so distributeFees pays out the full balance to the protocol and the
+    ///      operatorAmount field of FeesDistributed must be exactly 0. Catches a
+    ///      regression where the residual `balance - protocolShare` arithmetic
+    ///      underflows or rounds wrong.
+    function test_distributeFees_emitsFeesDistributed_zeroOperatorAmount() public {
+        PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
+            feeReceiver: makeAddr("protocolOnlyFeeReceiver"),
+            feeCalculator: address(0),
+            authorizeCondition: address(0),
+            authorizeHook: address(0),
+            chargeCondition: address(0),
+            chargeHook: address(0),
+            captureCondition: address(0),
+            captureHook: address(0),
+            voidCondition: address(0),
+            voidHook: address(0),
+            refundCondition: address(0),
+            refundHook: address(0)
+        });
+        PaymentOperator protocolOnlyOp = PaymentOperator(factory.deployOperator(config));
+
+        AuthCaptureEscrow.PaymentInfo memory pi = AuthCaptureEscrow.PaymentInfo({
+            operator: address(protocolOnlyOp),
+            payer: payer,
+            receiver: receiver,
+            token: address(token),
+            maxAmount: uint120(PAYMENT_AMOUNT),
+            preApprovalExpiry: uint48(block.timestamp + 1 days),
+            authorizationExpiry: uint48(block.timestamp + 30 days),
+            refundExpiry: uint48(block.timestamp + 60 days),
+            minFeeBps: uint16(PROTOCOL_BPS),
+            maxFeeBps: uint16(PROTOCOL_BPS),
+            feeReceiver: address(protocolOnlyOp),
+            salt: 7
+        });
+        vm.prank(payer);
+        collector.preApprove(pi);
+        protocolOnlyOp.authorize(pi, PAYMENT_AMOUNT, address(collector), "");
+        vm.prank(receiver);
+        protocolOnlyOp.capture(pi, PAYMENT_AMOUNT, "");
+
+        uint256 protocolShare = (PAYMENT_AMOUNT * PROTOCOL_BPS) / 10000;
+
+        vm.expectEmit(true, false, false, true, address(protocolOnlyOp));
+        emit FeesDistributed(address(token), protocolShare, 0);
+        protocolOnlyOp.distributeFees(address(token));
+    }
+
     // ============ Factory event ============
 
     function test_deployOperator_emitsOperatorDeployed_feeReceiver() public {
@@ -203,16 +252,16 @@ contract EventEmitAssertionsTest is Test {
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: makeAddr("freshFeeReceiver"),
             feeCalculator: address(0),
-            authorizePreActionCondition: address(0),
-            authorizePostActionHook: address(0),
-            chargePreActionCondition: address(0),
-            chargePostActionHook: address(0),
-            capturePreActionCondition: address(0),
-            capturePostActionHook: address(0),
-            voidPreActionCondition: address(0),
-            voidPostActionHook: address(0),
-            refundPreActionCondition: address(0),
-            refundPostActionHook: address(0)
+            authorizeCondition: address(0),
+            authorizeHook: address(0),
+            chargeCondition: address(0),
+            chargeHook: address(0),
+            captureCondition: address(0),
+            captureHook: address(0),
+            voidCondition: address(0),
+            voidHook: address(0),
+            refundCondition: address(0),
+            refundHook: address(0)
         });
 
         // Compute the deterministic address before deployment so we can pin it in the event.

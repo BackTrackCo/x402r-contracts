@@ -126,16 +126,16 @@ contract GasBenchmark is Test {
         PaymentOperatorFactory.OperatorConfig memory bareConfig = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: operatorFeeRecipient,
             feeCalculator: address(0),
-            authorizePreActionCondition: address(0),
-            authorizePostActionHook: address(0),
-            chargePreActionCondition: address(0),
-            chargePostActionHook: address(0),
-            capturePreActionCondition: address(0),
-            capturePostActionHook: address(0),
-            voidPreActionCondition: address(0),
-            voidPostActionHook: address(0),
-            refundPreActionCondition: address(0),
-            refundPostActionHook: address(0)
+            authorizeCondition: address(0),
+            authorizeHook: address(0),
+            chargeCondition: address(0),
+            chargeHook: address(0),
+            captureCondition: address(0),
+            captureHook: address(0),
+            voidCondition: address(0),
+            voidHook: address(0),
+            refundCondition: address(0),
+            refundHook: address(0)
         });
         bareOperator = PaymentOperator(bareOperatorFactory.deployOperator(bareConfig));
 
@@ -143,16 +143,16 @@ contract GasBenchmark is Test {
         PaymentOperatorFactory.OperatorConfig memory feesOnlyConfig = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: operatorFeeRecipient,
             feeCalculator: address(operatorCalc),
-            authorizePreActionCondition: address(0),
-            authorizePostActionHook: address(0),
-            chargePreActionCondition: address(0),
-            chargePostActionHook: address(0),
-            capturePreActionCondition: address(0),
-            capturePostActionHook: address(0),
-            voidPreActionCondition: address(0),
-            voidPostActionHook: address(0),
-            refundPreActionCondition: address(0),
-            refundPostActionHook: address(0)
+            authorizeCondition: address(0),
+            authorizeHook: address(0),
+            chargeCondition: address(0),
+            chargeHook: address(0),
+            captureCondition: address(0),
+            captureHook: address(0),
+            voidCondition: address(0),
+            voidHook: address(0),
+            refundCondition: address(0),
+            refundHook: address(0)
         });
         feesOnlyOperator = PaymentOperator(operatorFactory.deployOperator(feesOnlyConfig));
 
@@ -161,16 +161,16 @@ contract GasBenchmark is Test {
         PaymentOperatorFactory.OperatorConfig memory simpleConfig = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: operatorFeeRecipient,
             feeCalculator: address(operatorCalc),
-            authorizePreActionCondition: address(0),
-            authorizePostActionHook: address(0),
-            chargePreActionCondition: address(0),
-            chargePostActionHook: address(0),
-            capturePreActionCondition: address(receiverCondition),
-            capturePostActionHook: address(0),
-            voidPreActionCondition: address(0),
-            voidPostActionHook: address(0),
-            refundPreActionCondition: address(0),
-            refundPostActionHook: address(0)
+            authorizeCondition: address(0),
+            authorizeHook: address(0),
+            chargeCondition: address(0),
+            chargeHook: address(0),
+            captureCondition: address(receiverCondition),
+            captureHook: address(0),
+            voidCondition: address(0),
+            voidHook: address(0),
+            refundCondition: address(0),
+            refundHook: address(0)
         });
         simpleOperator = PaymentOperator(operatorFactory.deployOperator(simpleConfig));
 
@@ -178,16 +178,16 @@ contract GasBenchmark is Test {
         PaymentOperatorFactory.OperatorConfig memory escrowOnlyConfig = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: operatorFeeRecipient,
             feeCalculator: address(operatorCalc),
-            authorizePreActionCondition: address(0),
-            authorizePostActionHook: address(escrowPeriod),
-            chargePreActionCondition: address(0),
-            chargePostActionHook: address(0),
-            capturePreActionCondition: address(escrowPeriod),
-            capturePostActionHook: address(0),
-            voidPreActionCondition: address(0),
-            voidPostActionHook: address(0),
-            refundPreActionCondition: address(0),
-            refundPostActionHook: address(0)
+            authorizeCondition: address(0),
+            authorizeHook: address(escrowPeriod),
+            chargeCondition: address(0),
+            chargeHook: address(0),
+            captureCondition: address(escrowPeriod),
+            captureHook: address(0),
+            voidCondition: address(0),
+            voidHook: address(0),
+            refundCondition: address(0),
+            refundHook: address(0)
         });
         escrowOnlyOperator = PaymentOperator(operatorFactory.deployOperator(escrowOnlyConfig));
 
@@ -195,21 +195,21 @@ contract GasBenchmark is Test {
         PaymentOperatorFactory.OperatorConfig memory fullConfig = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: operatorFeeRecipient,
             feeCalculator: address(operatorCalc),
-            authorizePreActionCondition: address(0),
-            authorizePostActionHook: address(escrowPeriod),
-            chargePreActionCondition: address(0),
-            chargePostActionHook: address(0),
-            capturePreActionCondition: address(captureCondition),
-            capturePostActionHook: address(0),
-            voidPreActionCondition: address(0),
-            voidPostActionHook: address(0),
-            refundPreActionCondition: address(0),
-            refundPostActionHook: address(0)
+            authorizeCondition: address(0),
+            authorizeHook: address(escrowPeriod),
+            chargeCondition: address(0),
+            chargeHook: address(0),
+            captureCondition: address(captureCondition),
+            captureHook: address(0),
+            voidCondition: address(0),
+            voidHook: address(0),
+            refundCondition: address(0),
+            refundHook: address(0)
         });
         fullOperator = PaymentOperator(operatorFactory.deployOperator(fullConfig));
 
         // Deploy dispute system
-        refundRequest = new RefundRequest(arbiter, address(escrow));
+        refundRequest = new RefundRequest(arbiter, address(escrow), bytes32(0));
         refundRequestEvidence = new RefundRequestEvidence(address(refundRequest));
 
         // Fund accounts

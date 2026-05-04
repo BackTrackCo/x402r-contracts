@@ -15,8 +15,8 @@ contract HookCombinatorFactory {
     error EmptyHooks();
     error TooManyHooks();
 
-    /// @notice Maximum hooks allowed (matches HookCombinator.MAX_POST_ACTION_HOOKS)
-    uint256 public constant MAX_POST_ACTION_HOOKS = 10;
+    /// @notice Maximum hooks allowed (matches HookCombinator.MAX_HOOKS)
+    uint256 public constant MAX_HOOKS = 10;
 
     /// @notice Salt prefix for CREATE2
     bytes32 private constant SALT_PREFIX = "hookCombinator";
@@ -35,7 +35,7 @@ contract HookCombinatorFactory {
      */
     function deploy(IHook[] calldata _hooks) external returns (address combinator) {
         if (_hooks.length == 0) revert EmptyHooks();
-        if (_hooks.length > MAX_POST_ACTION_HOOKS) revert TooManyHooks();
+        if (_hooks.length > MAX_HOOKS) revert TooManyHooks();
 
         bytes32 key = getKey(_hooks);
 

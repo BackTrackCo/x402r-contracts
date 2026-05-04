@@ -16,7 +16,7 @@ import {AuthorizationTimeHook} from "../src/plugins/hooks/AuthorizationTimeHook.
 /**
  * @title CombinatorLimitsTest
  * @notice Tests for condition combinator array length limits and nesting
- * @dev Ensures MAX_PRE_ACTION_CONDITIONS (10) / MAX_POST_ACTION_HOOKS (10) are enforced,
+ * @dev Ensures MAX_CONDITIONS (10) / MAX_HOOKS (10) are enforced,
  *      and nested combinators (Not wrapping And/Or) behave correctly
  */
 contract CombinatorLimitsTest is Test {
@@ -38,7 +38,7 @@ contract CombinatorLimitsTest is Test {
             conditions[i] = alwaysTrue;
         }
 
-        // Should succeed with exactly MAX_PRE_ACTION_CONDITIONS (10)
+        // Should succeed with exactly MAX_CONDITIONS (10)
         AndCondition andCond = new AndCondition(conditions);
         assertEq(andCond.conditionCount(), 10);
     }
@@ -70,7 +70,7 @@ contract CombinatorLimitsTest is Test {
             conditions[i] = alwaysTrue;
         }
 
-        // Should succeed with exactly MAX_PRE_ACTION_CONDITIONS (10)
+        // Should succeed with exactly MAX_CONDITIONS (10)
         OrCondition orCond = new OrCondition(conditions);
         assertEq(orCond.conditionCount(), 10);
     }
@@ -94,7 +94,7 @@ contract CombinatorLimitsTest is Test {
         new OrCondition(conditions);
     }
 
-    // ============ MAX_PRE_ACTION_CONDITIONS Constant Tests ============
+    // ============ MAX_CONDITIONS Constant Tests ============
 
     function test_MaxConditionsConstant() public {
         ICondition[] memory conditions = new ICondition[](1);
@@ -103,9 +103,9 @@ contract CombinatorLimitsTest is Test {
         AndCondition andCond = new AndCondition(conditions);
         OrCondition orCond = new OrCondition(conditions);
 
-        // Verify MAX_PRE_ACTION_CONDITIONS is 10 for both
-        assertEq(andCond.MAX_PRE_ACTION_CONDITIONS(), 10);
-        assertEq(orCond.MAX_PRE_ACTION_CONDITIONS(), 10);
+        // Verify MAX_CONDITIONS is 10 for both
+        assertEq(andCond.MAX_CONDITIONS(), 10);
+        assertEq(orCond.MAX_CONDITIONS(), 10);
     }
 
     // ============ NotCondition Wrapping Combinator Tests ============
@@ -274,7 +274,7 @@ contract CombinatorLimitsTest is Test {
         }
 
         HookCombinator combinator = new HookCombinator(recs);
-        assertEq(combinator.getHookCount(), 10, "Should accept exactly MAX_POST_ACTION_HOOKS (10)");
+        assertEq(combinator.getHookCount(), 10, "Should accept exactly MAX_HOOKS (10)");
     }
 
     function test_HookCombinator_RevertsOnTooManyHooks() public {
@@ -299,7 +299,7 @@ contract CombinatorLimitsTest is Test {
         recs[0] = IHook(address(new AuthorizationTimeHook(address(escrow), bytes32(0))));
 
         HookCombinator combinator = new HookCombinator(recs);
-        assertEq(combinator.MAX_POST_ACTION_HOOKS(), 10, "MAX_POST_ACTION_HOOKS should be 10");
+        assertEq(combinator.MAX_HOOKS(), 10, "MAX_HOOKS should be 10");
     }
 
     // ============ Helpers ============

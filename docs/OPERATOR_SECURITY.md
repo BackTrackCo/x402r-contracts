@@ -72,19 +72,19 @@ interface ICondition {
 }
 
 // Usage in PaymentOperator
-if (address(CAPTURE_PRE_ACTION_CONDITION) != address(0)) {
-    if (!CAPTURE_PRE_ACTION_CONDITION.check(paymentInfo, msg.sender)) {
-        revert PreActionConditionNotMet();
+if (address(CAPTURE_CONDITION) != address(0)) {
+    if (!CAPTURE_CONDITION.check(paymentInfo, msg.sender)) {
+        revert ConditionNotMet();
     }
 }
 ```
 
 **Condition slots** (all immutable after deployment):
-- `AUTHORIZE_PRE_ACTION_CONDITION`
-- `CHARGE_PRE_ACTION_CONDITION`
-- `CAPTURE_PRE_ACTION_CONDITION`
-- `VOID_PRE_ACTION_CONDITION`
-- `REFUND_PRE_ACTION_CONDITION`
+- `AUTHORIZE_CONDITION`
+- `CHARGE_CONDITION`
+- `CAPTURE_CONDITION`
+- `VOID_CONDITION`
+- `REFUND_CONDITION`
 
 ---
 
@@ -232,7 +232,7 @@ AndCondition(
 - ❌ Hidden backdoors in complex logic
 
 **Mitigation:**
-- Protocol enforces `MAX_PRE_ACTION_CONDITIONS = 10` depth limit
+- Protocol enforces `MAX_CONDITIONS = 10` depth limit
 - Avoid complex combinator trees
 - Prefer simple, audited conditions
 
@@ -257,17 +257,17 @@ interface IHook {
 // Usage in PaymentOperator
 ESCROW.authorize(...);  // Main action
 
-if (address(AUTHORIZE_POST_ACTION_HOOK) != address(0)) {
-    AUTHORIZE_POST_ACTION_HOOK.run(paymentInfo, amount, msg.sender);  // Callback
+if (address(AUTHORIZE_HOOK) != address(0)) {
+    AUTHORIZE_HOOK.run(paymentInfo, amount, msg.sender);  // Callback
 }
 ```
 
 **Hook slots** (all immutable):
-- `AUTHORIZE_POST_ACTION_HOOK`
-- `CHARGE_POST_ACTION_HOOK`
-- `CAPTURE_POST_ACTION_HOOK`
-- `VOID_POST_ACTION_HOOK`
-- `REFUND_POST_ACTION_HOOK`
+- `AUTHORIZE_HOOK`
+- `CHARGE_HOOK`
+- `CAPTURE_HOOK`
+- `VOID_HOOK`
+- `REFUND_HOOK`
 
 ---
 
@@ -405,7 +405,7 @@ contract PaymentOperator is Ownable, PaymentOperatorAccess, IOperator {
 
     function authorize(...) external {
         ESCROW.authorize(...);  // Escrow is protected
-        AUTHORIZE_POST_ACTION_HOOK.run(...);  // Callback - can reenter!
+        AUTHORIZE_HOOK.run(...);  // Callback - can reenter!
     }
 }
 ```
@@ -415,7 +415,7 @@ contract PaymentOperator is Ownable, PaymentOperatorAccess, IOperator {
 ```
 1. User calls operator.authorize()
 2.   ├─> ESCROW.authorize() [PROTECTED by nonReentrant]
-3.   └─> AUTHORIZE_POST_ACTION_HOOK.run() [CALLBACK]
+3.   └─> AUTHORIZE_HOOK.run() [CALLBACK]
 4.        └─> Malicious hook calls operator.capture() [NO GUARD]
 5.             └─> ESCROW.capture() [PROTECTED by nonReentrant - separate context]
 ```
@@ -557,7 +557,7 @@ contract EscrowPeriod is AuthorizationTimeHook, ICondition {
 
 **Use case**: Payment escrow with dispute period
 **Risk**: None (if hook is trusted)
-**NOTE**: Use the same EscrowPeriod address for both AUTHORIZE_POST_ACTION_HOOK and CAPTURE_PRE_ACTION_CONDITION
+**NOTE**: Use the same EscrowPeriod address for both AUTHORIZE_HOOK and CAPTURE_CONDITION
 
 ---
 
@@ -667,11 +667,11 @@ Before deploying a PaymentOperator:
 
 ---
 
-## CAPTURE_PRE_ACTION_CONDITION = address(0) Risk
+## CAPTURE_CONDITION = address(0) Risk
 
 ### Warning: Immediate Capture Without Escrow Period
 
-When deploying a PaymentOperator with `CAPTURE_PRE_ACTION_CONDITION = address(0)`, **anyone can capture funds immediately after authorization**. This is the default behavior and is dangerous for most payment use cases.
+When deploying a PaymentOperator with `CAPTURE_CONDITION = address(0)`, **anyone can capture funds immediately after authorization**. This is the default behavior and is dangerous for most payment use cases.
 
 ### Attack Scenario: Front-Running Refund Requests
 
@@ -700,17 +700,17 @@ This is a **race condition** inherent to `address(0)` capture conditions. The Re
 
 ### Recommendation
 
-Use `EscrowPeriod` as `CAPTURE_PRE_ACTION_CONDITION` for any payment flow that involves:
+Use `EscrowPeriod` as `CAPTURE_CONDITION` for any payment flow that involves:
 - Refund requests (RefundRequest contract)
 - Dispute resolution
 - Delivery-based settlement
 
 ```solidity
 // SAFE: Capture blocked until escrow period passes
-config.capturePreActionCondition = address(escrowPeriod);
+config.captureCondition = address(escrowPeriod);
 
 // DANGEROUS: Immediate capture, refund requests easily front-run
-config.capturePreActionCondition = address(0);
+config.captureCondition = address(0);
 ```
 
 See [SECURITY.md](./SECURITY.md) for the full escrow trust boundary analysis.

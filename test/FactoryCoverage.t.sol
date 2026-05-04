@@ -263,8 +263,8 @@ contract FactoryCoverageTest is Test {
         address freezeAddr = factory.deploy(address(payerCond), address(payerCond), 3 days, address(0));
         Freeze freezeContract = Freeze(freezeAddr);
 
-        assertEq(address(freezeContract.FREEZE_PRE_ACTION_CONDITION()), address(payerCond));
-        assertEq(address(freezeContract.UNFREEZE_PRE_ACTION_CONDITION()), address(payerCond));
+        assertEq(address(freezeContract.FREEZE_CONDITION()), address(payerCond));
+        assertEq(address(freezeContract.UNFREEZE_CONDITION()), address(payerCond));
         assertEq(freezeContract.FREEZE_DURATION(), 3 days);
     }
 
@@ -564,7 +564,7 @@ contract FactoryCoverageTest is Test {
 
     function test_RefundRequestEvidenceFactory_Deploy() public {
         RefundRequestEvidenceFactory factory = new RefundRequestEvidenceFactory();
-        address refundRequest = address(new RefundRequest(makeAddr("arbiter"), address(escrow)));
+        address refundRequest = address(new RefundRequest(makeAddr("arbiter"), address(escrow), bytes32(0)));
 
         address evidence = factory.deploy(refundRequest);
         assertTrue(evidence != address(0), "Evidence should be deployed");
@@ -573,7 +573,7 @@ contract FactoryCoverageTest is Test {
 
     function test_RefundRequestEvidenceFactory_IdempotentDeploy() public {
         RefundRequestEvidenceFactory factory = new RefundRequestEvidenceFactory();
-        address refundRequest = address(new RefundRequest(makeAddr("arbiter"), address(escrow)));
+        address refundRequest = address(new RefundRequest(makeAddr("arbiter"), address(escrow), bytes32(0)));
 
         address first = factory.deploy(refundRequest);
         address second = factory.deploy(refundRequest);
@@ -582,8 +582,8 @@ contract FactoryCoverageTest is Test {
 
     function test_RefundRequestEvidenceFactory_DifferentRefundRequests() public {
         RefundRequestEvidenceFactory factory = new RefundRequestEvidenceFactory();
-        address rr1 = address(new RefundRequest(makeAddr("arbiter1"), address(escrow)));
-        address rr2 = address(new RefundRequest(makeAddr("arbiter2"), address(escrow)));
+        address rr1 = address(new RefundRequest(makeAddr("arbiter1"), address(escrow), bytes32(0)));
+        address rr2 = address(new RefundRequest(makeAddr("arbiter2"), address(escrow), bytes32(0)));
 
         address ev1 = factory.deploy(rr1);
         address ev2 = factory.deploy(rr2);
@@ -592,7 +592,7 @@ contract FactoryCoverageTest is Test {
 
     function test_RefundRequestEvidenceFactory_ComputeAddress() public {
         RefundRequestEvidenceFactory factory = new RefundRequestEvidenceFactory();
-        address refundRequest = address(new RefundRequest(makeAddr("arbiter"), address(escrow)));
+        address refundRequest = address(new RefundRequest(makeAddr("arbiter"), address(escrow), bytes32(0)));
 
         address predicted = factory.computeAddress(refundRequest);
         address actual = factory.deploy(refundRequest);
@@ -601,7 +601,7 @@ contract FactoryCoverageTest is Test {
 
     function test_RefundRequestEvidenceFactory_GetDeployed() public {
         RefundRequestEvidenceFactory factory = new RefundRequestEvidenceFactory();
-        address refundRequest = address(new RefundRequest(makeAddr("arbiter"), address(escrow)));
+        address refundRequest = address(new RefundRequest(makeAddr("arbiter"), address(escrow), bytes32(0)));
 
         assertEq(factory.getDeployed(refundRequest), address(0), "Should be zero before deployment");
         address evidence = factory.deploy(refundRequest);
@@ -628,16 +628,16 @@ contract FactoryCoverageTest is Test {
         return PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
             feeCalculator: feeCalc,
-            authorizePreActionCondition: address(0),
-            authorizePostActionHook: address(0),
-            chargePreActionCondition: address(0),
-            chargePostActionHook: address(0),
-            capturePreActionCondition: address(0),
-            capturePostActionHook: address(0),
-            voidPreActionCondition: address(0),
-            voidPostActionHook: address(0),
-            refundPreActionCondition: address(0),
-            refundPostActionHook: address(0)
+            authorizeCondition: address(0),
+            authorizeHook: address(0),
+            chargeCondition: address(0),
+            chargeHook: address(0),
+            captureCondition: address(0),
+            captureHook: address(0),
+            voidCondition: address(0),
+            voidHook: address(0),
+            refundCondition: address(0),
+            refundHook: address(0)
         });
     }
 }

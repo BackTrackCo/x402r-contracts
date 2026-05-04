@@ -3,18 +3,18 @@
 pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {IHook} from "../../plugins/hooks/IHook.sol";
-import {InvalidOperator, NotPayer, PaymentDoesNotExist, ZeroAddress} from "../../types/Errors.sol";
+import {BaseHook} from "../../plugins/hooks/BaseHook.sol";
+import {InvalidOperator, NotPayer, PaymentDoesNotExist} from "../../types/Errors.sol";
 import {RequestStatus} from "../types/Types.sol";
 import {RequestAlreadyExists, RequestDoesNotExist, RequestNotPending, ZeroRefundAmount} from "../types/Errors.sol";
 import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} from "../types/Events.sol";
 
 /**
  * @title RefundRequest
- * @notice Refund request lifecycle as an IHook plugin for PaymentOperator.
+ * @notice Refund request lifecycle as a BaseHook plugin for PaymentOperator.
  * @dev ARBITER is an immutable address for deny/refuse gating. Approval happens via
  *      operator.void() which triggers run() on this contract as the
- *      VOID_POST_ACTION_HOOK.
+ *      VOID_HOOK.
  *
  *      State machine:
  *        Pending  -> Approved  (operator calls run() after void)
@@ -22,40 +22,45 @@ import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} fro
  *        Pending  -> Refused   (onlyArbiter)
  *        Pending  -> Cancelled (payer only)
  *
- *      Note: under the canonical wiring (VOID_POST_ACTION_HOOK), void() empties the
+ *      Note: under the canonical wiring (VOID_HOOK), void() empties the
  *      entire authorization in one shot, so a request goes from Pending -> Approved
  *      on the first run() call and the authorization is gone after that — subsequent
  *      run() invocations from VOID would revert at the escrow level (no capturable
  *      funds left). The cumulative-top-up branch in this contract's accounting is
  *      unreachable in that wiring.
  *
- *      IHook is generic and plugin slots on PaymentOperator are permissionlessly
- *      configurable: an operator can wire RefundRequest to CHARGE_POST_ACTION_HOOK
- *      or REFUND_POST_ACTION_HOOK, both of which fire repeatedly for the same
- *      paymentInfoHash. Under those wirings the cumulative branch IS reachable;
- *      cappedAmount is bounded by (request.amount - request.approvedAmount) so it
- *      cannot exceed the original request, and the run() bailouts preserve the
- *      no-op-on-mismatch contract.
+ *      Plugin slots on PaymentOperator are permissionlessly configurable: an operator
+ *      can wire RefundRequest to CHARGE_HOOK or REFUND_HOOK, both of which fire
+ *      repeatedly for the same paymentInfoHash. Under those wirings the cumulative
+ *      branch IS reachable; cappedAmount is bounded by
+ *      (request.amount - request.approvedAmount) so it cannot exceed the original
+ *      request, and the run() bailouts preserve the no-op-on-mismatch contract.
  *
  *      Keying: paymentInfoHash only (no nonce). One active request per payment.
  *
- *      run() behavior: No-op if no request exists or request is not approvable.
- *      Caps approved amount at requested amount. Never reverts on state mismatches.
+ *      run() behavior: After BaseHook auth (operator-or-authorized-codehash, plus
+ *      payment-exists check), no-op if no refund request exists or it is not
+ *      approvable. Caps approved amount at requested amount. Never reverts on
+ *      state mismatches inside the refund-request state machine.
+ *
+ *      HOOK COMBINATOR USAGE: BaseHook's AUTHORIZED_CODEHASH gate determines whether
+ *      run() will accept calls from a HookCombinator. The canonical factory passes
+ *      bytes32(0), so the canonical RefundRequest only accepts direct calls from
+ *      paymentInfo.operator — installing it inside a HookCombinator reverts with
+ *      OnlyOperator (rather than silently no-opping, the previous behavior). To
+ *      compose with other hooks, deploy a separate RefundRequest with
+ *      AUTHORIZED_CODEHASH = keccak256(combinator.runtimeCode).
  *
  *      HASH PROVENANCE: paymentInfoHash is always computed via the canonical immutable
- *      ESCROW (set at construction), never via paymentInfo.operator. This blocks an
- *      attacker who supplies a malicious operator from forging hash slots or pre-occupying
- *      legitimate paymentInfoHashes. requestRefund() additionally requires the payment
- *      to exist in ESCROW (paymentState.hasCollected || authorizedAmount > 0).
+ *      ESCROW (inherited from BaseHook), never via paymentInfo.operator. This blocks
+ *      an attacker who supplies a malicious operator from forging hash slots or
+ *      pre-occupying legitimate paymentInfoHashes. requestRefund() additionally
+ *      requires the payment to exist in ESCROW (paymentState.hasCollected ||
+ *      authorizedAmount > 0).
  */
-contract RefundRequest is IHook {
+contract RefundRequest is BaseHook {
     /// @notice The arbiter address that can deny and refuse refund requests
     address public immutable ARBITER;
-
-    /// @notice Canonical escrow used to compute paymentInfoHash. Bound at construction so
-    ///         attackers cannot supply a malicious paymentInfo.operator returning an
-    ///         attacker-controlled escrow to forge or collide hashes.
-    AuthCaptureEscrow public immutable ESCROW;
 
     struct RefundRequestData {
         bytes32 paymentInfoHash;
@@ -124,11 +129,9 @@ contract RefundRequest is IHook {
         if (paymentInfo.operator == address(0)) revert InvalidOperator();
     }
 
-    constructor(address _arbiter, address _escrow) {
+    constructor(address _arbiter, address _escrow, bytes32 _authorizedCodehash) BaseHook(_escrow, _authorizedCodehash) {
         if (_arbiter == address(0)) revert ZeroArbiter();
-        if (_escrow == address(0)) revert ZeroAddress();
         ARBITER = _arbiter;
-        ESCROW = AuthCaptureEscrow(_escrow);
     }
 
     // ============ IHook Implementation ============
@@ -139,7 +142,9 @@ contract RefundRequest is IHook {
     /// @param paymentInfo PaymentInfo struct
     /// @param amount Amount that was refunded
     /// @param caller The address that called operator.void()
-    /// @dev Only the operator in the paymentInfo is allowed to invoke run().
+    /// @dev Reverts with OnlyOperator if msg.sender is neither paymentInfo.operator nor a
+    ///      contract whose runtime codehash matches AUTHORIZED_CODEHASH (e.g. HookCombinator).
+    ///      Reverts with PaymentDoesNotExist if the payment is not present in the canonical escrow.
     function run(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint256 amount,
@@ -148,10 +153,7 @@ contract RefundRequest is IHook {
     )
         external
     {
-        // Only the operator in the paymentInfo can call run()
-        if (msg.sender != paymentInfo.operator) return;
-
-        bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
+        bytes32 paymentInfoHash = _verifyAndHash(paymentInfo);
 
         RefundRequestData storage request = refundRequests[paymentInfoHash];
 

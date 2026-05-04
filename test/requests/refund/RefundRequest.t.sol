@@ -12,7 +12,7 @@ import {PaymentOperator} from "../../../src/operator/payment/PaymentOperator.sol
 import {PaymentOperatorFactory} from "../../../src/operator/PaymentOperatorFactory.sol";
 import {ProtocolFeeConfig} from "../../../src/plugins/fees/ProtocolFeeConfig.sol";
 import {RequestStatus} from "../../../src/requests/types/Types.sol";
-import {InvalidOperator, PaymentDoesNotExist} from "../../../src/types/Errors.sol";
+import {InvalidOperator, OnlyOperator, PaymentDoesNotExist} from "../../../src/types/Errors.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
@@ -51,33 +51,33 @@ contract RefundRequestTest is Test {
         collector = new PreApprovalPaymentCollector(address(escrow));
 
         // Deploy RefundRequest with arbiter and canonical escrow
-        refundRequest = new RefundRequest(arbiter, address(escrow));
+        refundRequest = new RefundRequest(arbiter, address(escrow), bytes32(0));
 
         // Build condition tree:
-        // VOID_PRE_ACTION_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)
+        // VOID_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)
         arbiterCondition = new StaticAddressCondition(arbiter);
         receiverCondition = new ReceiverCondition();
-        ICondition[] memory refundPreActionConditions = new ICondition[](2);
-        refundPreActionConditions[0] = ICondition(address(arbiterCondition));
-        refundPreActionConditions[1] = ICondition(address(receiverCondition));
-        voidCondition = new OrCondition(refundPreActionConditions);
+        ICondition[] memory refundConditions = new ICondition[](2);
+        refundConditions[0] = ICondition(address(arbiterCondition));
+        refundConditions[1] = ICondition(address(receiverCondition));
+        voidCondition = new OrCondition(refundConditions);
 
-        // Deploy operator with refundRequest as VOID_POST_ACTION_HOOK
+        // Deploy operator with refundRequest as VOID_HOOK
         protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
         operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
-            authorizePreActionCondition: address(0),
-            authorizePostActionHook: address(0),
-            chargePreActionCondition: address(0),
-            chargePostActionHook: address(0),
-            capturePreActionCondition: address(0),
-            capturePostActionHook: address(0),
-            voidPreActionCondition: address(voidCondition),
-            voidPostActionHook: address(refundRequest),
-            refundPreActionCondition: address(0),
-            refundPostActionHook: address(0)
+            authorizeCondition: address(0),
+            authorizeHook: address(0),
+            chargeCondition: address(0),
+            chargeHook: address(0),
+            captureCondition: address(0),
+            captureHook: address(0),
+            voidCondition: address(voidCondition),
+            voidHook: address(refundRequest),
+            refundCondition: address(0),
+            refundHook: address(0)
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
 
@@ -116,7 +116,7 @@ contract RefundRequestTest is Test {
 
     function test_constructor_zeroArbiter() public {
         vm.expectRevert(RefundRequest.ZeroArbiter.selector);
-        new RefundRequest(address(0), address(escrow));
+        new RefundRequest(address(0), address(escrow), bytes32(0));
     }
 
     function test_constructor_setsArbiter() public view {
@@ -264,7 +264,7 @@ contract RefundRequestTest is Test {
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT));
 
-        // Payer cannot call void (not in VOID_PRE_ACTION_CONDITION)
+        // Payer cannot call void (not in VOID_CONDITION)
         vm.prank(payer);
         vm.expectRevert();
         operator.void(paymentInfo, "");
@@ -508,7 +508,7 @@ contract RefundRequestTest is Test {
         vm.expectRevert();
         operator.void(paymentInfo, "");
 
-        // Payer calling directly also blocked (not in VOID_PRE_ACTION_CONDITION)
+        // Payer calling directly also blocked (not in VOID_CONDITION)
         vm.prank(payer);
         vm.expectRevert();
         operator.void(paymentInfo, "");
@@ -642,17 +642,20 @@ contract RefundRequestTest is Test {
         assertFalse(refundRequest.hasRefundRequest(paymentInfo));
     }
 
-    function test_record_noopIfNotOperator() public {
+    function test_run_revertsIfNotOperator() public {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _authorize();
 
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT));
 
-        // Call record() directly from non-operator — should be a no-op
+        // Calling run() directly from non-operator with AUTHORIZED_CODEHASH = bytes32(0)
+        // must revert with OnlyOperator (BaseHook auth). The previous silent no-op
+        // hid this on combinator misconfiguration; the revert now surfaces it.
         vm.prank(arbiter);
+        vm.expectRevert(OnlyOperator.selector);
         refundRequest.run(paymentInfo, PAYMENT_AMOUNT, arbiter, "");
 
-        // Status should still be Pending
+        // Status unchanged
         RefundRequest.RefundRequestData memory data = refundRequest.getRefundRequest(paymentInfo);
         assertEq(uint256(data.status), uint256(RequestStatus.Pending));
     }

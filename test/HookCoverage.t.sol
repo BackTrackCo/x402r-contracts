@@ -14,10 +14,10 @@ import {HookCombinator} from "../src/plugins/hooks/combinators/HookCombinator.so
 import {IHook} from "../src/plugins/hooks/IHook.sol";
 
 /**
- * @title PostActionHookCoverageTest
+ * @title HookCoverageTest
  * @notice Tests for AuthorizationTimeHook, PaymentIndexHook, HookCombinator, BaseHook
  */
-contract PostActionHookCoverageTest is Test {
+contract HookCoverageTest is Test {
     AuthCaptureEscrow public escrow;
     PreApprovalPaymentCollector public collector;
     MockERC20 public token;
@@ -52,7 +52,7 @@ contract PostActionHookCoverageTest is Test {
 
     function test_AuthorizationTimeHook_RecordsTimestamp() public {
         AuthorizationTimeHook timeHook = new AuthorizationTimeHook(address(escrow), bytes32(0));
-        PaymentOperator op = _deployWithPostActionHook(address(timeHook));
+        PaymentOperator op = _deployWithHook(address(timeHook));
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), 1);
 
@@ -73,21 +73,21 @@ contract PostActionHookCoverageTest is Test {
     // ============ PaymentIndexHook ============
 
     function test_PaymentIndexHook_IndexesPayerAndReceiver() public {
-        PaymentIndexHook indexPostActionHook = new PaymentIndexHook(address(escrow), bytes32(0));
-        PaymentOperator op = _deployWithPostActionHook(address(indexPostActionHook));
+        PaymentIndexHook indexHook = new PaymentIndexHook(address(escrow), bytes32(0));
+        PaymentOperator op = _deployWithHook(address(indexHook));
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), 2);
         vm.prank(payer);
         collector.preApprove(paymentInfo);
         op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
-        assertEq(indexPostActionHook.payerPaymentCount(payer), 1, "Payer should have 1 payment");
-        assertEq(indexPostActionHook.receiverPaymentCount(receiver), 1, "Receiver should have 1 payment");
+        assertEq(indexHook.payerPaymentCount(payer), 1, "Payer should have 1 payment");
+        assertEq(indexHook.receiverPaymentCount(receiver), 1, "Receiver should have 1 payment");
     }
 
     function test_PaymentIndexHook_GetPayerPayments_Pagination() public {
-        PaymentIndexHook indexPostActionHook = new PaymentIndexHook(address(escrow), bytes32(0));
-        PaymentOperator op = _deployWithPostActionHook(address(indexPostActionHook));
+        PaymentIndexHook indexHook = new PaymentIndexHook(address(escrow), bytes32(0));
+        PaymentOperator op = _deployWithHook(address(indexHook));
 
         // Create 3 payments
         for (uint256 i = 0; i < 3; i++) {
@@ -98,91 +98,118 @@ contract PostActionHookCoverageTest is Test {
         }
 
         // Get page 1 (offset 0, count 2)
-        (AuthCaptureEscrow.PaymentInfo[] memory records, uint256 total) =
-            indexPostActionHook.getPayerPayments(payer, 0, 2);
+        (AuthCaptureEscrow.PaymentInfo[] memory records, uint256 total) = indexHook.getPayerPayments(payer, 0, 2);
         assertEq(total, 3, "Total should be 3");
         assertEq(records.length, 2, "Page should have 2 records");
 
         // Get page 2 (offset 2, count 2)
-        (records, total) = indexPostActionHook.getPayerPayments(payer, 2, 2);
+        (records, total) = indexHook.getPayerPayments(payer, 2, 2);
         assertEq(records.length, 1, "Last page should have 1 record");
     }
 
     function test_PaymentIndexHook_GetPayerPayments_OffsetBeyondTotal() public {
-        PaymentIndexHook indexPostActionHook = new PaymentIndexHook(address(escrow), bytes32(0));
-        (AuthCaptureEscrow.PaymentInfo[] memory records, uint256 total) =
-            indexPostActionHook.getPayerPayments(payer, 100, 10);
+        PaymentIndexHook indexHook = new PaymentIndexHook(address(escrow), bytes32(0));
+        (AuthCaptureEscrow.PaymentInfo[] memory records, uint256 total) = indexHook.getPayerPayments(payer, 100, 10);
         assertEq(total, 0, "Total should be 0 for no payments");
         assertEq(records.length, 0, "Should return empty array");
     }
 
     function test_PaymentIndexHook_GetPayerPayments_ZeroCount() public {
-        PaymentIndexHook indexPostActionHook = new PaymentIndexHook(address(escrow), bytes32(0));
-        PaymentOperator op = _deployWithPostActionHook(address(indexPostActionHook));
+        PaymentIndexHook indexHook = new PaymentIndexHook(address(escrow), bytes32(0));
+        PaymentOperator op = _deployWithHook(address(indexHook));
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), 3);
         vm.prank(payer);
         collector.preApprove(paymentInfo);
         op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
-        (AuthCaptureEscrow.PaymentInfo[] memory records, uint256 total) =
-            indexPostActionHook.getPayerPayments(payer, 0, 0);
+        (AuthCaptureEscrow.PaymentInfo[] memory records, uint256 total) = indexHook.getPayerPayments(payer, 0, 0);
         assertEq(total, 1, "Total should be 1");
         assertEq(records.length, 0, "Should return empty for zero count");
     }
 
     function test_PaymentIndexHook_GetPayerPayment_IndexOutOfBounds() public {
-        PaymentIndexHook indexPostActionHook = new PaymentIndexHook(address(escrow), bytes32(0));
+        PaymentIndexHook indexHook = new PaymentIndexHook(address(escrow), bytes32(0));
         vm.expectRevert(PaymentIndexHook.IndexOutOfBounds.selector);
-        indexPostActionHook.getPayerPayment(payer, 0);
+        indexHook.getPayerPayment(payer, 0);
     }
 
     function test_PaymentIndexHook_GetReceiverPayments() public {
-        PaymentIndexHook indexPostActionHook = new PaymentIndexHook(address(escrow), bytes32(0));
-        PaymentOperator op = _deployWithPostActionHook(address(indexPostActionHook));
+        PaymentIndexHook indexHook = new PaymentIndexHook(address(escrow), bytes32(0));
+        PaymentOperator op = _deployWithHook(address(indexHook));
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), 4);
         vm.prank(payer);
         collector.preApprove(paymentInfo);
         op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
-        (AuthCaptureEscrow.PaymentInfo[] memory records, uint256 total) =
-            indexPostActionHook.getReceiverPayments(receiver, 0, 10);
+        (AuthCaptureEscrow.PaymentInfo[] memory records, uint256 total) = indexHook.getReceiverPayments(receiver, 0, 10);
         assertEq(total, 1, "Receiver should have 1 payment");
         assertEq(records.length, 1, "Should return 1 record");
     }
 
     function test_PaymentIndexHook_GetReceiverPayment_IndexOutOfBounds() public {
-        PaymentIndexHook indexPostActionHook = new PaymentIndexHook(address(escrow), bytes32(0));
+        PaymentIndexHook indexHook = new PaymentIndexHook(address(escrow), bytes32(0));
         vm.expectRevert(PaymentIndexHook.IndexOutOfBounds.selector);
-        indexPostActionHook.getReceiverPayment(receiver, 0);
+        indexHook.getReceiverPayment(receiver, 0);
     }
 
     // ============ HookCombinator ============
 
-    function test_HookCombinator_CombinesMultipleHooks() public {
-        // Use codehash(0) so sub-hooks accept calls from the combinator
-        // The combinator itself checks msg.sender == operator, then delegates
-        AuthorizationTimeHook timeHook = new AuthorizationTimeHook(address(escrow), bytes32(0));
+    function test_HookCombinator_E2E_CodehashGate_StateMutation() public {
+        // Deploy combinator first so we can read its runtime codehash.
+        // Pre-deploy a placeholder hook so the combinator constructor accepts a non-empty array.
+        AuthorizationTimeHook placeholder = new AuthorizationTimeHook(address(escrow), bytes32(0));
+        IHook[] memory placeholderArr = new IHook[](1);
+        placeholderArr[0] = IHook(address(placeholder));
+        HookCombinator combinator = new HookCombinator(placeholderArr);
 
-        IHook[] memory recs = new IHook[](1);
-        recs[0] = IHook(address(timeHook));
+        // Real BaseHook subclass gated on the combinator's runtime codehash.
+        // EXTCODEHASH (`.codehash`) reads the deployed runtime bytecode hash,
+        // which is what BaseHook._verifyAndHash compares against.
+        bytes32 combinatorCodehash = address(combinator).codehash;
+        PaymentIndexHook gatedHook = new PaymentIndexHook(address(escrow), combinatorCodehash);
 
-        HookCombinator combinator = new HookCombinator(recs);
-        PaymentOperator op = _deployWithPostActionHook(address(combinator));
+        // Wire a fresh combinator that actually contains the gated hook.
+        IHook[] memory hooks = new IHook[](1);
+        hooks[0] = IHook(address(gatedHook));
+        HookCombinator realCombinator = new HookCombinator(hooks);
+        // Sanity: same bytecode → same codehash → same gate.
+        assertEq(address(realCombinator).codehash, combinatorCodehash, "combinator codehash must match");
 
-        // The combinator checks msg.sender == paymentInfo.operator
-        // Sub-hooks (BaseHook) check codehash of msg.sender
-        // With codehash=bytes32(0), BaseHook accepts any operator-codehash caller
-        // But the actual caller of sub-hooks is the combinator, not the operator
-        // So we just test the combinator's own validation and setup
-        assertEq(combinator.getHookCount(), 1, "Combinator should have 1 hook");
+        PaymentOperator op = _deployWithHook(address(realCombinator));
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), 7);
 
-        IHook[] memory retrieved = combinator.getHooks();
-        assertEq(address(retrieved[0]), address(timeHook), "Should contain time hook");
+        vm.prank(payer);
+        collector.preApprove(paymentInfo);
+        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+
+        // If the codehash gate were broken, BaseHook._verifyAndHash would revert with
+        // OnlyOperator (combinator's msg.sender != paymentInfo.operator) and the operator
+        // call would have failed. Reaching this assertion proves the gate accepted the
+        // combinator and state was mutated.
+        assertEq(gatedHook.payerPaymentCount(payer), 1, "Indexed payer payment via combinator");
+        assertEq(gatedHook.receiverPaymentCount(receiver), 1, "Indexed receiver payment via combinator");
     }
 
-    function test_HookCombinator_RecorderCount() public {
+    function test_HookCombinator_E2E_CodehashMismatch_Reverts() public {
+        // Gated on a clearly-wrong codehash; combinator should fail BaseHook auth.
+        PaymentIndexHook gatedHook = new PaymentIndexHook(address(escrow), keccak256("not-the-combinator"));
+
+        IHook[] memory hooks = new IHook[](1);
+        hooks[0] = IHook(address(gatedHook));
+        HookCombinator combinator = new HookCombinator(hooks);
+
+        PaymentOperator op = _deployWithHook(address(combinator));
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), 8);
+
+        vm.prank(payer);
+        collector.preApprove(paymentInfo);
+        vm.expectRevert();
+        op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+    }
+
+    function test_HookCombinator_GetHookCount() public {
         AuthorizationTimeHook r1 = new AuthorizationTimeHook(address(escrow), bytes32(0));
         AuthorizationTimeHook r2 = new AuthorizationTimeHook(address(escrow), bytes32(0));
 
@@ -241,20 +268,20 @@ contract PostActionHookCoverageTest is Test {
 
     // ============ Helpers ============
 
-    function _deployWithPostActionHook(address hook) internal returns (PaymentOperator) {
+    function _deployWithHook(address hook) internal returns (PaymentOperator) {
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
-            authorizePreActionCondition: address(0),
-            authorizePostActionHook: hook,
-            chargePreActionCondition: address(0),
-            chargePostActionHook: address(0),
-            capturePreActionCondition: address(0),
-            capturePostActionHook: address(0),
-            voidPreActionCondition: address(0),
-            voidPostActionHook: address(0),
-            refundPreActionCondition: address(0),
-            refundPostActionHook: address(0)
+            authorizeCondition: address(0),
+            authorizeHook: hook,
+            chargeCondition: address(0),
+            chargeHook: address(0),
+            captureCondition: address(0),
+            captureHook: address(0),
+            voidCondition: address(0),
+            voidHook: address(0),
+            refundCondition: address(0),
+            refundHook: address(0)
         });
         return PaymentOperator(factory.deployOperator(config));
     }

@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
 import {StaticFeeCalculator} from "../src/plugins/fees/static-fee-calculator/StaticFeeCalculator.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
+import {ZeroAddress} from "../src/types/Errors.sol";
 
 contract ProtocolFeeConfigTest is Test {
     ProtocolFeeConfig public config;
@@ -37,12 +38,12 @@ contract ProtocolFeeConfigTest is Test {
     }
 
     function test_Constructor_RevertsOnZeroOwner() public {
-        vm.expectRevert();
+        vm.expectRevert(ZeroAddress.selector);
         new ProtocolFeeConfig(address(calculator), protocolFeeRecipient, address(0));
     }
 
     function test_Constructor_RevertsOnZeroRecipient() public {
-        vm.expectRevert();
+        vm.expectRevert(ZeroAddress.selector);
         new ProtocolFeeConfig(address(calculator), address(0), owner);
     }
 
@@ -83,7 +84,7 @@ contract ProtocolFeeConfigTest is Test {
     }
 
     function test_QueueRecipient_RevertsOnZeroAddress() public {
-        vm.expectRevert();
+        vm.expectRevert(ZeroAddress.selector);
         config.queueRecipient(address(0));
     }
 

@@ -6,7 +6,7 @@ import {PaymentOperator} from "../src/operator/payment/PaymentOperator.sol";
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
 import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
 import {EscrowPeriod} from "../src/plugins/escrow-period/EscrowPeriod.sol";
-import {PreActionConditionNotMet} from "../src/operator/types/Errors.sol";
+import {ConditionNotMet} from "../src/operator/types/Errors.sol";
 import {EscrowPeriodFactory} from "../src/plugins/escrow-period/EscrowPeriodFactory.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
@@ -50,16 +50,16 @@ contract EscrowPeriodConditionTest is Test {
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
-            authorizePreActionCondition: address(0),
-            authorizePostActionHook: address(escrowPeriod),
-            chargePreActionCondition: address(0),
-            chargePostActionHook: address(0),
-            capturePreActionCondition: address(escrowPeriod),
-            capturePostActionHook: address(0),
-            voidPreActionCondition: address(0),
-            voidPostActionHook: address(0),
-            refundPreActionCondition: address(0),
-            refundPostActionHook: address(0)
+            authorizeCondition: address(0),
+            authorizeHook: address(escrowPeriod),
+            chargeCondition: address(0),
+            chargeHook: address(0),
+            captureCondition: address(escrowPeriod),
+            captureHook: address(0),
+            voidCondition: address(0),
+            voidHook: address(0),
+            refundCondition: address(0),
+            refundHook: address(0)
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
 
@@ -94,7 +94,7 @@ contract EscrowPeriodConditionTest is Test {
         operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
 
         vm.prank(receiver);
-        vm.expectRevert(PreActionConditionNotMet.selector);
+        vm.expectRevert(ConditionNotMet.selector);
         operator.capture(paymentInfo, PAYMENT_AMOUNT, "");
     }
 

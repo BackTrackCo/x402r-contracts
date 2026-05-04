@@ -71,6 +71,9 @@ abstract contract BaseHook is IHook {
 
         paymentHash = ESCROW.getHash(paymentInfo);
 
+        // Voided-but-previously-authorized payments still pass: upstream void() zeros
+        // capturableAmount but leaves hasCollectedPayment = true (set at authorize/charge).
+        // Only payments that were never created hit (!hasCollected && capturableAmount == 0).
         (bool hasCollected, uint120 capturableAmount,) = ESCROW.paymentState(paymentHash);
         if (!hasCollected && capturableAmount == 0) revert PaymentDoesNotExist();
     }

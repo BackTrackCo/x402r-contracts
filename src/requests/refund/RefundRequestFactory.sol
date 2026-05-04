@@ -13,7 +13,10 @@ import {ZeroAddress} from "../../types/Errors.sol";
  *
  * @dev Key is keccak256(arbiter). Each unique arbiter gets one canonical deployment.
  *      ESCROW is factory-level (immutable), shared across every RefundRequest deployed
- *      by this factory.
+ *      by this factory. AUTHORIZED_CODEHASH is hardcoded to bytes32(0) — the canonical
+ *      RefundRequest only accepts direct calls from paymentInfo.operator. To compose
+ *      with HookCombinator, deploy RefundRequest manually with the combinator's runtime
+ *      codehash instead of using this factory.
  */
 contract RefundRequestFactory {
     error ZeroArbiter();
@@ -53,7 +56,8 @@ contract RefundRequestFactory {
 
         // ============ EFFECTS ============
         bytes32 salt = keccak256(abi.encode(SALT_PREFIX, key));
-        bytes memory bytecode = abi.encodePacked(type(RefundRequest).creationCode, abi.encode(arbiter, address(ESCROW)));
+        bytes memory bytecode =
+            abi.encodePacked(type(RefundRequest).creationCode, abi.encode(arbiter, address(ESCROW), bytes32(0)));
         refundRequest = address(
             uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)))))
         );
@@ -62,7 +66,7 @@ contract RefundRequestFactory {
         refundRequests[key] = refundRequest;
 
         // ============ INTERACTIONS ============
-        address deployed = address(new RefundRequest{salt: salt}(arbiter, address(ESCROW)));
+        address deployed = address(new RefundRequest{salt: salt}(arbiter, address(ESCROW), bytes32(0)));
 
         assert(deployed == refundRequest);
 
@@ -87,7 +91,8 @@ contract RefundRequestFactory {
     function computeAddress(address arbiter) external view returns (address refundRequest) {
         bytes32 key = getKey(arbiter);
         bytes32 salt = keccak256(abi.encode(SALT_PREFIX, key));
-        bytes memory bytecode = abi.encodePacked(type(RefundRequest).creationCode, abi.encode(arbiter, address(ESCROW)));
+        bytes memory bytecode =
+            abi.encodePacked(type(RefundRequest).creationCode, abi.encode(arbiter, address(ESCROW), bytes32(0)));
         bytes32 hash = keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)));
         refundRequest = address(uint160(uint256(hash)));
     }

@@ -33,7 +33,7 @@ import {OnlyOperator} from "../../../types/Errors.sol";
  *   HookCombinator combinator = new HookCombinator(hooks);
  *
  *   operator = factory.deploy({
- *       AUTHORIZE_POST_ACTION_HOOK: address(combinator), // Both hooks!
+ *       AUTHORIZE_HOOK: address(combinator), // Both hooks!
  *       ...
  *   });
  */
@@ -42,7 +42,7 @@ contract HookCombinator is IHook {
     IHook[] public hooks;
 
     /// @notice Maximum number of hooks to prevent excessive gas costs
-    uint256 public constant MAX_POST_ACTION_HOOKS = 10;
+    uint256 public constant MAX_HOOKS = 10;
 
     error EmptyHooks();
     error TooManyHooks(uint256 count, uint256 max);
@@ -54,8 +54,8 @@ contract HookCombinator is IHook {
      */
     constructor(IHook[] memory _hooks) {
         if (_hooks.length == 0) revert EmptyHooks();
-        if (_hooks.length > MAX_POST_ACTION_HOOKS) {
-            revert TooManyHooks(_hooks.length, MAX_POST_ACTION_HOOKS);
+        if (_hooks.length > MAX_HOOKS) {
+            revert TooManyHooks(_hooks.length, MAX_HOOKS);
         }
 
         // Validate no zero addresses

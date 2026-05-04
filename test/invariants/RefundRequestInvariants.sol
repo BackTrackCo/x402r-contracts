@@ -54,17 +54,17 @@ contract RefundRequestInvariants is Test {
 
         ProtocolFeeConfig protocolFeeConfig = new ProtocolFeeConfig(address(0), address(this), address(this));
 
-        refundRequest = new RefundRequest(arbiter, address(escrow));
+        refundRequest = new RefundRequest(arbiter, address(escrow), bytes32(0));
 
-        // Build VOID_PRE_ACTION_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)
+        // Build VOID_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)
         StaticAddressCondition arbiterCondition = new StaticAddressCondition(arbiter);
         ReceiverCondition receiverCondition = new ReceiverCondition();
-        ICondition[] memory refundPreActionConditions = new ICondition[](2);
-        refundPreActionConditions[0] = ICondition(address(arbiterCondition));
-        refundPreActionConditions[1] = ICondition(address(receiverCondition));
-        OrCondition voidCondition = new OrCondition(refundPreActionConditions);
+        ICondition[] memory refundConditions = new ICondition[](2);
+        refundConditions[0] = ICondition(address(arbiterCondition));
+        refundConditions[1] = ICondition(address(receiverCondition));
+        OrCondition voidCondition = new OrCondition(refundConditions);
 
-        // Build CAPTURE_PRE_ACTION_CONDITION = Or(StaticAddressCondition(arbiter), PayerCondition)
+        // Build CAPTURE_CONDITION = Or(StaticAddressCondition(arbiter), PayerCondition)
         PayerCondition payerCondition = new PayerCondition();
         ICondition[] memory captureConditions = new ICondition[](2);
         captureConditions[0] = ICondition(address(arbiterCondition));
@@ -76,16 +76,16 @@ contract RefundRequestInvariants is Test {
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: address(this),
             feeCalculator: address(0),
-            authorizePreActionCondition: address(0),
-            authorizePostActionHook: address(0),
-            chargePreActionCondition: address(0),
-            chargePostActionHook: address(0),
-            capturePreActionCondition: address(captureCondition),
-            capturePostActionHook: address(0),
-            voidPreActionCondition: address(voidCondition),
-            voidPostActionHook: address(refundRequest),
-            refundPreActionCondition: address(0),
-            refundPostActionHook: address(0)
+            authorizeCondition: address(0),
+            authorizeHook: address(0),
+            chargeCondition: address(0),
+            chargeHook: address(0),
+            captureCondition: address(captureCondition),
+            captureHook: address(0),
+            voidCondition: address(voidCondition),
+            voidHook: address(refundRequest),
+            refundCondition: address(0),
+            refundHook: address(0)
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
 

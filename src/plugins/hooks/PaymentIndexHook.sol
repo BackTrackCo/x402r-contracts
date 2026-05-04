@@ -7,7 +7,7 @@ import {BaseHook} from "./BaseHook.sol";
 
 /**
  * @title PaymentIndexHook
- * @notice PostActionHook that indexes payments by payer and receiver for on-chain lookups,
+ * @notice Hook that indexes payments by payer and receiver for on-chain lookups,
  *         and stores full PaymentInfo for retrieval.
  * @dev Extracted from PaymentOperator for optional gas optimization.
  *      Deploy this hook when you want on-chain payment queries.
@@ -22,7 +22,7 @@ import {BaseHook} from "./BaseHook.sol";
  *
  * USAGE:
  *   // Deploy once, share across operators
- *   PaymentIndexHook indexPostActionHook = new PaymentIndexHook(address(escrow));
+ *   PaymentIndexHook indexHook = new PaymentIndexHook(address(escrow));
  *
  *   // Query payments with full PaymentInfo
  *   (AuthCaptureEscrow.PaymentInfo[] memory infos, uint256 total) = indexHook.getPayerPayments(alice, 0, 10);

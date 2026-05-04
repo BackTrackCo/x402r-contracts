@@ -16,9 +16,7 @@ contract MaliciousHook is IHook {
     enum AttackType {
         NONE,
         REENTER_SAME_FUNCTION, // Try to re-enter the action configured via TargetAction
-        REENTER_DIFFERENT_FUNCTION, // Try to call a different function
-        REENTER_WITHDRAW_FEES, // Try to withdraw fees during callback
-        INFINITE_LOOP // Consume all gas
+        REENTER_WITHDRAW_FEES // Try to withdraw fees during callback
     }
 
     /// @notice Which action the hook attempts to re-enter under REENTER_SAME_FUNCTION.
@@ -69,26 +67,12 @@ contract MaliciousHook is IHook {
 
         if (attackType == AttackType.REENTER_SAME_FUNCTION && reentrancyCount <= maxReentrancy) {
             _reenterTargetAction(paymentInfo, amount);
-        } else if (attackType == AttackType.REENTER_DIFFERENT_FUNCTION && reentrancyCount <= maxReentrancy) {
-            // Try to call a different function during callback (always refund here).
-            try targetOperator.refund(paymentInfo, amount, address(0), "") {
-            // If this succeeds when it shouldn't, the guard failed.
-            }
-            catch {
-                reentrancyBlocked = true;
-            }
         } else if (attackType == AttackType.REENTER_WITHDRAW_FEES && reentrancyCount <= maxReentrancy) {
             try PaymentOperator(payable(msg.sender)).distributeFees(paymentInfo.token) {
             // distributeFees is also nonReentrant; should revert.
             }
             catch {
                 reentrancyBlocked = true;
-            }
-        } else if (attackType == AttackType.INFINITE_LOOP) {
-            uint256 counter = 0;
-            while (gasleft() > 10000) {
-                counter++;
-                if (counter > 100000) break;
             }
         }
     }

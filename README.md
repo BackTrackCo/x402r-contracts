@@ -61,16 +61,16 @@ PaymentOperatorFactory factory = new PaymentOperatorFactory(address(escrow), add
 PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
     feeReceiver: feeReceiver,
     feeCalculator: address(0),            // No operator fee
-    authorizePreActionCondition: address(0),        // Anyone can authorize
-    authorizePostActionHook: address(0),         // No post-action hook
-    chargePreActionCondition: address(0),
-    chargePostActionHook: address(0),
-    capturePreActionCondition: address(0),          // Anyone can capture
-    capturePostActionHook: address(0),
-    voidPreActionCondition: address(0),
-    voidPostActionHook: address(0),
-    refundPreActionCondition: address(0),
-    refundPostActionHook: address(0)
+    authorizeCondition: address(0),        // Anyone can authorize
+    authorizeHook: address(0),         // No post-action hook
+    chargeCondition: address(0),
+    chargeHook: address(0),
+    captureCondition: address(0),          // Anyone can capture
+    captureHook: address(0),
+    voidCondition: address(0),
+    voidHook: address(0),
+    refundCondition: address(0),
+    refundHook: address(0)
 });
 address operator = factory.deployOperator(config);
 
@@ -107,11 +107,11 @@ op.capture(paymentInfo, amount);
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │  Condition Slots (before action)    Hook Slots (after action)       │   │
 │  │  ─────────────────────────────────  ─────────────────────────────   │   │
-│  │  AUTHORIZE_PRE_ACTION_CONDITION ──────► AUTHORIZE_POST_ACTION_HOOK  │   │
-│  │  CHARGE_PRE_ACTION_CONDITION ─────────► CHARGE_POST_ACTION_HOOK     │   │
-│  │  CAPTURE_PRE_ACTION_CONDITION ────────► CAPTURE_POST_ACTION_HOOK    │   │
-│  │  VOID_PRE_ACTION_CONDITION ───────────► VOID_POST_ACTION_HOOK       │   │
-│  │  REFUND_PRE_ACTION_CONDITION ─────────► REFUND_POST_ACTION_HOOK     │   │
+│  │  AUTHORIZE_CONDITION ──────► AUTHORIZE_HOOK  │   │
+│  │  CHARGE_CONDITION ─────────► CHARGE_HOOK     │   │
+│  │  CAPTURE_CONDITION ────────► CAPTURE_HOOK    │   │
+│  │  VOID_CONDITION ───────────► VOID_HOOK       │   │
+│  │  REFUND_CONDITION ─────────► REFUND_HOOK     │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                    │                                        │
 │  Owner Functions (7-day Timelock):  │                                        │
@@ -398,13 +398,13 @@ address escrowPeriod = escrowPeriodFactory.deploy(7 days, bytes32(0));
 address freeze = freezeFactory.deploy(payerCondition, payerCondition, 3 days, escrowPeriod);
 
 // 3. Compose for capture condition: must pass both escrow period AND not be frozen
-address capturePreActionCondition = address(new AndCondition([ICondition(escrowPeriod), ICondition(freeze)]));
+address captureCondition = address(new AndCondition([ICondition(escrowPeriod), ICondition(freeze)]));
 ```
 
 **Composition Patterns:**
-- Escrow period only: `capturePreActionCondition = escrowPeriod`
-- Freeze only: `capturePreActionCondition = freeze`
-- Both: `capturePreActionCondition = AndCondition([escrowPeriod, freeze])`
+- Escrow period only: `captureCondition = escrowPeriod`
+- Freeze only: `captureCondition = freeze`
+- Both: `captureCondition = AndCondition([escrowPeriod, freeze])`
 
 #### PaymentOperatorFactory API
 
@@ -414,16 +414,16 @@ The `PaymentOperatorFactory` provides a single generic `deployOperator(OperatorC
 struct OperatorConfig {
     address feeReceiver;
     address feeCalculator;
-    address authorizePreActionCondition;
-    address authorizePostActionHook;
-    address chargePreActionCondition;
-    address chargePostActionHook;
-    address capturePreActionCondition;
-    address capturePostActionHook;
-    address voidPreActionCondition;
-    address voidPostActionHook;
-    address refundPreActionCondition;
-    address refundPostActionHook;
+    address authorizeCondition;
+    address authorizeHook;
+    address chargeCondition;
+    address chargeHook;
+    address captureCondition;
+    address captureHook;
+    address voidCondition;
+    address voidHook;
+    address refundCondition;
+    address refundHook;
 }
 ```
 
@@ -435,16 +435,16 @@ address arbiterCondition = staticAddressConditionFactory.deploy(arbiterAddress);
 PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
     feeReceiver: arbiterAddress,                                  // Arbiter earns fees for dispute resolution
     feeCalculator: address(feeCalc),                              // Operator fee calculator
-    authorizePreActionCondition: address(0),                      // Anyone can authorize
-    authorizePostActionHook: address(0),                          // No post-action work
-    chargePreActionCondition: address(receiverCondition),         // Only receiver can charge
-    chargePostActionHook: address(0),
-    capturePreActionCondition: address(escrowPeriodCondition),    // Capture allowed only after escrow period
-    capturePostActionHook: address(escrowPeriodHook),             // Record timestamp
-    voidPreActionCondition: arbiterCondition,                     // Only arbiter can void
-    voidPostActionHook: address(0),
-    refundPreActionCondition: arbiterCondition,                   // Only arbiter for post-capture refunds
-    refundPostActionHook: address(0)
+    authorizeCondition: address(0),                      // Anyone can authorize
+    authorizeHook: address(0),                          // No post-action work
+    chargeCondition: address(receiverCondition),         // Only receiver can charge
+    chargeHook: address(0),
+    captureCondition: address(escrowPeriodCondition),    // Capture allowed only after escrow period
+    captureHook: address(escrowPeriodHook),             // Record timestamp
+    voidCondition: arbiterCondition,                     // Only arbiter can void
+    voidHook: address(0),
+    refundCondition: arbiterCondition,                   // Only arbiter for post-capture refunds
+    refundHook: address(0)
 });
 address operator = factory.deployOperator(config);
 ```
@@ -462,16 +462,16 @@ PaymentIndexHook indexHook = new PaymentIndexHook(address(escrow), bytes32(0));
 // Option 1: Enable indexing
 PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
     // ...
-    authorizePostActionHook: address(indexHook),  // Index on authorize
-    chargePostActionHook: address(indexHook),     // Index on charge
+    authorizeHook: address(indexHook),  // Index on authorize
+    chargeHook: address(indexHook),     // Index on charge
     // ...
 });
 
 // Option 2: Skip indexing (lower gas, use The Graph instead)
 PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
     // ...
-    authorizePostActionHook: address(0),  // No indexing
-    chargePostActionHook: address(0),     // No indexing
+    authorizeHook: address(0),  // No indexing
+    chargeHook: address(0),     // No indexing
     // ...
 });
 

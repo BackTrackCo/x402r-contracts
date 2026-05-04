@@ -94,7 +94,7 @@ contract MockCondition is ICondition {
     }
 }
 
-contract PreActionConditionsCoverageTest is Test {
+contract ConditionsCoverageTest is Test {
     AlwaysTrueCondition public alwaysTrue;
     ReceiverCondition public receiverCondition;
     PayerCondition public payerCondition;
@@ -299,7 +299,7 @@ contract PreActionConditionsCoverageTest is Test {
         assertEq(address(result[1]), address(hook2));
     }
 
-    function test_HookCombinator_GetRecorderCount() public {
+    function test_HookCombinator_GetHookCount() public {
         MockHook hook1 = new MockHook();
 
         IHook[] memory hooks = new IHook[](1);
