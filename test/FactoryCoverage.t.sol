@@ -263,8 +263,8 @@ contract FactoryCoverageTest is Test {
         address freezeAddr = factory.deploy(address(payerCond), address(payerCond), 3 days, address(0));
         Freeze freezeContract = Freeze(freezeAddr);
 
-        assertEq(address(freezeContract.FREEZE_CONDITION()), address(payerCond));
-        assertEq(address(freezeContract.UNFREEZE_CONDITION()), address(payerCond));
+        assertEq(address(freezeContract.FREEZE_PRE_ACTION_CONDITION()), address(payerCond));
+        assertEq(address(freezeContract.UNFREEZE_PRE_ACTION_CONDITION()), address(payerCond));
         assertEq(freezeContract.FREEZE_DURATION(), 3 days);
     }
 
@@ -628,16 +628,16 @@ contract FactoryCoverageTest is Test {
         return PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
             feeCalculator: feeCalc,
-            authorizeCondition: address(0),
-            authorizeHook: address(0),
-            chargeCondition: address(0),
-            chargeHook: address(0),
-            captureCondition: address(0),
-            captureHook: address(0),
-            voidCondition: address(0),
-            voidHook: address(0),
-            refundCondition: address(0),
-            refundHook: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(0),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(0),
+            capturePreActionCondition: address(0),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(0),
+            voidPostActionHook: address(0),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
     }
 }

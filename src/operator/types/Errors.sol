@@ -13,4 +13,4 @@ error FeeTooHigh();
 error FeeBoundsIncompatible(uint16 calculatedFeeBps, uint16 minFeeBps, uint16 maxFeeBps);
 
 // ============ Pre-Action Condition Errors ============
-error ConditionNotMet();
+error PreActionConditionNotMet();

@@ -51,7 +51,7 @@ contract FullLifecycleTest is Test {
 
     // Refund request
     RefundRequest public refundRequest;
-    OrCondition public voidCondition;
+    OrCondition public voidPreActionCondition;
 
     // Addresses
     address public owner;
@@ -108,12 +108,12 @@ contract FullLifecycleTest is Test {
         // Deploy RefundRequest with arbiter and canonical escrow
         refundRequest = new RefundRequest(arbiter, address(escrow), bytes32(0));
 
-        // Build VOID_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)
+        // Build VOID_PRE_ACTION_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)
         StaticAddressCondition arbiterCondition = new StaticAddressCondition(arbiter);
-        ICondition[] memory refundConditions = new ICondition[](2);
-        refundConditions[0] = ICondition(address(arbiterCondition));
-        refundConditions[1] = ICondition(address(receiverCondition));
-        voidCondition = new OrCondition(refundConditions);
+        ICondition[] memory refundPreActionConditions = new ICondition[](2);
+        refundPreActionConditions[0] = ICondition(address(arbiterCondition));
+        refundPreActionConditions[1] = ICondition(address(receiverCondition));
+        voidPreActionCondition = new OrCondition(refundPreActionConditions);
 
         // Deploy operator with full configuration
         operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
@@ -121,16 +121,16 @@ contract FullLifecycleTest is Test {
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: operatorFeeRecipient,
             feeCalculator: address(operatorCalc),
-            authorizeCondition: address(0),
-            authorizeHook: address(escrowPeriod),
-            chargeCondition: address(0),
-            chargeHook: address(0),
-            captureCondition: address(escrowReleaseCondition),
-            captureHook: address(0),
-            voidCondition: address(voidCondition),
-            voidHook: address(refundRequest),
-            refundCondition: address(0),
-            refundHook: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(escrowPeriod),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(0),
+            capturePreActionCondition: address(escrowReleaseCondition),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(voidPreActionCondition),
+            voidPostActionHook: address(refundRequest),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
 

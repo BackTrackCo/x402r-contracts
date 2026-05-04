@@ -56,16 +56,16 @@ contract ReentrancyAttackTest is Test {
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
-            authorizeCondition: address(0),
-            authorizeHook: hookSlot == 0 ? address(maliciousHook) : address(0),
-            chargeCondition: address(0),
-            chargeHook: hookSlot == 1 ? address(maliciousHook) : address(0),
-            captureCondition: address(0),
-            captureHook: hookSlot == 2 ? address(maliciousHook) : address(0),
-            voidCondition: address(0),
-            voidHook: hookSlot == 3 ? address(maliciousHook) : address(0),
-            refundCondition: address(0),
-            refundHook: hookSlot == 4 ? address(maliciousHook) : address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: hookSlot == 0 ? address(maliciousHook) : address(0),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: hookSlot == 1 ? address(maliciousHook) : address(0),
+            capturePreActionCondition: address(0),
+            capturePostActionHook: hookSlot == 2 ? address(maliciousHook) : address(0),
+            voidPreActionCondition: address(0),
+            voidPostActionHook: hookSlot == 3 ? address(maliciousHook) : address(0),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: hookSlot == 4 ? address(maliciousHook) : address(0)
         });
 
         return PaymentOperator(factory.deployOperator(config));

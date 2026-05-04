@@ -55,16 +55,16 @@ contract PaymentIndexingTest is Test {
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
-            authorizeCondition: address(0),
-            authorizeHook: address(indexHook), // Use index hook
-            chargeCondition: address(0),
-            chargeHook: address(indexHook), // Use index hook
-            captureCondition: address(0),
-            captureHook: address(0),
-            voidCondition: address(0),
-            voidHook: address(0),
-            refundCondition: address(0),
-            refundHook: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(indexHook), // Use index hook
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(indexHook), // Use index hook
+            capturePreActionCondition: address(0),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(0),
+            voidPostActionHook: address(0),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
 

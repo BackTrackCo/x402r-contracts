@@ -299,10 +299,10 @@ The escrow layer provides hard guarantees that **no operator, condition, or hook
 
 Operators control the business logic layer. A malicious or buggy operator **can**:
 
-- **Block captures**: A malicious `CAPTURE_CONDITION` can return `false` indefinitely, trapping funds until `authorizationExpiry` when the payer can reclaim.
+- **Block captures**: A malicious `CAPTURE_PRE_ACTION_CONDITION` can return `false` indefinitely, trapping funds until `authorizationExpiry` when the payer can reclaim.
 - **Censor users**: Conditions with blocklists can selectively prevent specific addresses from interacting.
 - **Leak MEV**: Non-`view` conditions (should never be used) could emit events or make external calls that leak payment data to MEV bots.
-- **Front-run refunds**: Without an escrow period (`CAPTURE_CONDITION = address(0)`), a receiver can capture funds before a refund request is processed.
+- **Front-run refunds**: Without an escrow period (`CAPTURE_PRE_ACTION_CONDITION = address(0)`), a receiver can capture funds before a refund request is processed.
 - **Gas grief**: Conditions or hooks with unbounded loops can make operations fail with out-of-gas.
 
 ### Implications
@@ -317,7 +317,7 @@ Operators control the business logic layer. A malicious or buggy operator **can*
 
 ### Maximum Combinator Depth Recommendation
 
-**Protocol Enforced Limit**: `MAX_CONDITIONS = 10`
+**Protocol Enforced Limit**: `MAX_PRE_ACTION_CONDITIONS = 10`
 
 The condition combinator architecture (AndCondition, OrCondition, NotCondition) allows nesting but has a hard limit to prevent gas exhaustion and stack depth issues.
 
@@ -351,7 +351,7 @@ AndCondition(
 | 3-4 | ⚠️ Acceptable | Moderate complexity | Moderate gas |
 | 5-7 | ⚠️ Use sparingly | Complex requirements | High gas, hard to audit |
 | 8-10 | ❌ Avoid | Emergency only | Very high gas, difficult to understand |
-| 11+ | ❌ Blocked | N/A | Protocol enforces MAX_CONDITIONS = 10 |
+| 11+ | ❌ Blocked | N/A | Protocol enforces MAX_PRE_ACTION_CONDITIONS = 10 |
 
 #### Best Practices
 
@@ -424,9 +424,9 @@ function testCombinatorGas() public {
 #### Enforcement
 
 ```solidity
-// CombinatorDepthChecker.sol enforces MAX_CONDITIONS = 10
+// CombinatorDepthChecker.sol enforces MAX_PRE_ACTION_CONDITIONS = 10
 function _checkDepth(address condition, uint8 depth) internal view {
-    if (depth > MAX_CONDITIONS) revert MaxConditionsExceeded();
+    if (depth > MAX_PRE_ACTION_CONDITIONS) revert MaxConditionsExceeded();
     // Recursively check nested conditions
 }
 ```

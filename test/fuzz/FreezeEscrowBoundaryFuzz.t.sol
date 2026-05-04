@@ -31,7 +31,7 @@ contract FreezeEscrowBoundaryFuzzTest is Test {
     EscrowPeriod public escrowPeriod;
     Freeze public freeze;
     Freeze public permanentFreeze;
-    AndCondition public captureCondition;
+    AndCondition public capturePreActionCondition;
     MockERC20 public token;
     PayerCondition public payerCondition;
 
@@ -69,7 +69,7 @@ contract FreezeEscrowBoundaryFuzzTest is Test {
         ICondition[] memory conditions = new ICondition[](2);
         conditions[0] = ICondition(address(escrowPeriod));
         conditions[1] = ICondition(address(freeze));
-        captureCondition = new AndCondition(conditions);
+        capturePreActionCondition = new AndCondition(conditions);
 
         protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
         operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
@@ -77,16 +77,16 @@ contract FreezeEscrowBoundaryFuzzTest is Test {
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
-            authorizeCondition: address(0),
-            authorizeHook: address(escrowPeriod),
-            chargeCondition: address(0),
-            chargeHook: address(0),
-            captureCondition: address(captureCondition),
-            captureHook: address(0),
-            voidCondition: address(0),
-            voidHook: address(0),
-            refundCondition: address(0),
-            refundHook: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(escrowPeriod),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(0),
+            capturePreActionCondition: address(capturePreActionCondition),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(0),
+            voidPostActionHook: address(0),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
 
@@ -220,16 +220,16 @@ contract FreezeEscrowBoundaryFuzzTest is Test {
         PaymentOperatorFactory.OperatorConfig memory config2 = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
-            authorizeCondition: address(0),
-            authorizeHook: address(ep2),
-            chargeCondition: address(0),
-            chargeHook: address(0),
-            captureCondition: address(relCond2),
-            captureHook: address(0),
-            voidCondition: address(0),
-            voidHook: address(0),
-            refundCondition: address(0),
-            refundHook: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(ep2),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(0),
+            capturePreActionCondition: address(relCond2),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(0),
+            voidPostActionHook: address(0),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
         PaymentOperator op2 = PaymentOperator(opFactory2.deployOperator(config2));
 

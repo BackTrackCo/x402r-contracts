@@ -15,8 +15,8 @@ contract OrConditionFactory {
     error NoConditions();
     error TooManyConditions();
 
-    /// @notice Maximum conditions allowed (matches OrCondition.MAX_CONDITIONS)
-    uint256 public constant MAX_CONDITIONS = 10;
+    /// @notice Maximum conditions allowed (matches OrCondition.MAX_PRE_ACTION_CONDITIONS)
+    uint256 public constant MAX_PRE_ACTION_CONDITIONS = 10;
 
     /// @notice Salt prefix for CREATE2
     bytes32 private constant SALT_PREFIX = "orCondition";
@@ -35,7 +35,7 @@ contract OrConditionFactory {
      */
     function deploy(ICondition[] calldata _conditions) external returns (address condition) {
         if (_conditions.length == 0) revert NoConditions();
-        if (_conditions.length > MAX_CONDITIONS) revert TooManyConditions();
+        if (_conditions.length > MAX_PRE_ACTION_CONDITIONS) revert TooManyConditions();
 
         bytes32 key = getKey(_conditions);
 

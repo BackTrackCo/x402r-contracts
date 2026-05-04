@@ -440,16 +440,16 @@ contract ModularFeesTest is Test {
         return PaymentOperatorFactory.OperatorConfig({
             feeReceiver: operatorFeeRecipient,
             feeCalculator: feeCalculator,
-            authorizeCondition: address(0),
-            authorizeHook: address(0),
-            chargeCondition: address(0),
-            chargeHook: address(0),
-            captureCondition: address(0),
-            captureHook: address(0),
-            voidCondition: address(0),
-            voidHook: address(0),
-            refundCondition: address(0),
-            refundHook: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(0),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(0),
+            capturePreActionCondition: address(0),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(0),
+            voidPostActionHook: address(0),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
     }
 

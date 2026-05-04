@@ -41,7 +41,7 @@ The address that receives captured funds. Can approve or deny refund requests. H
 The entity that deploys a PaymentOperator with specific conditions, hooks, and fee configuration. Responsible for choosing safe, audited plugins. Cannot modify the operator after deployment.
 
 ### Arbiter
-An external address (e.g., dispute resolution service) that can approve/deny refund requests when funds are in escrow. Authorized via the operator's `VOID_CONDITION` slot.
+An external address (e.g., dispute resolution service) that can approve/deny refund requests when funds are in escrow. Authorized via the operator's `VOID_PRE_ACTION_CONDITION` slot.
 
 ### Protocol Owner
 The owner of the `ProtocolFeeConfig` contract. Can queue timelocked changes to the protocol fee calculator and fee recipient. Expected to be a multisig.
@@ -73,10 +73,10 @@ Interface that returns a fee in BPS for a given payment. `StaticFeeCalculator` a
 ## Condition System
 
 ### Condition (ICondition)
-A pre-check hook that returns `bool`. Called BEFORE an operation executes. If it returns `false`, the operation reverts with `ConditionNotMet()`. Conditions are `view` functions and should not modify state.
+A pre-check hook that returns `bool`. Called BEFORE an operation executes. If it returns `false`, the operation reverts with `PreActionConditionNotMet()`. Conditions are `view` functions and should not modify state.
 
 ### Condition Slot
-One of 5 immutable condition addresses on a PaymentOperator: `AUTHORIZE_CONDITION`, `CHARGE_CONDITION`, `CAPTURE_CONDITION`, `VOID_CONDITION`, `REFUND_CONDITION`. `address(0)` means "allow all" (default).
+One of 5 immutable condition addresses on a PaymentOperator: `AUTHORIZE_PRE_ACTION_CONDITION`, `CHARGE_PRE_ACTION_CONDITION`, `CAPTURE_PRE_ACTION_CONDITION`, `VOID_PRE_ACTION_CONDITION`, `REFUND_PRE_ACTION_CONDITION`. `address(0)` means "allow all" (default).
 
 ### Combinator
 A condition that composes other conditions using boolean logic:
@@ -84,7 +84,7 @@ A condition that composes other conditions using boolean logic:
 - **OrCondition**: At least one child condition must return `true`
 - **NotCondition**: Negates a single child condition
 
-### MAX_CONDITIONS
+### MAX_PRE_ACTION_CONDITIONS
 Hard limit of 10 conditions per combinator, preventing gas griefing from deeply nested condition trees.
 
 ---
@@ -95,10 +95,10 @@ Hard limit of 10 conditions per combinator, preventing gas griefing from deeply 
 A post-action hook called AFTER the escrow operation completes. Can modify state (unlike conditions). Used for indexing, timestamp tracking, and analytics.
 
 ### Hook Slot
-One of 5 immutable hook addresses on a PaymentOperator: `AUTHORIZE_HOOK`, `CHARGE_HOOK`, `CAPTURE_HOOK`, `VOID_HOOK`, `REFUND_HOOK`. `address(0)` means "no-op" (default).
+One of 5 immutable hook addresses on a PaymentOperator: `AUTHORIZE_POST_ACTION_HOOK`, `CHARGE_POST_ACTION_HOOK`, `CAPTURE_POST_ACTION_HOOK`, `VOID_POST_ACTION_HOOK`, `REFUND_POST_ACTION_HOOK`. `address(0)` means "no-op" (default).
 
 ### HookCombinator
-Composes multiple hooks into a single slot. Calls each sub-hook sequentially. Limited to `MAX_HOOKS = 10`.
+Composes multiple hooks into a single slot. Calls each sub-hook sequentially. Limited to `MAX_POST_ACTION_HOOKS = 10`.
 
 ### BaseHook
 Abstract base class for hooks. Provides `_verifyAndHash()` which validates the caller is an authorized operator (via codehash or direct address check) and that the payment exists in escrow.
@@ -111,7 +111,7 @@ Abstract base class for hooks. Provides `_verifyAndHash()` which validates the c
 ## Escrow Period System
 
 ### Escrow Period
-A time window after authorization during which funds are held in escrow before capture is permitted. Enforced by `EscrowPeriod` (which implements both `ICondition` and `IHook`) as both the `AUTHORIZE_HOOK` and `CAPTURE_CONDITION`.
+A time window after authorization during which funds are held in escrow before capture is permitted. Enforced by `EscrowPeriod` (which implements both `ICondition` and `IHook`) as both the `AUTHORIZE_POST_ACTION_HOOK` and `CAPTURE_PRE_ACTION_CONDITION`.
 
 ### EscrowPeriod
 Combined hook and condition contract. Records `block.timestamp` when a payment is authorized (via `AuthorizationTimeHook` inheritance), checks `block.timestamp >= authorizedAt + ESCROW_PERIOD` and `!frozen` for capture, and provides freeze/unfreeze capabilities.
@@ -130,10 +130,10 @@ How long a freeze lasts. `0` means permanent (until explicitly unfrozen). Non-ze
 A formal request from a payer for a refund. Tracked by the `RefundRequest` contract with lifecycle states: `Pending` → `Approved`/`Denied`. Requires receiver or arbiter approval.
 
 ### RefundInEscrow
-Refund path while funds are still in escrow (capturable > 0). Reduces `capturableAmount` and increases `refundableAmount`. Governed by `VOID_CONDITION`.
+Refund path while funds are still in escrow (capturable > 0). Reduces `capturableAmount` and increases `refundableAmount`. Governed by `VOID_PRE_ACTION_CONDITION`.
 
 ### RefundPostEscrow
-Refund path after funds are captured (capturable = 0). Receiver must voluntarily refund from their own balance via the ReceiverRefundCollector. Governed by `REFUND_CONDITION`.
+Refund path after funds are captured (capturable = 0). Receiver must voluntarily refund from their own balance via the ReceiverRefundCollector. Governed by `REFUND_PRE_ACTION_CONDITION`.
 
 ### Refund Expiry
 Timestamp after which a payer can reclaim authorized but uncaptured funds. Safety valve ensuring funds are never permanently locked.

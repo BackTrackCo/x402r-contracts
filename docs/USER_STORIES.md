@@ -16,8 +16,8 @@ Formal user stories for all payment flows in x402r-contracts.
 - Operator calls `escrow.authorize()` holding up to `maxAmount` tokens
 - Payment state transitions from `NonExistent` to `InEscrow`
 - `AuthorizeExecuted` event is emitted
-- If an `AUTHORIZE_CONDITION` is set, it must return `true`
-- If an `AUTHORIZE_HOOK` is set, it is called after authorization
+- If an `AUTHORIZE_PRE_ACTION_CONDITION` is set, it must return `true`
+- If an `AUTHORIZE_POST_ACTION_HOOK` is set, it is called after authorization
 
 ### US-2: Charge (Authorize + Immediate Capture)
 **As a** receiver in a point-of-sale scenario,
@@ -29,7 +29,7 @@ Formal user stories for all payment flows in x402r-contracts.
 - Operator calls `escrow.charge()` which authorizes and captures in one step
 - Fees are deducted and sent to fee recipients
 - Payment state transitions directly to `Captured`
-- Both `CHARGE_CONDITION` and `CHARGE_HOOK` are invoked if set
+- Both `CHARGE_PRE_ACTION_CONDITION` and `CHARGE_POST_ACTION_HOOK` are invoked if set
 
 ---
 
@@ -41,12 +41,12 @@ Formal user stories for all payment flows in x402r-contracts.
 **so that** I receive payment minus fees.
 
 **Acceptance criteria:**
-- Caller passes the `CAPTURE_CONDITION` check (or condition is `address(0)`)
+- Caller passes the `CAPTURE_PRE_ACTION_CONDITION` check (or condition is `address(0)`)
 - Full `capturableAmount` is captured to receiver
 - Protocol fee and operator fee are deducted from the captured amount
 - `accumulatedProtocolFees[token]` increases by the protocol fee share
 - Payment state transitions to `Captured`
-- `CAPTURE_HOOK` is called if set
+- `CAPTURE_POST_ACTION_HOOK` is called if set
 
 ### US-4: Partial Capture
 **As a** receiver,
@@ -80,7 +80,7 @@ Formal user stories for all payment flows in x402r-contracts.
 
 **Acceptance criteria:**
 - `capturableAmount > 0` (funds still in escrow)
-- Caller passes `VOID_CONDITION` (or condition is `address(0)`)
+- Caller passes `VOID_PRE_ACTION_CONDITION` (or condition is `address(0)`)
 - `capturableAmount` decreases, `refundableAmount` increases
 - Payer can later withdraw via escrow's refund mechanism
 
@@ -92,7 +92,7 @@ Formal user stories for all payment flows in x402r-contracts.
 **Acceptance criteria:**
 - `capturableAmount == 0` (all funds captured or refunded from escrow)
 - Receiver transfers tokens back and calls `refund()`
-- `REFUND_CONDITION` is checked if set
+- `REFUND_PRE_ACTION_CONDITION` is checked if set
 
 ### US-8: Request a Refund
 **As a** payer,
@@ -112,7 +112,7 @@ Formal user stories for all payment flows in x402r-contracts.
 **so that** the payer's refund can proceed.
 
 **Acceptance criteria:**
-- Only receiver, or arbiter (via `VOID_CONDITION` while in escrow) can approve
+- Only receiver, or arbiter (via `VOID_PRE_ACTION_CONDITION` while in escrow) can approve
 - Request status transitions from `Pending` to `Approved`
 - `RefundStatusUpdated` event is emitted
 

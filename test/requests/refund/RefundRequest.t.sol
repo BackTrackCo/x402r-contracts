@@ -19,7 +19,7 @@ import {MockERC20} from "../../mocks/MockERC20.sol";
 
 contract RefundRequestTest is Test {
     RefundRequest public refundRequest;
-    OrCondition public voidCondition;
+    OrCondition public voidPreActionCondition;
     StaticAddressCondition public arbiterCondition;
     ReceiverCondition public receiverCondition;
     PaymentOperator public operator;
@@ -54,30 +54,30 @@ contract RefundRequestTest is Test {
         refundRequest = new RefundRequest(arbiter, address(escrow), bytes32(0));
 
         // Build condition tree:
-        // VOID_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)
+        // VOID_PRE_ACTION_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)
         arbiterCondition = new StaticAddressCondition(arbiter);
         receiverCondition = new ReceiverCondition();
-        ICondition[] memory refundConditions = new ICondition[](2);
-        refundConditions[0] = ICondition(address(arbiterCondition));
-        refundConditions[1] = ICondition(address(receiverCondition));
-        voidCondition = new OrCondition(refundConditions);
+        ICondition[] memory refundPreActionConditions = new ICondition[](2);
+        refundPreActionConditions[0] = ICondition(address(arbiterCondition));
+        refundPreActionConditions[1] = ICondition(address(receiverCondition));
+        voidPreActionCondition = new OrCondition(refundPreActionConditions);
 
-        // Deploy operator with refundRequest as VOID_HOOK
+        // Deploy operator with refundRequest as VOID_POST_ACTION_HOOK
         protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
         operatorFactory = new PaymentOperatorFactory(address(escrow), address(protocolFeeConfig));
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
-            authorizeCondition: address(0),
-            authorizeHook: address(0),
-            chargeCondition: address(0),
-            chargeHook: address(0),
-            captureCondition: address(0),
-            captureHook: address(0),
-            voidCondition: address(voidCondition),
-            voidHook: address(refundRequest),
-            refundCondition: address(0),
-            refundHook: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(0),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(0),
+            capturePreActionCondition: address(0),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(voidPreActionCondition),
+            voidPostActionHook: address(refundRequest),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
 
@@ -264,7 +264,7 @@ contract RefundRequestTest is Test {
         vm.prank(payer);
         refundRequest.requestRefund(paymentInfo, uint120(PAYMENT_AMOUNT));
 
-        // Payer cannot call void (not in VOID_CONDITION)
+        // Payer cannot call void (not in VOID_PRE_ACTION_CONDITION)
         vm.prank(payer);
         vm.expectRevert();
         operator.void(paymentInfo, "");
@@ -508,7 +508,7 @@ contract RefundRequestTest is Test {
         vm.expectRevert();
         operator.void(paymentInfo, "");
 
-        // Payer calling directly also blocked (not in VOID_CONDITION)
+        // Payer calling directly also blocked (not in VOID_PRE_ACTION_CONDITION)
         vm.prank(payer);
         vm.expectRevert();
         operator.void(paymentInfo, "");

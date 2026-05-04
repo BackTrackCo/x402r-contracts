@@ -28,8 +28,8 @@ contract RefundRequestEvidenceTest is Test {
     AuthCaptureEscrow public escrow;
     PreApprovalPaymentCollector public collector;
     MockERC20 public token;
-    OrCondition public voidCondition;
-    OrCondition public captureCondition;
+    OrCondition public voidPreActionCondition;
+    OrCondition public capturePreActionCondition;
 
     address public owner;
     address public protocolFeeRecipient;
@@ -58,20 +58,20 @@ contract RefundRequestEvidenceTest is Test {
         refundRequest = new RefundRequest(designatedAddress, address(escrow), bytes32(0));
 
         // Build condition tree:
-        // VOID_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)
+        // VOID_PRE_ACTION_CONDITION = Or(StaticAddressCondition(arbiter), ReceiverCondition)
         StaticAddressCondition arbiterCondition = new StaticAddressCondition(designatedAddress);
         ReceiverCondition receiverCondition = new ReceiverCondition();
-        ICondition[] memory refundConditions = new ICondition[](2);
-        refundConditions[0] = ICondition(address(arbiterCondition));
-        refundConditions[1] = ICondition(address(receiverCondition));
-        voidCondition = new OrCondition(refundConditions);
+        ICondition[] memory refundPreActionConditions = new ICondition[](2);
+        refundPreActionConditions[0] = ICondition(address(arbiterCondition));
+        refundPreActionConditions[1] = ICondition(address(receiverCondition));
+        voidPreActionCondition = new OrCondition(refundPreActionConditions);
 
-        // CAPTURE_CONDITION = Or(StaticAddressCondition(arbiter), PayerCondition)
+        // CAPTURE_PRE_ACTION_CONDITION = Or(StaticAddressCondition(arbiter), PayerCondition)
         PayerCondition payerCondition = new PayerCondition();
-        ICondition[] memory captureConditions = new ICondition[](2);
-        captureConditions[0] = ICondition(address(arbiterCondition));
-        captureConditions[1] = ICondition(address(payerCondition));
-        captureCondition = new OrCondition(captureConditions);
+        ICondition[] memory capturePreActionConditions = new ICondition[](2);
+        capturePreActionConditions[0] = ICondition(address(arbiterCondition));
+        capturePreActionConditions[1] = ICondition(address(payerCondition));
+        capturePreActionCondition = new OrCondition(capturePreActionConditions);
 
         // Deploy protocol fee config (no fees)
         protocolFeeConfig = new ProtocolFeeConfig(address(0), protocolFeeRecipient, owner);
@@ -83,16 +83,16 @@ contract RefundRequestEvidenceTest is Test {
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
             feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
-            authorizeCondition: address(0),
-            authorizeHook: address(0),
-            chargeCondition: address(0),
-            chargeHook: address(0),
-            captureCondition: address(captureCondition),
-            captureHook: address(0),
-            voidCondition: address(voidCondition),
-            voidHook: address(refundRequest),
-            refundCondition: address(0),
-            refundHook: address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: address(0),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: address(0),
+            capturePreActionCondition: address(capturePreActionCondition),
+            capturePostActionHook: address(0),
+            voidPreActionCondition: address(voidPreActionCondition),
+            voidPostActionHook: address(refundRequest),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: address(0)
         });
         operator = PaymentOperator(operatorFactory.deployOperator(config));
 

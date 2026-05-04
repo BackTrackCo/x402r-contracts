@@ -14,7 +14,7 @@ import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} fro
  * @notice Refund request lifecycle as a BaseHook plugin for PaymentOperator.
  * @dev ARBITER is an immutable address for deny/refuse gating. Approval happens via
  *      operator.void() which triggers run() on this contract as the
- *      VOID_HOOK.
+ *      VOID_POST_ACTION_HOOK.
  *
  *      State machine:
  *        Pending  -> Approved  (operator calls run() after void)
@@ -22,7 +22,7 @@ import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} fro
  *        Pending  -> Refused   (onlyArbiter)
  *        Pending  -> Cancelled (payer only)
  *
- *      Note: under the canonical wiring (VOID_HOOK), void() empties the
+ *      Note: under the canonical wiring (VOID_POST_ACTION_HOOK), void() empties the
  *      entire authorization in one shot, so a request goes from Pending -> Approved
  *      on the first run() call and the authorization is gone after that — subsequent
  *      run() invocations from VOID would revert at the escrow level (no capturable
@@ -30,7 +30,7 @@ import {RefundRequested, RefundRequestStatusUpdated, RefundRequestCancelled} fro
  *      unreachable in that wiring.
  *
  *      Plugin slots on PaymentOperator are permissionlessly configurable: an operator
- *      can wire RefundRequest to CHARGE_HOOK or REFUND_HOOK, both of which fire
+ *      can wire RefundRequest to CHARGE_POST_ACTION_HOOK or REFUND_POST_ACTION_HOOK, both of which fire
  *      repeatedly for the same paymentInfoHash. Under those wirings the cumulative
  *      branch IS reachable; cappedAmount is bounded by
  *      (request.amount - request.approvedAmount) so it cannot exceed the original

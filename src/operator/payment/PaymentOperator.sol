@@ -7,7 +7,7 @@ import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.so
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PaymentOperatorAccess} from "./PaymentOperatorAccess.sol";
 import {ZeroAddress} from "../../types/Errors.sol";
-import {ZeroEscrow, ConditionNotMet, FeeTooHigh, FeeBoundsIncompatible} from "../types/Errors.sol";
+import {ZeroEscrow, PreActionConditionNotMet, FeeTooHigh, FeeBoundsIncompatible} from "../types/Errors.sol";
 import {ICondition} from "../../plugins/conditions/ICondition.sol";
 import {IHook} from "../../plugins/hooks/IHook.sol";
 import {
@@ -35,11 +35,11 @@ import {ProtocolFeeConfig} from "../../plugins/fees/ProtocolFeeConfig.sol";
  *      - Conditions can be composed using combinators (Or, And, Not)
  *
  *      Slots (one per action):
- *      - AUTHORIZE_CONDITION / AUTHORIZE_HOOK
- *      - CHARGE_CONDITION / CHARGE_HOOK
- *      - CAPTURE_CONDITION / CAPTURE_HOOK
- *      - VOID_CONDITION / VOID_HOOK
- *      - REFUND_CONDITION / REFUND_HOOK
+ *      - AUTHORIZE_PRE_ACTION_CONDITION / AUTHORIZE_POST_ACTION_HOOK
+ *      - CHARGE_PRE_ACTION_CONDITION / CHARGE_POST_ACTION_HOOK
+ *      - CAPTURE_PRE_ACTION_CONDITION / CAPTURE_POST_ACTION_HOOK
+ *      - VOID_PRE_ACTION_CONDITION / VOID_POST_ACTION_HOOK
+ *      - REFUND_PRE_ACTION_CONDITION / REFUND_POST_ACTION_HOOK
  *
  *      Flow for each action:
  *      User -> operator.action() -> [condition.check()?] -> escrow -> [hook.run()?]
@@ -61,16 +61,16 @@ import {ProtocolFeeConfig} from "../../plugins/fees/ProtocolFeeConfig.sol";
 contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
     /// @notice Configuration struct for condition/hook slots
     struct PluginConfig {
-        address authorizeCondition;
-        address authorizeHook;
-        address chargeCondition;
-        address chargeHook;
-        address captureCondition;
-        address captureHook;
-        address voidCondition;
-        address voidHook;
-        address refundCondition;
-        address refundHook;
+        address authorizePreActionCondition;
+        address authorizePostActionHook;
+        address chargePreActionCondition;
+        address chargePostActionHook;
+        address capturePreActionCondition;
+        address capturePostActionHook;
+        address voidPreActionCondition;
+        address voidPostActionHook;
+        address refundPreActionCondition;
+        address refundPostActionHook;
     }
 
     // ============ Core State ============
@@ -93,19 +93,19 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
 
     // ============ Condition Slots (before-action checks) ============
     // address(0) = always allow (default behavior)
-    ICondition public immutable AUTHORIZE_CONDITION;
-    ICondition public immutable CHARGE_CONDITION;
-    ICondition public immutable CAPTURE_CONDITION;
-    ICondition public immutable VOID_CONDITION;
-    ICondition public immutable REFUND_CONDITION;
+    ICondition public immutable AUTHORIZE_PRE_ACTION_CONDITION;
+    ICondition public immutable CHARGE_PRE_ACTION_CONDITION;
+    ICondition public immutable CAPTURE_PRE_ACTION_CONDITION;
+    ICondition public immutable VOID_PRE_ACTION_CONDITION;
+    ICondition public immutable REFUND_PRE_ACTION_CONDITION;
 
     // ============ Hook Slots (after-action state updates) ============
     // address(0) = no-op (default behavior)
-    IHook public immutable AUTHORIZE_HOOK;
-    IHook public immutable CHARGE_HOOK;
-    IHook public immutable CAPTURE_HOOK;
-    IHook public immutable VOID_HOOK;
-    IHook public immutable REFUND_HOOK;
+    IHook public immutable AUTHORIZE_POST_ACTION_HOOK;
+    IHook public immutable CHARGE_POST_ACTION_HOOK;
+    IHook public immutable CAPTURE_POST_ACTION_HOOK;
+    IHook public immutable VOID_POST_ACTION_HOOK;
+    IHook public immutable REFUND_POST_ACTION_HOOK;
 
     constructor(
         address _escrow,
@@ -124,18 +124,18 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         FEE_CALCULATOR = IFeeCalculator(_feeCalculator);
 
         // Set condition slots (address(0) = always allow)
-        AUTHORIZE_CONDITION = ICondition(_conditions.authorizeCondition);
-        CHARGE_CONDITION = ICondition(_conditions.chargeCondition);
-        CAPTURE_CONDITION = ICondition(_conditions.captureCondition);
-        VOID_CONDITION = ICondition(_conditions.voidCondition);
-        REFUND_CONDITION = ICondition(_conditions.refundCondition);
+        AUTHORIZE_PRE_ACTION_CONDITION = ICondition(_conditions.authorizePreActionCondition);
+        CHARGE_PRE_ACTION_CONDITION = ICondition(_conditions.chargePreActionCondition);
+        CAPTURE_PRE_ACTION_CONDITION = ICondition(_conditions.capturePreActionCondition);
+        VOID_PRE_ACTION_CONDITION = ICondition(_conditions.voidPreActionCondition);
+        REFUND_PRE_ACTION_CONDITION = ICondition(_conditions.refundPreActionCondition);
 
         // Set hook slots (address(0) = no-op)
-        AUTHORIZE_HOOK = IHook(_conditions.authorizeHook);
-        CHARGE_HOOK = IHook(_conditions.chargeHook);
-        CAPTURE_HOOK = IHook(_conditions.captureHook);
-        VOID_HOOK = IHook(_conditions.voidHook);
-        REFUND_HOOK = IHook(_conditions.refundHook);
+        AUTHORIZE_POST_ACTION_HOOK = IHook(_conditions.authorizePostActionHook);
+        CHARGE_POST_ACTION_HOOK = IHook(_conditions.chargePostActionHook);
+        CAPTURE_POST_ACTION_HOOK = IHook(_conditions.capturePostActionHook);
+        VOID_POST_ACTION_HOOK = IHook(_conditions.voidPostActionHook);
+        REFUND_POST_ACTION_HOOK = IHook(_conditions.refundPostActionHook);
     }
 
     // ============ Internal Fee Calculation ============
@@ -171,7 +171,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
 
     /**
      * @notice Authorize payment via Base Commerce Payments escrow
-     * @dev Checks AUTHORIZE_CONDITION, performs authorization, then calls AUTHORIZE_HOOK
+     * @dev Checks AUTHORIZE_PRE_ACTION_CONDITION, performs authorization, then calls AUTHORIZE_POST_ACTION_HOOK
      * @param paymentInfo PaymentInfo struct with required values:
      *        - operator == address(this)
      *        - feeReceiver == address(this)
@@ -179,7 +179,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
      * @param amount Amount to authorize
      * @param tokenCollector Address of the token collector
      * @param collectorData Data passed to both the token collector AND forwarded to
-     *        AUTHORIZE_CONDITION.check() and AUTHORIZE_HOOK.run() as the `data` parameter.
+     *        AUTHORIZE_PRE_ACTION_CONDITION.check() and AUTHORIZE_POST_ACTION_HOOK.run() as the `data` parameter.
      *        NOTE: Dual-purpose — collector initialization data (e.g. ERC-3009 authorization
      *        params) AND hook data for conditions/hooks. A condition that decodes
      *        collectorData may conflict with collector-specific encoding. Callers packing
@@ -191,9 +191,9 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         address tokenCollector,
         bytes calldata collectorData
     ) external nonReentrant validFees(paymentInfo) {
-        if (address(AUTHORIZE_CONDITION) != address(0)) {
-            if (!AUTHORIZE_CONDITION.check(paymentInfo, amount, msg.sender, collectorData)) {
-                revert ConditionNotMet();
+        if (address(AUTHORIZE_PRE_ACTION_CONDITION) != address(0)) {
+            if (!AUTHORIZE_PRE_ACTION_CONDITION.check(paymentInfo, amount, msg.sender, collectorData)) {
+                revert PreActionConditionNotMet();
             }
         }
 
@@ -214,21 +214,21 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         authorizedFees[paymentInfoHash] = AuthorizedFees({totalFeeBps: totalFeeBps, protocolFeeBps: protocolFeeBps});
         emit AuthorizeExecuted(paymentInfo, paymentInfoHash, paymentInfo.payer, paymentInfo.receiver, amount);
 
-        if (address(AUTHORIZE_HOOK) != address(0)) {
-            AUTHORIZE_HOOK.run(paymentInfo, amount, msg.sender, collectorData);
+        if (address(AUTHORIZE_POST_ACTION_HOOK) != address(0)) {
+            AUTHORIZE_POST_ACTION_HOOK.run(paymentInfo, amount, msg.sender, collectorData);
         }
     }
 
     /**
      * @notice Direct charge - collects payment and immediately transfers to receiver
-     * @dev Checks CHARGE_CONDITION, performs charge, then calls CHARGE_HOOK.
+     * @dev Checks CHARGE_PRE_ACTION_CONDITION, performs charge, then calls CHARGE_POST_ACTION_HOOK.
      *      Unlike authorize(), funds go directly to receiver (no escrow hold).
      *      Refunds are only possible via refund().
      * @param paymentInfo PaymentInfo struct
      * @param amount Amount to charge
      * @param tokenCollector Address of the token collector
      * @param collectorData Data passed to both the token collector AND forwarded to
-     *        CHARGE_CONDITION.check() and CHARGE_HOOK.run() as the `data` parameter.
+     *        CHARGE_PRE_ACTION_CONDITION.check() and CHARGE_POST_ACTION_HOOK.run() as the `data` parameter.
      *        NOTE: Dual-purpose — see authorize() for collision considerations.
      */
     function charge(
@@ -237,9 +237,9 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         address tokenCollector,
         bytes calldata collectorData
     ) external nonReentrant validFees(paymentInfo) {
-        if (address(CHARGE_CONDITION) != address(0)) {
-            if (!CHARGE_CONDITION.check(paymentInfo, amount, msg.sender, collectorData)) {
-                revert ConditionNotMet();
+        if (address(CHARGE_PRE_ACTION_CONDITION) != address(0)) {
+            if (!CHARGE_PRE_ACTION_CONDITION.check(paymentInfo, amount, msg.sender, collectorData)) {
+                revert PreActionConditionNotMet();
             }
         }
 
@@ -262,14 +262,14 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         accumulatedProtocolFees[paymentInfo.token] += protocolFeeAmount;
         emit ChargeExecuted(paymentInfo, paymentInfoHash, paymentInfo.payer, paymentInfo.receiver, amount);
 
-        if (address(CHARGE_HOOK) != address(0)) {
-            CHARGE_HOOK.run(paymentInfo, amount, msg.sender, collectorData);
+        if (address(CHARGE_POST_ACTION_HOOK) != address(0)) {
+            CHARGE_POST_ACTION_HOOK.run(paymentInfo, amount, msg.sender, collectorData);
         }
     }
 
     /**
      * @notice Capture authorized funds and transfer to receiver
-     * @dev Checks CAPTURE_CONDITION, performs escrow.capture, then calls CAPTURE_HOOK.
+     * @dev Checks CAPTURE_PRE_ACTION_CONDITION, performs escrow.capture, then calls CAPTURE_POST_ACTION_HOOK.
      *      Uses fees stored at authorization time to prevent protocol fee changes from breaking capture.
      *      `validFees` is required here for symmetry with authorize/charge: capture passes
      *      `feeReceiver = address(this)` to escrow, and `paymentInfo.feeReceiver != address(this)`
@@ -277,16 +277,16 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
      *      modifier makes the local invariant explicit and survives future escrow refactors.
      * @param paymentInfo PaymentInfo struct
      * @param amount Amount to capture
-     * @param data Arbitrary data forwarded to CAPTURE_CONDITION.check() and CAPTURE_HOOK.run()
+     * @param data Arbitrary data forwarded to CAPTURE_PRE_ACTION_CONDITION.check() and CAPTURE_POST_ACTION_HOOK.run()
      */
     function capture(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256 amount, bytes calldata data)
         external
         nonReentrant
         validFees(paymentInfo)
     {
-        if (address(CAPTURE_CONDITION) != address(0)) {
-            if (!CAPTURE_CONDITION.check(paymentInfo, amount, msg.sender, data)) {
-                revert ConditionNotMet();
+        if (address(CAPTURE_PRE_ACTION_CONDITION) != address(0)) {
+            if (!CAPTURE_PRE_ACTION_CONDITION.check(paymentInfo, amount, msg.sender, data)) {
+                revert PreActionConditionNotMet();
             }
         }
 
@@ -302,27 +302,27 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         accumulatedProtocolFees[paymentInfo.token] += protocolFeeAmount;
         emit CaptureExecuted(paymentInfo, paymentInfoHash, paymentInfo.payer, paymentInfo.receiver, amount);
 
-        if (address(CAPTURE_HOOK) != address(0)) {
-            CAPTURE_HOOK.run(paymentInfo, amount, msg.sender, data);
+        if (address(CAPTURE_POST_ACTION_HOOK) != address(0)) {
+            CAPTURE_POST_ACTION_HOOK.run(paymentInfo, amount, msg.sender, data);
         }
     }
 
     /**
      * @notice Void an authorization, returning held funds to payer
-     * @dev Checks VOID_CONDITION with the current capturable amount, performs
-     *      escrow.void, then calls VOID_HOOK. The condition receives the actual
+     * @dev Checks VOID_PRE_ACTION_CONDITION with the current capturable amount, performs
+     *      escrow.void, then calls VOID_POST_ACTION_HOOK. The condition receives the actual
      *      amount the void will return so amount-gated conditions (e.g. TVL limits, bounds
      *      checks) work correctly. Passing 0 here would silently bypass any amount-based gate.
      * @param paymentInfo PaymentInfo struct
-     * @param data Arbitrary data forwarded to VOID_CONDITION.check() and VOID_HOOK.run()
+     * @param data Arbitrary data forwarded to VOID_PRE_ACTION_CONDITION.check() and VOID_POST_ACTION_HOOK.run()
      */
     function void(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, bytes calldata data) external nonReentrant {
         bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
         (, uint120 capturableAmount,) = ESCROW.paymentState(paymentInfoHash);
 
-        if (address(VOID_CONDITION) != address(0)) {
-            if (!VOID_CONDITION.check(paymentInfo, capturableAmount, msg.sender, data)) {
-                revert ConditionNotMet();
+        if (address(VOID_PRE_ACTION_CONDITION) != address(0)) {
+            if (!VOID_PRE_ACTION_CONDITION.check(paymentInfo, capturableAmount, msg.sender, data)) {
+                revert PreActionConditionNotMet();
             }
         }
 
@@ -332,20 +332,20 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         // ============ EFFECTS (post-INTERACTIONS for strict CEI) ============
         emit VoidExecuted(paymentInfo, paymentInfoHash, paymentInfo.payer, paymentInfo.receiver);
 
-        if (address(VOID_HOOK) != address(0)) {
-            VOID_HOOK.run(paymentInfo, capturableAmount, msg.sender, data);
+        if (address(VOID_POST_ACTION_HOOK) != address(0)) {
+            VOID_POST_ACTION_HOOK.run(paymentInfo, capturableAmount, msg.sender, data);
         }
     }
 
     /**
      * @notice Refund captured funds back to payer (after capture or charge)
-     * @dev Checks REFUND_CONDITION, performs escrow.refund, then calls REFUND_HOOK.
+     * @dev Checks REFUND_PRE_ACTION_CONDITION, performs escrow.refund, then calls REFUND_POST_ACTION_HOOK.
      *      Permission is enforced by the token collector (e.g., receiver must have approved it).
      * @param paymentInfo PaymentInfo struct
      * @param amount Amount to refund to payer
      * @param tokenCollector Address of the token collector that will source the refund
      * @param collectorData Data passed to both the token collector AND forwarded to
-     *        REFUND_CONDITION.check() and REFUND_HOOK.run() as the `data` parameter.
+     *        REFUND_PRE_ACTION_CONDITION.check() and REFUND_POST_ACTION_HOOK.run() as the `data` parameter.
      *        NOTE: Dual-purpose — see authorize() for collision considerations.
      */
     function refund(
@@ -354,9 +354,9 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         address tokenCollector,
         bytes calldata collectorData
     ) external nonReentrant {
-        if (address(REFUND_CONDITION) != address(0)) {
-            if (!REFUND_CONDITION.check(paymentInfo, amount, msg.sender, collectorData)) {
-                revert ConditionNotMet();
+        if (address(REFUND_PRE_ACTION_CONDITION) != address(0)) {
+            if (!REFUND_PRE_ACTION_CONDITION.check(paymentInfo, amount, msg.sender, collectorData)) {
+                revert PreActionConditionNotMet();
             }
         }
 
@@ -368,8 +368,8 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         // ============ EFFECTS (post-INTERACTIONS for strict CEI) ============
         emit RefundExecuted(paymentInfo, paymentInfoHash, paymentInfo.payer, paymentInfo.receiver, amount);
 
-        if (address(REFUND_HOOK) != address(0)) {
-            REFUND_HOOK.run(paymentInfo, amount, msg.sender, collectorData);
+        if (address(REFUND_POST_ACTION_HOOK) != address(0)) {
+            REFUND_POST_ACTION_HOOK.run(paymentInfo, amount, msg.sender, collectorData);
         }
     }
 

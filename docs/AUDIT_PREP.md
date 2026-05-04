@@ -492,16 +492,16 @@ lib/commerce-payments/src/AuthCaptureEscrow.sol
 ```
 PaymentOperatorFactory
     └── deploys → PaymentOperator (immutable, no upgrade)
-                      ├── AUTHORIZE_CONDITION (optional)
-                      ├── AUTHORIZE_HOOK (optional)
-                      ├── CHARGE_CONDITION (optional)
-                      ├── CHARGE_HOOK (optional)
-                      ├── CAPTURE_CONDITION (optional)
-                      ├── CAPTURE_HOOK (optional)
-                      ├── VOID_CONDITION (optional)
-                      ├── VOID_HOOK (optional)
-                      ├── REFUND_CONDITION (optional)
-                      └── REFUND_HOOK (optional)
+                      ├── AUTHORIZE_PRE_ACTION_CONDITION (optional)
+                      ├── AUTHORIZE_POST_ACTION_HOOK (optional)
+                      ├── CHARGE_PRE_ACTION_CONDITION (optional)
+                      ├── CHARGE_POST_ACTION_HOOK (optional)
+                      ├── CAPTURE_PRE_ACTION_CONDITION (optional)
+                      ├── CAPTURE_POST_ACTION_HOOK (optional)
+                      ├── VOID_PRE_ACTION_CONDITION (optional)
+                      ├── VOID_POST_ACTION_HOOK (optional)
+                      ├── REFUND_PRE_ACTION_CONDITION (optional)
+                      └── REFUND_POST_ACTION_HOOK (optional)
 
 EscrowPeriodFactory
     └── deploys → EscrowPeriod (combined condition + hook)
