@@ -11,10 +11,10 @@ import {PaymentFrozen, PaymentUnfrozen} from "./types/Events.sol";
 
 /**
  * @title Freeze
- * @notice Standalone ICondition that blocks release when a payment is frozen.
+ * @notice Standalone ICondition that blocks capture when a payment is frozen.
  *         Manages freeze/unfreeze state with optional escrow period time constraint.
  *
- * @dev Implements ICondition: check() returns false when frozen (blocks release).
+ * @dev Implements ICondition: check() returns false when frozen (blocks capture).
  *      Does NOT inherit BaseHook — uses ESCROW.getHash() directly for payment hash computation.
  *
  *      FREEZE_PRE_ACTION_CONDITION and UNFREEZE_PRE_ACTION_CONDITION are required (constructor reverts on address(0))
@@ -36,19 +36,19 @@ import {PaymentFrozen, PaymentUnfrozen} from "./types/Events.sol";
  *      - Payer freeze, Arbiter unfreeze: (PayerCondition, StaticAddressCondition, 0)
  *      - Anyone freeze, Receiver unfreeze: (AlwaysTrueCondition, ReceiverCondition, 7 days)
  *
- * SECURITY NOTE - Freeze/Release Race Condition:
+ * SECURITY NOTE - Freeze/Capture Race Condition:
  *      When composed with EscrowPeriod via AndCondition, at the exact moment the escrow
  *      period expires:
  *      - freeze() will revert with FreezeWindowExpired
- *      - EscrowPeriod.check() will return true (release allowed)
+ *      - EscrowPeriod.check() will return true (capture allowed)
  *
  *      MEV RISK: A malicious block builder could censor/delay a payer's freeze transaction
- *      until after the escrow period expires, allowing the receiver to release.
+ *      until after the escrow period expires, allowing the receiver to capture.
  *
  *      MITIGATIONS:
  *      1. FREEZE EARLY: Freeze immediately when anticipating a dispute.
  *      2. PRIVATE MEMPOOL: Submit via Flashbots Protect or MEV Blocker near the deadline.
- *      3. MONITOR: Watch for release attempts and freeze proactively.
+ *      3. MONITOR: Watch for capture attempts and freeze proactively.
  */
 contract Freeze is ICondition {
     /// @notice Escrow contract for payment hash computation
@@ -90,7 +90,7 @@ contract Freeze is ICondition {
     // ============ ICondition Implementation ============
 
     /**
-     * @notice Check if release is allowed (not frozen)
+     * @notice Check if capture is allowed (not frozen)
      * @param paymentInfo PaymentInfo struct
      * @return allowed True if payment is not frozen
      */
@@ -106,7 +106,7 @@ contract Freeze is ICondition {
     // ============ Freeze Functions ============
 
     /**
-     * @notice Freeze a payment to block release
+     * @notice Freeze a payment to block capture
      * @dev When ESCROW_PERIOD_CONTRACT is set, only callable during the escrow period.
      *      Authorization checked via FREEZE_PRE_ACTION_CONDITION.
      *
@@ -151,7 +151,7 @@ contract Freeze is ICondition {
     }
 
     /**
-     * @notice Unfreeze a payment to allow release
+     * @notice Unfreeze a payment to allow capture
      * @dev No escrow period check — unfreezing should always be allowed.
      *      Authorization checked via UNFREEZE_PRE_ACTION_CONDITION.
      *

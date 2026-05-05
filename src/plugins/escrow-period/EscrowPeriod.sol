@@ -38,7 +38,7 @@ contract EscrowPeriod is AuthorizationTimeHook, ICondition {
     // ============ ICondition Implementation ============
 
     /**
-     * @notice Check if funds can be released (escrow period passed)
+     * @notice Check if funds can be captured (escrow period passed)
      * @param paymentInfo PaymentInfo struct
      * @return allowed True if escrow period has passed (and payment is authorized)
      */

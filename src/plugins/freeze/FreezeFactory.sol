@@ -49,7 +49,7 @@ contract FreezeFactory {
      * @return freezeAddr Address of the deployed Freeze contract
      * @custom:security RACE CONDITION: When the deployed Freeze is composed with EscrowPeriod via
      *         AndCondition, a race exists at the escrow period boundary — freeze() reverts
-     *         (FreezeWindowExpired) at the exact moment release becomes possible. Deploy with
+     *         (FreezeWindowExpired) at the exact moment capture becomes possible. Deploy with
      *         sufficient FREEZE_DURATION margin relative to ESCROW_PERIOD to mitigate.
      */
     function deploy(

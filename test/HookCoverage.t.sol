@@ -12,6 +12,7 @@ import {AuthorizationTimeHook} from "../src/plugins/hooks/AuthorizationTimeHook.
 import {PaymentIndexHook} from "../src/plugins/hooks/PaymentIndexHook.sol";
 import {HookCombinator} from "../src/plugins/hooks/combinators/HookCombinator.sol";
 import {IHook} from "../src/plugins/hooks/IHook.sol";
+import {OnlyOperator} from "../src/types/Errors.sol";
 
 /**
  * @title HookCoverageTest
@@ -205,7 +206,7 @@ contract HookCoverageTest is Test {
 
         vm.prank(payer);
         collector.preApprove(paymentInfo);
-        vm.expectRevert();
+        vm.expectRevert(OnlyOperator.selector);
         op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
     }
 
