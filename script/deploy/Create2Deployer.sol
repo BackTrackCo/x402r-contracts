@@ -39,6 +39,7 @@ abstract contract Create2Deployer is Script {
         if (predicted.code.length > 0) {
             return predicted;
         }
+        require(address(CREATEX).code.length > 0, "Create2Deployer: CreateX not deployed on this chain");
         deployed = CREATEX.deployCreate2(_salt(label), initCode);
         require(deployed == predicted, "Create2Deployer: deployed address mismatch");
     }

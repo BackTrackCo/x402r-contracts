@@ -33,7 +33,7 @@ contract EscrowPeriod is AuthorizationTimeRecorderHook, ICondition {
         ESCROW_PERIOD = _escrowPeriod;
     }
 
-    // Note: record() inherited from AuthorizationTimeRecorderHook
+    // Note: run() inherited from AuthorizationTimeRecorderHook
 
     // ============ ICondition Implementation ============
 

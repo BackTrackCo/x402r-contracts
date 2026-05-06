@@ -211,6 +211,64 @@ contract HookCoverageTest is Test {
         op.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
     }
 
+    function test_PaymentIndexRecorderHook_ChainSingletonAggregatesAcrossOperators() public {
+        // Models the canonical chain-singleton deployment: a single PaymentIndexRecorderHook
+        // gated on the HookCombinator runtime codehash, shared by two distinct operators that
+        // each route their post-action through their own HookCombinator instance. Because
+        // every HookCombinator shares the same runtime bytecode (storage holds the per-instance
+        // hook list, not bytecode), the codehash gate accepts both, and the shared singleton's
+        // counters aggregate across both operators.
+
+        // Determine the canonical HookCombinator codehash by deploying a placeholder instance.
+        AuthorizationTimeRecorderHook placeholder = new AuthorizationTimeRecorderHook(address(escrow), bytes32(0));
+        IHook[] memory placeholderArr = new IHook[](1);
+        placeholderArr[0] = IHook(address(placeholder));
+        bytes32 combinatorCodehash = address(new HookCombinator(placeholderArr)).codehash;
+
+        // One shared singleton, gated on the canonical combinator codehash.
+        PaymentIndexRecorderHook sharedHook = new PaymentIndexRecorderHook(address(escrow), combinatorCodehash);
+        IHook[] memory hookArr = new IHook[](1);
+        hookArr[0] = IHook(address(sharedHook));
+
+        // Two distinct combinator instances — same bytecode, different storage. Codehash is
+        // identical on both, so both are accepted by the shared hook's gate.
+        HookCombinator combinatorA = new HookCombinator(hookArr);
+        HookCombinator combinatorB = new HookCombinator(hookArr);
+        assertEq(address(combinatorA).codehash, combinatorCodehash, "combinatorA codehash gate");
+        assertEq(address(combinatorB).codehash, combinatorCodehash, "combinatorB codehash gate");
+
+        PaymentOperator opA = _deployWithHook(address(combinatorA));
+        PaymentOperator opB = _deployWithHook(address(combinatorB));
+
+        // Fire one authorize through each operator (different salts to avoid hash collision
+        // on the same payer/receiver/token).
+        AuthCaptureEscrow.PaymentInfo memory infoA = _createPaymentInfo(address(opA), 1001);
+        AuthCaptureEscrow.PaymentInfo memory infoB = _createPaymentInfo(address(opB), 1002);
+
+        vm.startPrank(payer);
+        collector.preApprove(infoA);
+        collector.preApprove(infoB);
+        vm.stopPrank();
+
+        opA.authorize(infoA, PAYMENT_AMOUNT, address(collector), "");
+        opB.authorize(infoB, PAYMENT_AMOUNT, address(collector), "");
+
+        // Aggregation: one shared singleton sees both authorizations.
+        assertEq(sharedHook.payerPaymentCount(payer), 2, "shared singleton aggregates payer count across operators");
+        assertEq(
+            sharedHook.receiverPaymentCount(receiver), 2, "shared singleton aggregates receiver count across operators"
+        );
+
+        // Per-operator filtering: payment hashes are distinct (operator address is part of
+        // AuthCaptureEscrow.getHash), so consumers can split the aggregated view by reading
+        // PaymentInfo.operator from the indexed structs.
+        (AuthCaptureEscrow.PaymentInfo[] memory payments,) = sharedHook.getPayerPayments(payer, 0, 2);
+        assertEq(payments.length, 2, "two distinct indexed payments");
+        bool sawA = (payments[0].operator == address(opA)) || (payments[1].operator == address(opA));
+        bool sawB = (payments[0].operator == address(opB)) || (payments[1].operator == address(opB));
+        assertTrue(sawA && sawB, "both operators are reachable via the per-operator filter");
+    }
+
     function test_HookCombinator_GetHookCount() public {
         AuthorizationTimeRecorderHook r1 = new AuthorizationTimeRecorderHook(address(escrow), bytes32(0));
         AuthorizationTimeRecorderHook r2 = new AuthorizationTimeRecorderHook(address(escrow), bytes32(0));

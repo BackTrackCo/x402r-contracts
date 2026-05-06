@@ -215,7 +215,7 @@ MEV Protection: Payers should freeze EARLY, not at deadline.
 │  - AlwaysTrueCondition       │                              │
 ├─────────────────────────────────────────────────────────────┤
 │  Combinators:                │  Hooks (Optional):       │
-│  - AndCondition              │  - PaymentIndexHook      │
+│  - AndCondition              │  - PaymentIndexRecorderHook      │
 │  - OrCondition               │  - HookCombinator        │
 │  - NotCondition              │                              │
 ├─────────────────────────────────────────────────────────────┤
@@ -264,7 +264,7 @@ Typical gas costs for common operations (measured with via-IR optimization and r
 | **Refund** | ~50,000 | ~50,000 | Return captured funds via ReceiverRefundCollector |
 | **Freeze Payment** | ~50,000 | ~50,000 | Payer freezes during escrow |
 
-**Implementation**: Payment indexing is **optional** via `PaymentIndexHook`. Deploy with indexing for on-chain queries (+42k gas first, +22k subsequent) or skip for gas savings when using external indexers (The Graph).
+**Implementation**: Payment indexing is **optional** via `PaymentIndexRecorderHook`. Deploy with indexing for on-chain queries (+42k gas first, +22k subsequent) or skip for gas savings when using external indexers (The Graph).
 
 ### Condition Evaluation
 
@@ -324,7 +324,7 @@ Estimated transaction costs on different networks (at typical gas prices):
 
 ### Pagination Queries (On-Chain)
 
-**Optional Feature**: Deploy `PaymentIndexHook` to enable on-chain payment lookups.
+**Optional Feature**: Deploy `PaymentIndexRecorderHook` to enable on-chain payment lookups.
 
 | Query Type | Gas Cost | Notes |
 |------------|----------|-------|
@@ -332,7 +332,7 @@ Estimated transaction costs on different networks (at typical gas prices):
 | **Get 50 payments** | ~82,000 | Scales linearly with count |
 | **Get single payment** | ~2,000 | Direct index access |
 
-**API**: `PaymentIndexHook.getPayerPayments(address, offset, count)` returns `(bytes32[] hashes, uint256 total)`:
+**API**: `PaymentIndexRecorderHook.getPayerPayments(address, offset, count)` returns `(bytes32[] hashes, uint256 total)`:
 - `hashes`: Array of payment hashes for escrow lookup
 - `total`: Total number of payments for this address
 
@@ -453,11 +453,11 @@ address operator = factory.deployOperator(config);
 
 #### Optional Payment Indexing
 
-`PaymentIndexHook` provides on-chain payment lookups by payer/receiver. Deploy once and share across operators:
+`PaymentIndexRecorderHook` provides on-chain payment lookups by payer/receiver. Deploy once and share across operators:
 
 ```solidity
 // Deploy indexer (optional)
-PaymentIndexHook indexHook = new PaymentIndexHook(address(escrow), bytes32(0));
+PaymentIndexRecorderHook indexHook = new PaymentIndexRecorderHook(address(escrow), bytes32(0));
 
 // Option 1: Enable indexing
 PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({

@@ -542,7 +542,7 @@ contract StaticAddressCondition is ICondition {
 #### 5. EscrowPeriod ✅
 ```solidity
 // Combined hook + condition: records auth time, blocks capture until escrow period expires
-contract EscrowPeriod is AuthorizationTimeHook, ICondition {
+contract EscrowPeriod is AuthorizationTimeRecorderHook, ICondition {
     uint256 public immutable ESCROW_PERIOD;
 
     function check(PaymentInfo calldata paymentInfo, uint256, address)
@@ -590,8 +590,8 @@ contract AndCondition is ICondition {
 #### 1. EscrowPeriod ✅ (also serves as condition)
 ```solidity
 // Combined hook + condition with freeze/unfreeze
-contract EscrowPeriod is AuthorizationTimeHook, ICondition {
-    // record() inherited from AuthorizationTimeHook
+contract EscrowPeriod is AuthorizationTimeRecorderHook, ICondition {
+    // run() inherited from AuthorizationTimeRecorderHook
     // check() delegates to canCapture()
     // freeze()/unfreeze() for dispute handling
 }
