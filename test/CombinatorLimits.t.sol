@@ -11,7 +11,7 @@ import {HookCombinator} from "../src/plugins/hooks/combinators/HookCombinator.so
 import {AlwaysTrueCondition} from "../src/plugins/conditions/access/AlwaysTrueCondition.sol";
 import {PayerCondition} from "../src/plugins/conditions/access/PayerCondition.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {AuthorizationTimeHook} from "../src/plugins/hooks/AuthorizationTimeHook.sol";
+import {AuthorizationTimeRecorderHook} from "../src/plugins/hooks/AuthorizationTimeRecorderHook.sol";
 
 /**
  * @title CombinatorLimitsTest
@@ -270,7 +270,7 @@ contract CombinatorLimitsTest is Test {
     function test_HookCombinator_AcceptsMaxHooks() public {
         IHook[] memory recs = new IHook[](10);
         for (uint256 i = 0; i < 10; i++) {
-            recs[i] = IHook(address(new AuthorizationTimeHook(address(escrow), bytes32(0))));
+            recs[i] = IHook(address(new AuthorizationTimeRecorderHook(address(escrow), bytes32(0))));
         }
 
         HookCombinator combinator = new HookCombinator(recs);
@@ -280,7 +280,7 @@ contract CombinatorLimitsTest is Test {
     function test_HookCombinator_RevertsOnTooManyHooks() public {
         IHook[] memory recs = new IHook[](11);
         for (uint256 i = 0; i < 11; i++) {
-            recs[i] = IHook(address(new AuthorizationTimeHook(address(escrow), bytes32(0))));
+            recs[i] = IHook(address(new AuthorizationTimeRecorderHook(address(escrow), bytes32(0))));
         }
 
         vm.expectRevert(abi.encodeWithSelector(HookCombinator.TooManyHooks.selector, 11, 10));
@@ -296,7 +296,7 @@ contract CombinatorLimitsTest is Test {
 
     function test_HookCombinator_MaxHooksConstant() public {
         IHook[] memory recs = new IHook[](1);
-        recs[0] = IHook(address(new AuthorizationTimeHook(address(escrow), bytes32(0))));
+        recs[0] = IHook(address(new AuthorizationTimeRecorderHook(address(escrow), bytes32(0))));
 
         HookCombinator combinator = new HookCombinator(recs);
         assertEq(combinator.MAX_POST_ACTION_HOOKS(), 10, "MAX_POST_ACTION_HOOKS should be 10");

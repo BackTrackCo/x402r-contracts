@@ -6,7 +6,7 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {BaseHook} from "./BaseHook.sol";
 
 /**
- * @title PaymentIndexHook
+ * @title PaymentIndexRecorderHook
  * @notice Hook that indexes payments by payer and receiver for on-chain lookups,
  *         and stores full PaymentInfo for retrieval.
  * @dev Extracted from PaymentOperator for optional gas optimization.
@@ -22,13 +22,13 @@ import {BaseHook} from "./BaseHook.sol";
  *
  * USAGE:
  *   // Deploy once, share across operators
- *   PaymentIndexHook indexHook = new PaymentIndexHook(address(escrow));
+ *   PaymentIndexRecorderHook indexHook = new PaymentIndexRecorderHook(address(escrow));
  *
  *   // Query payments with full PaymentInfo
  *   (AuthCaptureEscrow.PaymentInfo[] memory infos, uint256 total) = indexHook.getPayerPayments(alice, 0, 10);
  *   AuthCaptureEscrow.PaymentInfo memory info = indexHook.getPaymentInfo(hash);
  */
-contract PaymentIndexHook is BaseHook {
+contract PaymentIndexRecorderHook is BaseHook {
     // ============ Errors ============
     error IndexOutOfBounds();
 

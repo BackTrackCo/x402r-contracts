@@ -8,6 +8,9 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {ERC3009PaymentCollector} from "commerce-payments/collectors/ERC3009PaymentCollector.sol";
 import {Permit2PaymentCollector} from "commerce-payments/collectors/Permit2PaymentCollector.sol";
 
+import {HookCombinator} from "../src/plugins/hooks/combinators/HookCombinator.sol";
+import {PaymentIndexRecorderHook} from "../src/plugins/hooks/PaymentIndexRecorderHook.sol";
+
 /// @notice Read-only prediction of canonical CREATE2 addresses.
 /// @dev Run: `forge script script/PredictAddresses.s.sol -vvv` (no broadcast).
 ///      Reproduces the exact addresses that `DeployCommercePayments` and `DeployX402r` will
@@ -48,5 +51,26 @@ contract PredictAddresses is Create2Deployer {
         console.log("  initCodeHash:");
         console.logBytes32(permit2InitHash);
         console.log("  predicted:  ", permit2Collector);
+
+        // ---- x402r hook singletons (BUSL) ----
+        // PaymentIndexRecorderHook(escrow, hookCombinatorCodehash) is a chain singleton because both
+        // constructor args are chain-invariants. Codehash is the runtime keccak256 of the
+        // HookCombinator contract — same value on every chain at the locked toolchain.
+        bytes32 hookCombinatorCodehash = keccak256(type(HookCombinator).runtimeCode);
+        bytes32 paymentIndexHookInitHash = keccak256(
+            abi.encodePacked(type(PaymentIndexRecorderHook).creationCode, abi.encode(escrow, hookCombinatorCodehash))
+        );
+        address paymentIndexHook = _predict2("x402r-canonical-v1::PaymentIndexRecorderHook", paymentIndexHookInitHash);
+
+        console.log("");
+        console.log("=== x402r hook singletons (BUSL) ===");
+        console.log("");
+        console.log("HookCombinator runtime codehash:");
+        console.logBytes32(hookCombinatorCodehash);
+        console.log("");
+        console.log("PaymentIndexRecorderHook(escrow, hookCombinatorCodehash)");
+        console.log("  initCodeHash:");
+        console.logBytes32(paymentIndexHookInitHash);
+        console.log("  predicted:  ", paymentIndexHook);
     }
 }

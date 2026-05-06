@@ -13,7 +13,7 @@ import {OnlyOperator} from "../../../types/Errors.sol";
  *      Allows combining multiple hook behaviors in a single slot.
  *
  * USE CASES:
- *   - EscrowPeriod hook + PaymentIndexHook
+ *   - EscrowPeriod hook + PaymentIndexRecorderHook
  *   - Multiple analytics/logging hooks
  *   - Custom business logic + indexing
  *

@@ -8,15 +8,15 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
-import {AuthorizationTimeHook} from "../src/plugins/hooks/AuthorizationTimeHook.sol";
-import {PaymentIndexHook} from "../src/plugins/hooks/PaymentIndexHook.sol";
+import {AuthorizationTimeRecorderHook} from "../src/plugins/hooks/AuthorizationTimeRecorderHook.sol";
+import {PaymentIndexRecorderHook} from "../src/plugins/hooks/PaymentIndexRecorderHook.sol";
 import {HookCombinator} from "../src/plugins/hooks/combinators/HookCombinator.sol";
 import {IHook} from "../src/plugins/hooks/IHook.sol";
 import {OnlyOperator} from "../src/types/Errors.sol";
 
 /**
  * @title HookCoverageTest
- * @notice Tests for AuthorizationTimeHook, PaymentIndexHook, HookCombinator, BaseHook
+ * @notice Tests for AuthorizationTimeRecorderHook, PaymentIndexRecorderHook, HookCombinator, BaseHook
  */
 contract HookCoverageTest is Test {
     AuthCaptureEscrow public escrow;
@@ -49,10 +49,10 @@ contract HookCoverageTest is Test {
         token.approve(address(collector), type(uint256).max);
     }
 
-    // ============ AuthorizationTimeHook ============
+    // ============ AuthorizationTimeRecorderHook ============
 
-    function test_AuthorizationTimeHook_RecordsTimestamp() public {
-        AuthorizationTimeHook timeHook = new AuthorizationTimeHook(address(escrow), bytes32(0));
+    function test_AuthorizationTimeRecorderHook_RecordsTimestamp() public {
+        AuthorizationTimeRecorderHook timeHook = new AuthorizationTimeRecorderHook(address(escrow), bytes32(0));
         PaymentOperator op = _deployWithHook(address(timeHook));
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), 1);
@@ -65,16 +65,16 @@ contract HookCoverageTest is Test {
         assertEq(authTime, block.timestamp, "Auth time should be current timestamp");
     }
 
-    function test_AuthorizationTimeHook_ReturnsZeroForUnknown() public {
-        AuthorizationTimeHook timeHook = new AuthorizationTimeHook(address(escrow), bytes32(0));
+    function test_AuthorizationTimeRecorderHook_ReturnsZeroForUnknown() public {
+        AuthorizationTimeRecorderHook timeHook = new AuthorizationTimeRecorderHook(address(escrow), bytes32(0));
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(this), 99);
         assertEq(timeHook.getAuthorizationTime(paymentInfo), 0, "Should be zero for unknown payment");
     }
 
-    // ============ PaymentIndexHook ============
+    // ============ PaymentIndexRecorderHook ============
 
-    function test_PaymentIndexHook_IndexesPayerAndReceiver() public {
-        PaymentIndexHook indexHook = new PaymentIndexHook(address(escrow), bytes32(0));
+    function test_PaymentIndexRecorderHook_IndexesPayerAndReceiver() public {
+        PaymentIndexRecorderHook indexHook = new PaymentIndexRecorderHook(address(escrow), bytes32(0));
         PaymentOperator op = _deployWithHook(address(indexHook));
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), 2);
@@ -86,8 +86,8 @@ contract HookCoverageTest is Test {
         assertEq(indexHook.receiverPaymentCount(receiver), 1, "Receiver should have 1 payment");
     }
 
-    function test_PaymentIndexHook_GetPayerPayments_Pagination() public {
-        PaymentIndexHook indexHook = new PaymentIndexHook(address(escrow), bytes32(0));
+    function test_PaymentIndexRecorderHook_GetPayerPayments_Pagination() public {
+        PaymentIndexRecorderHook indexHook = new PaymentIndexRecorderHook(address(escrow), bytes32(0));
         PaymentOperator op = _deployWithHook(address(indexHook));
 
         // Create 3 payments
@@ -108,15 +108,15 @@ contract HookCoverageTest is Test {
         assertEq(records.length, 1, "Last page should have 1 record");
     }
 
-    function test_PaymentIndexHook_GetPayerPayments_OffsetBeyondTotal() public {
-        PaymentIndexHook indexHook = new PaymentIndexHook(address(escrow), bytes32(0));
+    function test_PaymentIndexRecorderHook_GetPayerPayments_OffsetBeyondTotal() public {
+        PaymentIndexRecorderHook indexHook = new PaymentIndexRecorderHook(address(escrow), bytes32(0));
         (AuthCaptureEscrow.PaymentInfo[] memory records, uint256 total) = indexHook.getPayerPayments(payer, 100, 10);
         assertEq(total, 0, "Total should be 0 for no payments");
         assertEq(records.length, 0, "Should return empty array");
     }
 
-    function test_PaymentIndexHook_GetPayerPayments_ZeroCount() public {
-        PaymentIndexHook indexHook = new PaymentIndexHook(address(escrow), bytes32(0));
+    function test_PaymentIndexRecorderHook_GetPayerPayments_ZeroCount() public {
+        PaymentIndexRecorderHook indexHook = new PaymentIndexRecorderHook(address(escrow), bytes32(0));
         PaymentOperator op = _deployWithHook(address(indexHook));
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), 3);
@@ -129,14 +129,14 @@ contract HookCoverageTest is Test {
         assertEq(records.length, 0, "Should return empty for zero count");
     }
 
-    function test_PaymentIndexHook_GetPayerPayment_IndexOutOfBounds() public {
-        PaymentIndexHook indexHook = new PaymentIndexHook(address(escrow), bytes32(0));
-        vm.expectRevert(PaymentIndexHook.IndexOutOfBounds.selector);
+    function test_PaymentIndexRecorderHook_GetPayerPayment_IndexOutOfBounds() public {
+        PaymentIndexRecorderHook indexHook = new PaymentIndexRecorderHook(address(escrow), bytes32(0));
+        vm.expectRevert(PaymentIndexRecorderHook.IndexOutOfBounds.selector);
         indexHook.getPayerPayment(payer, 0);
     }
 
-    function test_PaymentIndexHook_GetReceiverPayments() public {
-        PaymentIndexHook indexHook = new PaymentIndexHook(address(escrow), bytes32(0));
+    function test_PaymentIndexRecorderHook_GetReceiverPayments() public {
+        PaymentIndexRecorderHook indexHook = new PaymentIndexRecorderHook(address(escrow), bytes32(0));
         PaymentOperator op = _deployWithHook(address(indexHook));
 
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(op), 4);
@@ -149,9 +149,9 @@ contract HookCoverageTest is Test {
         assertEq(records.length, 1, "Should return 1 record");
     }
 
-    function test_PaymentIndexHook_GetReceiverPayment_IndexOutOfBounds() public {
-        PaymentIndexHook indexHook = new PaymentIndexHook(address(escrow), bytes32(0));
-        vm.expectRevert(PaymentIndexHook.IndexOutOfBounds.selector);
+    function test_PaymentIndexRecorderHook_GetReceiverPayment_IndexOutOfBounds() public {
+        PaymentIndexRecorderHook indexHook = new PaymentIndexRecorderHook(address(escrow), bytes32(0));
+        vm.expectRevert(PaymentIndexRecorderHook.IndexOutOfBounds.selector);
         indexHook.getReceiverPayment(receiver, 0);
     }
 
@@ -160,7 +160,7 @@ contract HookCoverageTest is Test {
     function test_HookCombinator_E2E_CodehashGate_StateMutation() public {
         // Deploy combinator first so we can read its runtime codehash.
         // Pre-deploy a placeholder hook so the combinator constructor accepts a non-empty array.
-        AuthorizationTimeHook placeholder = new AuthorizationTimeHook(address(escrow), bytes32(0));
+        AuthorizationTimeRecorderHook placeholder = new AuthorizationTimeRecorderHook(address(escrow), bytes32(0));
         IHook[] memory placeholderArr = new IHook[](1);
         placeholderArr[0] = IHook(address(placeholder));
         HookCombinator combinator = new HookCombinator(placeholderArr);
@@ -169,7 +169,7 @@ contract HookCoverageTest is Test {
         // EXTCODEHASH (`.codehash`) reads the deployed runtime bytecode hash,
         // which is what BaseHook._verifyAndHash compares against.
         bytes32 combinatorCodehash = address(combinator).codehash;
-        PaymentIndexHook gatedHook = new PaymentIndexHook(address(escrow), combinatorCodehash);
+        PaymentIndexRecorderHook gatedHook = new PaymentIndexRecorderHook(address(escrow), combinatorCodehash);
 
         // Wire a fresh combinator that actually contains the gated hook.
         IHook[] memory hooks = new IHook[](1);
@@ -195,7 +195,8 @@ contract HookCoverageTest is Test {
 
     function test_HookCombinator_E2E_CodehashMismatch_Reverts() public {
         // Gated on a clearly-wrong codehash; combinator should fail BaseHook auth.
-        PaymentIndexHook gatedHook = new PaymentIndexHook(address(escrow), keccak256("not-the-combinator"));
+        PaymentIndexRecorderHook gatedHook =
+            new PaymentIndexRecorderHook(address(escrow), keccak256("not-the-combinator"));
 
         IHook[] memory hooks = new IHook[](1);
         hooks[0] = IHook(address(gatedHook));
@@ -211,8 +212,8 @@ contract HookCoverageTest is Test {
     }
 
     function test_HookCombinator_GetHookCount() public {
-        AuthorizationTimeHook r1 = new AuthorizationTimeHook(address(escrow), bytes32(0));
-        AuthorizationTimeHook r2 = new AuthorizationTimeHook(address(escrow), bytes32(0));
+        AuthorizationTimeRecorderHook r1 = new AuthorizationTimeRecorderHook(address(escrow), bytes32(0));
+        AuthorizationTimeRecorderHook r2 = new AuthorizationTimeRecorderHook(address(escrow), bytes32(0));
 
         IHook[] memory recs = new IHook[](2);
         recs[0] = IHook(address(r1));
@@ -223,8 +224,8 @@ contract HookCoverageTest is Test {
     }
 
     function test_HookCombinator_GetHooks() public {
-        AuthorizationTimeHook r1 = new AuthorizationTimeHook(address(escrow), bytes32(0));
-        AuthorizationTimeHook r2 = new AuthorizationTimeHook(address(escrow), bytes32(0));
+        AuthorizationTimeRecorderHook r1 = new AuthorizationTimeRecorderHook(address(escrow), bytes32(0));
+        AuthorizationTimeRecorderHook r2 = new AuthorizationTimeRecorderHook(address(escrow), bytes32(0));
 
         IHook[] memory recs = new IHook[](2);
         recs[0] = IHook(address(r1));
@@ -246,7 +247,7 @@ contract HookCoverageTest is Test {
     function test_HookCombinator_TooManyHooks_Reverts() public {
         IHook[] memory tooMany = new IHook[](11);
         for (uint256 i = 0; i < 11; i++) {
-            tooMany[i] = IHook(address(new AuthorizationTimeHook(address(escrow), bytes32(0))));
+            tooMany[i] = IHook(address(new AuthorizationTimeRecorderHook(address(escrow), bytes32(0))));
         }
         vm.expectRevert();
         new HookCombinator(tooMany);
@@ -254,7 +255,7 @@ contract HookCoverageTest is Test {
 
     function test_HookCombinator_ZeroAddress_Reverts() public {
         IHook[] memory recs = new IHook[](2);
-        recs[0] = IHook(address(new AuthorizationTimeHook(address(escrow), bytes32(0))));
+        recs[0] = IHook(address(new AuthorizationTimeRecorderHook(address(escrow), bytes32(0))));
         recs[1] = IHook(address(0));
         vm.expectRevert(abi.encodeWithSelector(HookCombinator.ZeroHook.selector, 1));
         new HookCombinator(recs);
@@ -264,7 +265,7 @@ contract HookCoverageTest is Test {
 
     function test_BaseHook_ZeroEscrow_Reverts() public {
         vm.expectRevert();
-        new AuthorizationTimeHook(address(0), bytes32(0));
+        new AuthorizationTimeRecorderHook(address(0), bytes32(0));
     }
 
     // ============ Helpers ============
