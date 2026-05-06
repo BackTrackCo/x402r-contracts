@@ -18,8 +18,8 @@ Monitor the lifecycle of payments through these states:
 
 | State | Description | Next State(s) |
 |-------|-------------|---------------|
-| **InEscrow** | Payment authorized, funds in escrow | Released, Settled (refunded) |
-| **Released** | Funds released from escrow to receiver | Settled (completed or refunded) |
+| **InEscrow** | Payment authorized, funds in escrow | Captured, Settled (refunded) |
+| **Captured** | Funds captured from escrow to receiver | Settled (refunded) |
 | **Settled** | Payment finalized or refunded | Terminal state |
 
 ### Critical Events
@@ -29,7 +29,7 @@ Track these contract events for operational monitoring:
 ```solidity
 // Payment lifecycle events
 event PaymentAuthorized(bytes32 indexed paymentId, address indexed payer, uint256 amount)
-event PaymentReleased(bytes32 indexed paymentId, uint256 amount)
+event PaymentCaptured(bytes32 indexed paymentId, uint256 amount)
 event PaymentRefunded(bytes32 indexed paymentId, uint256 amount, bool inEscrow)
 
 // Refund request events
@@ -117,8 +117,8 @@ dataSources:
       eventHandlers:
         - event: PaymentAuthorized(indexed bytes32,indexed address,uint256)
           handler: handlePaymentAuthorized
-        - event: PaymentReleased(indexed bytes32,uint256)
-          handler: handlePaymentReleased
+        - event: PaymentCaptured(indexed bytes32,uint256)
+          handler: handlePaymentCaptured
         - event: RefundRequested(indexed bytes32,indexed address)
           handler: handleRefundRequested
       file: ./src/mapping.ts
@@ -134,14 +134,14 @@ type Payment @entity {
   amount: BigInt!
   state: PaymentState!
   authorizedAt: BigInt!
-  releasedAt: BigInt
+  capturedAt: BigInt
   settledAt: BigInt
   refundRequests: [RefundRequest!]! @derivedFrom(field: "payment")
 }
 
 enum PaymentState {
   InEscrow
-  Released
+  Captured
   Settled
 }
 
@@ -211,7 +211,7 @@ Track key protocol metrics:
 **Payment Volume Metrics:**
 - Total payments (count and value)
 - Average payment size
-- Payments by state (InEscrow, Released, Settled)
+- Payments by state (InEscrow, Captured, Settled)
 - Payment success rate
 
 **Refund Metrics:**
@@ -297,7 +297,7 @@ Set up alerts for operational issues:
 4. **Escrow Period Expiry**
    - Alert when: Payment nearing expiry (< 24h remaining)
    - Severity: LOW
-   - Action: Notify relevant parties, prepare for automatic release
+   - Action: Notify relevant parties, prepare for automatic capture
 
 5. **Contract Ownership Changes**
    - Alert when: Owner transfer initiated or executed

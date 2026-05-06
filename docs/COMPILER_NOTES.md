@@ -66,7 +66,7 @@ evm_version = "cancun"
 
 For x402r contracts, the primary gas-sensitive operations are:
 - `authorize()` / `charge()`: called per payment
-- `release()`: called per settlement
+- `capture()`: called per settlement
 - `distributeFees()`: called periodically
 
 200 runs is appropriate since these contracts are called regularly but not at DeFi-level frequency.
@@ -166,7 +166,7 @@ All arithmetic operations in Solidity 0.8+ include automatic overflow/underflow 
 
 All revert reasons use custom errors (gas-efficient, introduced in 0.8.4):
 ```solidity
-error ConditionNotMet();
+error PreActionConditionNotMet();
 error InvalidOperator();
 error FeeTooHigh();
 ```

@@ -3,11 +3,11 @@
 pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {BaseRecorder} from "./BaseRecorder.sol";
+import {BaseHook} from "./BaseHook.sol";
 import {AuthorizationRecorded} from "../escrow-period/types/Events.sol";
 
 /**
- * @title AuthorizationTimeRecorder
+ * @title AuthorizationTimeHook
  * @notice Records authorization timestamps for payments.
  * @dev Generic recording without escrow period constraints.
  *      Use this when you need timestamp tracking for analytics, time-based queries,
@@ -25,30 +25,30 @@ import {AuthorizationRecorded} from "../escrow-period/types/Events.sol";
  *
  * USAGE:
  *   // Standalone: just timestamp tracking
- *   AuthorizationTimeRecorder recorder = new AuthorizationTimeRecorder(address(escrow), bytes32(0));
+ *   AuthorizationTimeHook hook = new AuthorizationTimeHook(address(escrow), bytes32(0));
  *   operator = factory.deployOperator({
- *       authorizeRecorder: address(recorder),
+ *       authorizePostActionHook: address(hook),
  *       ...
  *   });
  */
-contract AuthorizationTimeRecorder is BaseRecorder {
+contract AuthorizationTimeHook is BaseHook {
     /// @notice Stores the authorization timestamp for each payment
     /// @dev Key: paymentInfoHash, Value: block.timestamp when authorized
     ///      Each paymentInfo hash can only be authorized once (escrow enforces this)
     mapping(bytes32 => uint256) public authorizationTimes;
 
-    constructor(address escrow, bytes32 authorizedCodehash) BaseRecorder(escrow, authorizedCodehash) {}
+    constructor(address escrow, bytes32 authorizedCodehash) BaseHook(escrow, authorizedCodehash) {}
 
-    // ============ IRecorder Implementation ============
+    // ============ IHook Implementation ============
 
     /**
      * @notice Record authorization time for a payment
      * @dev Called by the operator after a payment is authorized.
-     *      Verifies operator identity and payment existence via BaseRecorder._verifyAndHash().
+     *      Verifies operator identity and payment existence via BaseHook._verifyAndHash().
      *      Amount and caller are ignored - timestamp is all we need.
      * @param paymentInfo PaymentInfo struct
      */
-    function record(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address, bytes calldata)
+    function run(AuthCaptureEscrow.PaymentInfo calldata paymentInfo, uint256, address, bytes calldata)
         external
         virtual
         override

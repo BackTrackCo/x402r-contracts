@@ -1,25 +1,36 @@
 # Contract Deployment
 
-Deploy x402r smart contracts to EVM networks using Foundry deployment scripts.
+Deploy x402r smart contracts to EVM networks via two CREATE2 canonical-deploy scripts, split by license.
 
 ---
 
 ## Overview
 
-This guide covers deploying the x402r smart contract system to EVM-compatible networks. The deployment uses Foundry's script system and includes automated verification on block explorers.
+x402r uses **deterministic CREATE2 deployment via CreateX permissionless salts**. Same salt + byte-identical initCode = same address on every chain, regardless of who broadcasts. Deployment is split into two scripts to keep the licensing line clear:
 
-> **Note:** New to x402r contracts? Start with [README.md](../README.md) to understand the architecture and factory patterns.
+| Script | Contracts | License of deployed contracts |
+|---|---|---|
+| `script/DeployCommercePayments.s.sol` | `AuthCaptureEscrow`, `ERC3009PaymentCollector`, `Permit2PaymentCollector` | MIT (vendored from `base/commerce-payments` at the `v1.0.0` tag) |
+| `script/DeployX402r.s.sol` | Operator factory, plugins, refund-side | BUSL-1.1 (x402r-authored) |
+| `script/PredictAddresses.s.sol` | _(read-only)_ | — |
 
-> **Warning:** Contracts are currently **UNAUDITED**. Use at your own risk. Owner addresses MUST be multisig wallets (e.g., Gnosis Safe) in production.
+This matches the convention used by Permit2, UniversalRouter, Seaport, EntryPoint, and upstream `base/commerce-payments`: anyone with the source can verify and reproduce the deployment. The trust root is bytecode reproducibility — anyone deploying the exact x402r bytecode at the canonical salt is, by definition, deploying x402r.
+
+> **Note:** New to x402r contracts? Start with [README.md](../README.md) to understand the architecture and plugin model.
+
+> **Warning:** Contracts are currently **UNAUDITED**. Use at your own risk. `CANONICAL_OWNER` MUST be a multisig wallet (e.g., Gnosis Safe) in production.
 
 ## Prerequisites
 
 Before deploying, ensure you have:
 - **Foundry** installed (`curl -L https://foundry.paradigm.xyz | bash && foundryup`)
-- **Private key** with sufficient native tokens for gas
-- **Block explorer API key** (e.g., Basescan API key)
-- **Multisig wallet** address for production owner
-- **Protocol fee recipient** address
+- **Private key** for a deployer EOA with gas on the target chain. The salt is permissionless, so the deployer's identity does not affect the resulting address — but you should still treat the canonical deploy as a one-time event per chain to avoid duplicates.
+- **CreateX** deployed at `0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed` on the target chain
+- **Multicall3** at `0xcA11bde05977b3631167028862bE2a173976CA11` (used by `ERC3009PaymentCollector`)
+- **Permit2** at `0x000000000022D473030F116dDEE9F6B43aC78BA3` (used by `Permit2PaymentCollector`)
+- **Block explorer API key** for verification (optional but recommended)
+- **Multisig wallet** address for `CANONICAL_OWNER` (x402r-side only)
+- **Protocol fee recipient** address for `CANONICAL_FEE_RECIPIENT` (x402r-side only)
 
 ## Setup Environment
 
@@ -29,130 +40,117 @@ Before deploying, ensure you have:
 cd x402r-contracts
 ```
 
-2. Copy and configure environment variables:
+2. Edit `script/DeployX402r.s.sol` and set the canonical EOAs (these are pinned constants, not env vars — any drift moves the canonical addresses, so they're locked in source):
 
-```bash
-cp .env.example .env
+```solidity
+address constant CANONICAL_OWNER = 0x...;          // Production multisig
+address constant CANONICAL_FEE_RECIPIENT = 0x...;  // Production fee recipient
 ```
 
-3. Edit `.env` with your configuration:
+The script `require()`s both at runtime, so a missed update fails loudly. (`DeployCommercePayments.s.sol` has no env-pinned constants.)
+
+3. Set the deployer key:
 
 ```bash
-# Required
-PRIVATE_KEY=0x...                           # Deployer account
-ETHERSCAN_API_KEY=...                       # Basescan API key
-PROTOCOL_FEE_RECIPIENT=0x...                # Fee recipient (immutable)
-OWNER_ADDRESS=0x...                         # Factory owner (use multisig)
-
-# Optional - defaults shown
-MAX_TOTAL_FEE_RATE=5                        # 5 basis points (0.05%)
-PROTOCOL_FEE_PERCENTAGE=25                  # 25% to protocol, 75% to arbiter
+export PRIVATE_KEY=0x...
 ```
 
-## Deployment Options
+## Deploy
 
-### Option 1: Deploy All Contracts (Recommended)
+### Step 1: Predict (always run first)
 
-Deploy the complete system with one command:
+`make predict` (or `forge script script/PredictAddresses.s.sol -vvv`) prints every canonical address along with its `initCodeHash`. Run this on every developer machine that will broadcast a deploy. Predicted addresses must match across machines and against the manifest — divergence is the canary for toolchain drift, and stops the deploy before it lands at a non-canonical address.
+
+### Step 2: Deploy MIT primitives
 
 ```bash
-forge script script/DeployAll.s.sol:DeployAll \
-  --rpc-url base-sepolia \
-  --broadcast \
-  --verify \
-  -vvvv
+RPC_URL=https://sepolia.base.org make deploy-primitives
 ```
 
-This deploys:
-1. **AuthCaptureEscrow** - Escrow contract for holding funds
-2. **ERC3009PaymentCollector** - Payment collector
-3. **EscrowPeriodConditionFactory** - Factory for time-based conditions
-4. **PaymentOperatorFactory** - Factory for operator instances
-5. **Condition Singletons** - PayerCondition, ReceiverCondition, ArbiterCondition, AlwaysTrueCondition
-6. **FreezeFactory** - Factory for deploying Freeze condition contracts
-7. **RefundRequest** - Refund request manager
+Deploys the upstream `base/commerce-payments` contracts (MIT), in order:
 
-### Option 2: Deploy Individual Contracts
+- `AuthCaptureEscrow`
+- `ERC3009PaymentCollector(escrow, MULTICALL3)`
+- `Permit2PaymentCollector(escrow, PERMIT2)`
 
-Deploy contracts separately for custom configurations:
+Salt namespace `commerce-payments::v1::*`. Idempotent per chain — re-running on a chain where the contracts already exist will revert (CreateX rejects duplicate deploys at the same salt).
 
-#### Refund Request Singleton
+### Step 3: Deploy x402r-authored contracts
 
 ```bash
-forge script script/DeployRefundRequest.s.sol:DeployRefundRequest \
-  --rpc-url $RPC_URL \
-  --broadcast \
-  --verify
+RPC_URL=https://sepolia.base.org make deploy-x402r
 ```
 
-#### Escrow Period Condition Factory
+The script predicts the escrow address and asserts it has code; if not, run Step 2 first. Deploys, in order:
+
+1. **Protocol infrastructure** (salt namespace `x402r-canonical-v1::*`):
+   - `ProtocolFeeConfig` (initial calculator = `address(0)`; owner sets via 7-day timelock per chain)
+   - `PaymentOperatorFactory`
+2. **Plugin singletons** (no ctor args):
+   - `PayerCondition`, `ReceiverCondition`, `AlwaysTrueCondition`
+3. **Plugin factories**:
+   - `SignatureConditionFactory`, `StaticAddressConditionFactory`
+   - `AndConditionFactory`, `OrConditionFactory`, `NotConditionFactory`
+   - `HookCombinatorFactory`, `StaticFeeCalculatorFactory`
+4. **Per-payment factories** (escrow-bound):
+   - `EscrowPeriodFactory`, `FreezeFactory`
+5. **Refund-side**:
+   - `RefundRequestFactory`, `ReceiverRefundCollector`, `RefundRequestEvidenceFactory`
+
+Or invoke `forge script` directly for either:
 
 ```bash
-forge script script/DeployEscrowPeriodCondition.s.sol:DeployEscrowPeriodCondition \
-  --rpc-url $RPC_URL \
-  --broadcast \
-  --verify
+forge script script/DeployCommercePayments.s.sol --rpc-url $RPC_URL --broadcast --verify --slow -vvv
+forge script script/DeployX402r.s.sol           --rpc-url $RPC_URL --broadcast --verify --slow -vvv
 ```
-
-#### Freeze Factory
-
-Deploys FreezeFactory for creating Freeze condition contracts:
-
-```bash
-ESCROW_ADDRESS=0x... forge script script/DeployFreezeFactory.s.sol:DeployFreezeFactory \
-  --rpc-url $RPC_URL \
-  --broadcast \
-  --verify
-```
-
-The FreezeFactory deploys Freeze contracts with configurable freeze/unfreeze conditions and durations.
 
 ## Verify Deployment
 
-After deployment, verify contracts were deployed correctly:
+### Check deployed addresses
 
-### Check Deployed Addresses
+The script logs every address it deploys. Save the output to a manifest file (a per-chain manifest matching the expected addresses is the recommended workflow).
 
-Deployment addresses are saved in:
+Deployment addresses are also saved by Foundry in:
 ```
-broadcast/DeployAll.s.sol/<chain-id>/run-latest.json
+broadcast/DeployCommercePayments.s.sol/<chain-id>/run-latest.json
+broadcast/DeployX402r.s.sol/<chain-id>/run-latest.json
 ```
 
-### Verify Contract State
+### Cross-check that addresses match the manifest
+
+A correctly-set-up CREATE2 deploy lands at exactly the same address on every chain. After running on chain N, the printed addresses should match the manifest entries. Any mismatch indicates compiler / library / salt drift — investigate before continuing to other chains.
+
+### Verify contract state
 
 ```bash
-# Check factory owner
-cast call $FACTORY_ADDRESS "owner()" --rpc-url $RPC_URL
+# ProtocolFeeConfig owner (should be CANONICAL_OWNER)
+cast call $PROTOCOL_FEE_CONFIG "owner()" --rpc-url $RPC_URL
 
-# Check protocol fee recipient
-cast call $FACTORY_ADDRESS "protocolFeeRecipient()" --rpc-url $RPC_URL
+# ProtocolFeeConfig fee recipient (should be CANONICAL_FEE_RECIPIENT)
+cast call $PROTOCOL_FEE_CONFIG "protocolFeeRecipient()" --rpc-url $RPC_URL
 
-# Check max fee rate
-cast call $FACTORY_ADDRESS "maxTotalFeeRate()" --rpc-url $RPC_URL
+# PaymentOperatorFactory escrow + protocolFeeConfig (constructor-pinned)
+cast call $PAYMENT_OPERATOR_FACTORY "ESCROW()" --rpc-url $RPC_URL
+cast call $PAYMENT_OPERATOR_FACTORY "PROTOCOL_FEE_CONFIG()" --rpc-url $RPC_URL
 ```
 
-### Verify on Block Explorer
+### Verify owner is multisig
 
-Contracts are automatically verified during deployment. Confirm at:
+```bash
+make verify-owner OWNER_ADDRESS=$CANONICAL_OWNER RPC_URL=$RPC_URL
+```
+
+### Verify on block explorer
+
+Contracts are auto-verified during deployment via `--verify`. Confirm at:
 - **Base Mainnet**: https://basescan.org/address/YOUR_ADDRESS
 - **Base Sepolia**: https://sepolia.basescan.org/address/YOUR_ADDRESS
 
 ## Deploy Operator Instances
 
-After deploying factories, create operator instances on-demand:
+After the canonical deploy, create operator instances via `PaymentOperatorFactory.deployOperator()`. The factory uses CREATE2 (per-config) so calling with the same config is idempotent — same config returns the existing operator instead of deploying a new one.
 
-```bash
-# Set environment variables
-export ESCROW_ADDRESS=0x...
-export ARBITER_ADDRESS=0x...
-
-forge script script/DeployArbitrationOperator.s.sol:DeployArbitrationOperator \
-  --rpc-url $RPC_URL \
-  --broadcast \
-  --verify
-```
-
-> **Tip:** The PaymentOperatorFactory uses CREATE2 for deterministic addresses. Calling with the same configuration returns the existing operator instead of deploying a new one.
+Each operator config picks plugin addresses for the 10 plugin slots (5 pre-action conditions + 5 post-action hooks) plus a fee receiver and an optional fee calculator. See README's "Plugin Architecture" section for a worked example.
 
 ## Supported Networks
 
@@ -169,12 +167,14 @@ Configure RPC endpoints in `foundry.toml` or use `--rpc-url`:
 
 Before deploying to mainnet:
 
-- [ ] Owner address is a multisig wallet (Gnosis Safe)
-- [ ] Protocol fee recipient is configured correctly
-- [ ] Fee rates are appropriate for your use case
+- [ ] `CANONICAL_OWNER` is a multisig wallet (Gnosis Safe) — pinned in `DeployX402r.s.sol`
+- [ ] `CANONICAL_FEE_RECIPIENT` is configured — pinned in `DeployX402r.s.sol`
+- [ ] CreateX is deployed on the target chain
+- [ ] Foundry submodule pin matches the manifest commit (lib/commerce-payments at v1.0.0)
+- [ ] Foundry compiler config matches the manifest (solc, evm_version, optimizer_runs, bytecode_hash)
 - [ ] Deployer account has sufficient gas tokens
 - [ ] Block explorer API key is configured
-- [ ] Deployment script tested on testnet
+- [ ] Deployment script tested on testnet — addresses match manifest
 - [ ] All tests passing: `forge test`
 - [ ] Monitoring systems ready (see [MONITORING.md](./MONITORING.md))
 
@@ -186,6 +186,14 @@ Ensure deployer account has enough native tokens for gas:
 ```bash
 cast balance $DEPLOYER_ADDRESS --rpc-url $RPC_URL
 ```
+
+### Address mismatch between chains
+
+CREATE2 addresses are sensitive to bytecode. Common causes:
+- Different solc version (must match `foundry.toml` lock)
+- Different optimizer settings (`optimizer_runs = 100000` is required)
+- Different library / submodule commits (verify `lib/commerce-payments` is at the manifest commit)
+- `bytecode_hash` not stripped (must be `bytecode_hash = "none"` in `foundry.toml`)
 
 ### Verification Fails
 

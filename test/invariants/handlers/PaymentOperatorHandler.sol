@@ -97,14 +97,14 @@ contract PaymentOperatorHandler is Test {
         if (capturable == 0) return;
         amount = uint120(bound(amount, 1, capturable));
 
-        try operator.release(paymentInfo, amount, "") {
+        try operator.capture(paymentInfo, amount, "") {
             ghost_capturedAmounts[hash] += amount;
             ghost_totalReleased += amount;
             ghost_callCount_release++;
         } catch {}
     }
 
-    function handler_refundInEscrow(uint256 paymentIndex, uint120 amount) external {
+    function handler_void(uint256 paymentIndex, uint120 amount) external {
         if (ghost_paymentHashes.length == 0) return;
 
         uint256 index = paymentIndex % ghost_paymentHashes.length;
@@ -115,7 +115,7 @@ contract PaymentOperatorHandler is Test {
         if (capturable == 0) return;
         amount = uint120(bound(amount, 1, capturable));
 
-        try operator.refundInEscrow(paymentInfo, amount, "") {
+        try operator.void(paymentInfo, "") {
             ghost_refundedAmounts[hash] += amount;
             ghost_totalRefunded += amount;
             ghost_callCount_refund++;

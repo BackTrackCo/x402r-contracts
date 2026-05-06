@@ -20,6 +20,9 @@ import {ZeroAddress} from "../../types/Errors.sol";
  *      ESCROW is factory-level (immutable), not per-config.
  */
 contract EscrowPeriodFactory {
+    /// @notice Salt prefix for CREATE2
+    bytes32 private constant SALT_PREFIX = "escrowPeriod";
+
     /// @notice Escrow contract shared by all deployments
     AuthCaptureEscrow public immutable ESCROW;
 
@@ -29,7 +32,7 @@ contract EscrowPeriodFactory {
     }
 
     /// @notice Deployed EscrowPeriod addresses
-    /// @dev Key: keccak256(abi.encodePacked(escrowPeriod, authorizedCodehash))
+    /// @dev Key: keccak256(abi.encode(escrowPeriod, authorizedCodehash))
     mapping(bytes32 => address) public deployments;
 
     /**
@@ -48,7 +51,7 @@ contract EscrowPeriodFactory {
 
         // ============ EFFECTS ============
         // Pre-compute deterministic CREATE2 address (CEI pattern)
-        bytes32 salt = keccak256(abi.encodePacked("escrowPeriod", key));
+        bytes32 salt = keccak256(abi.encode(SALT_PREFIX, key));
         bytes memory bytecode = abi.encodePacked(
             type(EscrowPeriod).creationCode, abi.encode(escrowPeriod, address(ESCROW), authorizedCodehash)
         );
@@ -85,7 +88,7 @@ contract EscrowPeriodFactory {
      */
     function computeAddress(uint256 escrowPeriod, bytes32 authorizedCodehash) external view returns (address) {
         bytes32 key = getKey(escrowPeriod, authorizedCodehash);
-        bytes32 salt = keccak256(abi.encodePacked("escrowPeriod", key));
+        bytes32 salt = keccak256(abi.encode(SALT_PREFIX, key));
         bytes memory bytecode = abi.encodePacked(
             type(EscrowPeriod).creationCode, abi.encode(escrowPeriod, address(ESCROW), authorizedCodehash)
         );
@@ -100,6 +103,6 @@ contract EscrowPeriodFactory {
      * @return The mapping key
      */
     function getKey(uint256 escrowPeriod, bytes32 authorizedCodehash) public pure returns (bytes32) {
-        return keccak256(abi.encodePacked(escrowPeriod, authorizedCodehash));
+        return keccak256(abi.encode(escrowPeriod, authorizedCodehash));
     }
 }

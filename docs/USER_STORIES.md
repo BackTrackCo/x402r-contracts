@@ -9,17 +9,17 @@ Formal user stories for all payment flows in x402r-contracts.
 ### US-1: Authorize a Payment
 **As a** payer,
 **I want to** authorize a payment to a receiver with a maximum amount,
-**so that** funds are held in escrow until the receiver releases or I request a refund.
+**so that** funds are held in escrow until the receiver captures or I request a refund.
 
 **Acceptance criteria:**
 - Payer pre-approves via `collector.preApprove(paymentInfo)`
 - Operator calls `escrow.authorize()` holding up to `maxAmount` tokens
 - Payment state transitions from `NonExistent` to `InEscrow`
-- `AuthorizationCreated` event is emitted
-- If an `AUTHORIZE_CONDITION` is set, it must return `true`
-- If an `AUTHORIZE_RECORDER` is set, it is called after authorization
+- `AuthorizeExecuted` event is emitted
+- If an `AUTHORIZE_PRE_ACTION_CONDITION` is set, it must return `true`
+- If an `AUTHORIZE_POST_ACTION_HOOK` is set, it is called after authorization
 
-### US-2: Charge (Authorize + Immediate Release)
+### US-2: Charge (Authorize + Immediate Capture)
 **As a** receiver in a point-of-sale scenario,
 **I want to** charge a payer in a single transaction,
 **so that** I receive funds immediately without an escrow hold.
@@ -28,59 +28,59 @@ Formal user stories for all payment flows in x402r-contracts.
 - Payer pre-approves via `collector.preApprove(paymentInfo)`
 - Operator calls `escrow.charge()` which authorizes and captures in one step
 - Fees are deducted and sent to fee recipients
-- Payment state transitions directly to `Released`
-- Both `CHARGE_CONDITION` and `CHARGE_RECORDER` are invoked if set
+- Payment state transitions directly to `Captured`
+- Both `CHARGE_PRE_ACTION_CONDITION` and `CHARGE_POST_ACTION_HOOK` are invoked if set
 
 ---
 
-## Payment Release
+## Capture
 
-### US-3: Full Release
+### US-3: Full Capture
 **As a** receiver (merchant),
-**I want to** release the full authorized amount,
+**I want to** capture the full authorized amount,
 **so that** I receive payment minus fees.
 
 **Acceptance criteria:**
-- Caller passes the `RELEASE_CONDITION` check (or condition is `address(0)`)
-- Full `capturableAmount` is released to receiver
-- Protocol fee and operator fee are deducted from the released amount
+- Caller passes the `CAPTURE_PRE_ACTION_CONDITION` check (or condition is `address(0)`)
+- Full `capturableAmount` is captured to receiver
+- Protocol fee and operator fee are deducted from the captured amount
 - `accumulatedProtocolFees[token]` increases by the protocol fee share
-- Payment state transitions to `Released`
-- `RELEASE_RECORDER` is called if set
+- Payment state transitions to `Captured`
+- `CAPTURE_POST_ACTION_HOOK` is called if set
 
-### US-4: Partial Release
+### US-4: Partial Capture
 **As a** receiver,
-**I want to** release a portion of the authorized amount,
+**I want to** capture a portion of the authorized amount,
 **so that** I can capture partial payment while leaving the remainder refundable.
 
 **Acceptance criteria:**
-- Release amount < `capturableAmount`
-- `capturableAmount` decreases by the released amount
+- Capture amount < `capturableAmount`
+- `capturableAmount` decreases by the captured amount
 - Payment remains in `InEscrow` state
-- Multiple partial releases are allowed until `capturableAmount` reaches 0
+- Multiple partial captures are allowed until `capturableAmount` reaches 0
 
-### US-5: Release After Escrow Period
+### US-5: Capture After Escrow Period
 **As a** receiver using an escrow period,
-**I want to** release funds after the escrow period expires,
+**I want to** capture funds after the escrow period expires,
 **so that** the payer had a dispute window before I receive funds.
 
 **Acceptance criteria:**
 - `EscrowPeriod.check()` returns `true` (timestamp >= authTime + escrowPeriod)
 - Payment is not frozen (`frozenUntil <= block.timestamp`)
-- Release proceeds as in US-3/US-4
+- Capture proceeds as in US-3/US-4
 
 ---
 
 ## Refund Flows
 
-### US-6: Refund In Escrow
+### US-6: Void
 **As an** operator or arbiter,
 **I want to** refund a payment while funds are still in escrow,
 **so that** the payer's funds are returned without requiring receiver cooperation.
 
 **Acceptance criteria:**
 - `capturableAmount > 0` (funds still in escrow)
-- Caller passes `REFUND_IN_ESCROW_CONDITION` (or condition is `address(0)`)
+- Caller passes `VOID_PRE_ACTION_CONDITION` (or condition is `address(0)`)
 - `capturableAmount` decreases, `refundableAmount` increases
 - Payer can later withdraw via escrow's refund mechanism
 
@@ -90,9 +90,9 @@ Formal user stories for all payment flows in x402r-contracts.
 **so that** I can resolve a dispute or correct an error.
 
 **Acceptance criteria:**
-- `capturableAmount == 0` (all funds released or refunded from escrow)
-- Receiver transfers tokens back and calls `refundPostEscrow()`
-- `REFUND_POST_ESCROW_CONDITION` is checked if set
+- `capturableAmount == 0` (all funds captured or refunded from escrow)
+- Receiver transfers tokens back and calls `refund()`
+- `REFUND_PRE_ACTION_CONDITION` is checked if set
 
 ### US-8: Request a Refund
 **As a** payer,
@@ -112,7 +112,7 @@ Formal user stories for all payment flows in x402r-contracts.
 **so that** the payer's refund can proceed.
 
 **Acceptance criteria:**
-- Only receiver, or arbiter (via `REFUND_IN_ESCROW_CONDITION` while in escrow) can approve
+- Only receiver, or arbiter (via `VOID_PRE_ACTION_CONDITION` while in escrow) can approve
 - Request status transitions from `Pending` to `Approved`
 - `RefundStatusUpdated` event is emitted
 
@@ -143,25 +143,25 @@ Formal user stories for all payment flows in x402r-contracts.
 
 ### US-12: Freeze a Payment
 **As a** payer disputing a transaction,
-**I want to** freeze the escrow to prevent release during my dispute,
+**I want to** freeze the escrow to prevent capture during my dispute,
 **so that** the receiver cannot drain funds while I seek resolution.
 
 **Acceptance criteria:**
 - Freeze policy's `canFreeze()` returns `true` for the caller
 - `frozenUntil` is set to `block.timestamp + FREEZE_DURATION`
-- Release is blocked until freeze expires or is explicitly unfrozen
+- Capture is blocked until freeze expires or is explicitly unfrozen
 - `PaymentFrozen` event is emitted
 - Can only freeze during escrow period (before `authTime + ESCROW_PERIOD`)
 
 ### US-13: Unfreeze a Payment
 **As a** payer or arbiter who has resolved a dispute,
 **I want to** unfreeze a payment,
-**so that** the receiver can proceed with release.
+**so that** the receiver can proceed with capture.
 
 **Acceptance criteria:**
 - Freeze policy's `canUnfreeze()` returns `true` for the caller
 - `frozenUntil` is set to 0
-- Release is unblocked
+- Capture is unblocked
 - `PaymentUnfrozen` event is emitted
 
 ---
@@ -207,23 +207,23 @@ Formal user stories for all payment flows in x402r-contracts.
 
 ### US-17: Deploy a Payment Operator
 **As a** service provider,
-**I want to** deploy a PaymentOperator with custom conditions and recorders,
+**I want to** deploy a PaymentOperator with custom conditions and hooks,
 **so that** I can offer payment services with my specific business logic.
 
 **Acceptance criteria:**
-- Call `factory.deployOperator(config)` with desired condition/recorder configuration
+- Call `factory.deployOperator(config)` with desired condition/hook configuration
 - Operator is deployed with deterministic CREATE2 address
-- All condition and recorder slots are immutable after deployment
+- All condition and hook slots are immutable after deployment
 - `OperatorDeployed` event is emitted
 
 ### US-18: Deploy Escrow Period Infrastructure
 **As a** service provider requiring dispute windows,
-**I want to** deploy an escrow period condition + recorder pair,
-**so that** I can configure my operator with a release delay.
+**I want to** deploy an escrow period condition + hook pair,
+**so that** I can configure my operator with a capture delay.
 
 **Acceptance criteria:**
 - Call `EscrowPeriodFactory.deploy(escrowPeriod, freezePolicy, codehash)`
-- Both recorder and condition are deployed with deterministic addresses
+- Both hook and condition are deployed with deterministic addresses
 - Idempotent: calling again with same params returns existing addresses
 
 ### US-19: Predict Deployment Address
@@ -246,7 +246,7 @@ Formal user stories for all payment flows in x402r-contracts.
 **so that** I can display transaction history.
 
 **Acceptance criteria:**
-- Call `indexRecorder.getPayerPayments(payer, offset, count)`
+- Call `indexHook.getPayerPayments(payer, offset, count)`
 - Returns `PaymentRecord[]` with hash, amount, and record index
 - Pagination works correctly (offset, count, total)
 
@@ -256,5 +256,5 @@ Formal user stories for all payment flows in x402r-contracts.
 **so that** I can reconcile incoming payments.
 
 **Acceptance criteria:**
-- Call `indexRecorder.getReceiverPayments(receiver, offset, count)`
+- Call `indexHook.getReceiverPayments(receiver, offset, count)`
 - Same pagination behavior as US-20

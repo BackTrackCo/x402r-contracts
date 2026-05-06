@@ -8,7 +8,8 @@ import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {PreApprovalPaymentCollector} from "commerce-payments/collectors/PreApprovalPaymentCollector.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
-import {MaliciousRecorder} from "./mocks/MaliciousRecorder.sol";
+import {MaliciousHook} from "./mocks/MaliciousHook.sol";
+import {ReceiverRefundCollector} from "../src/collectors/ReceiverRefundCollector.sol";
 
 contract ReentrancyAttackTest is Test {
     PaymentOperator public operator;
@@ -17,7 +18,7 @@ contract ReentrancyAttackTest is Test {
     MockERC20 public token;
     AuthCaptureEscrow public escrow;
     PreApprovalPaymentCollector public collector;
-    MaliciousRecorder public maliciousRecorder;
+    MaliciousHook public maliciousHook;
 
     address public owner;
     address public protocolFeeRecipient;
@@ -46,25 +47,25 @@ contract ReentrancyAttackTest is Test {
         token.approve(address(collector), type(uint256).max);
     }
 
-    function _deployOperatorWithMaliciousRecorder(MaliciousRecorder.AttackType attackType, uint8 recorderSlot)
+    function _deployOperatorWithMaliciousHook(MaliciousHook.AttackType attackType, uint8 hookSlot)
         internal
         returns (PaymentOperator)
     {
-        maliciousRecorder = new MaliciousRecorder(attackType);
+        maliciousHook = new MaliciousHook(attackType);
 
         PaymentOperatorFactory.OperatorConfig memory config = PaymentOperatorFactory.OperatorConfig({
-            feeRecipient: protocolFeeRecipient,
+            feeReceiver: protocolFeeRecipient,
             feeCalculator: address(0),
-            authorizeCondition: address(0),
-            authorizeRecorder: recorderSlot == 0 ? address(maliciousRecorder) : address(0),
-            chargeCondition: address(0),
-            chargeRecorder: recorderSlot == 1 ? address(maliciousRecorder) : address(0),
-            releaseCondition: address(0),
-            releaseRecorder: recorderSlot == 2 ? address(maliciousRecorder) : address(0),
-            refundInEscrowCondition: address(0),
-            refundInEscrowRecorder: recorderSlot == 3 ? address(maliciousRecorder) : address(0),
-            refundPostEscrowCondition: address(0),
-            refundPostEscrowRecorder: recorderSlot == 4 ? address(maliciousRecorder) : address(0)
+            authorizePreActionCondition: address(0),
+            authorizePostActionHook: hookSlot == 0 ? address(maliciousHook) : address(0),
+            chargePreActionCondition: address(0),
+            chargePostActionHook: hookSlot == 1 ? address(maliciousHook) : address(0),
+            capturePreActionCondition: address(0),
+            capturePostActionHook: hookSlot == 2 ? address(maliciousHook) : address(0),
+            voidPreActionCondition: address(0),
+            voidPostActionHook: hookSlot == 3 ? address(maliciousHook) : address(0),
+            refundPreActionCondition: address(0),
+            refundPostActionHook: hookSlot == 4 ? address(maliciousHook) : address(0)
         });
 
         return PaymentOperator(factory.deployOperator(config));
@@ -88,7 +89,9 @@ contract ReentrancyAttackTest is Test {
     }
 
     function test_ReentrancyOnAuthorize_SameFunction() public {
-        operator = _deployOperatorWithMaliciousRecorder(MaliciousRecorder.AttackType.REENTER_SAME_FUNCTION, 0);
+        operator = _deployOperatorWithMaliciousHook(MaliciousHook.AttackType.REENTER_SAME_FUNCTION, 0);
+        maliciousHook.setTargetAction(MaliciousHook.TargetAction.AUTHORIZE);
+
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(operator));
 
         vm.prank(payer);
@@ -99,17 +102,17 @@ contract ReentrancyAttackTest is Test {
         bytes32 hash = escrow.getHash(paymentInfo);
         (bool hasCollected, uint256 capturableAmount, uint256 refundableAmount) = escrow.paymentState(hash);
 
-        // FIXED: Malicious recorder attack is now BLOCKED
-        // PaymentOperator now has nonReentrant guards on all functions
-        // The recorder attempted to call release() but was blocked by reentrancy guard
         assertTrue(hasCollected);
-        assertEq(capturableAmount, PAYMENT_AMOUNT); // Attack blocked, still capturable
-        assertEq(refundableAmount, 0); // Not refundable
-        assertEq(maliciousRecorder.reentrancyCount(), 1); // Recorder still executed
+        assertEq(capturableAmount, PAYMENT_AMOUNT, "single authorize amount captured (reentry blocked)");
+        assertEq(refundableAmount, 0);
+        assertEq(maliciousHook.reentrancyCount(), 1);
+        assertTrue(maliciousHook.reentrancyBlocked(), "nonReentrant must block re-authorize");
     }
 
-    function test_ReentrancyOnRelease_SameFunction() public {
-        operator = _deployOperatorWithMaliciousRecorder(MaliciousRecorder.AttackType.REENTER_SAME_FUNCTION, 2);
+    function test_ReentrancyOnCapture_SameFunction() public {
+        operator = _deployOperatorWithMaliciousHook(MaliciousHook.AttackType.REENTER_SAME_FUNCTION, 2);
+        maliciousHook.setTargetAction(MaliciousHook.TargetAction.CAPTURE);
+
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(operator));
 
         vm.prank(payer);
@@ -119,13 +122,73 @@ contract ReentrancyAttackTest is Test {
 
         uint256 receiverBalanceBefore = token.balanceOf(receiver);
         vm.prank(receiver);
-        operator.release(paymentInfo, PAYMENT_AMOUNT, "");
+        operator.capture(paymentInfo, PAYMENT_AMOUNT, "");
         uint256 receiverBalanceAfter = token.balanceOf(receiver);
 
-        // No fee calculators configured (both address(0)), so fee is 0
-        uint256 expectedReceiverAmount = PAYMENT_AMOUNT;
+        assertEq(receiverBalanceAfter - receiverBalanceBefore, PAYMENT_AMOUNT, "no double-capture");
+        assertEq(maliciousHook.reentrancyCount(), 1);
+        assertTrue(maliciousHook.reentrancyBlocked(), "nonReentrant must block re-capture");
+    }
 
-        assertEq(receiverBalanceAfter - receiverBalanceBefore, expectedReceiverAmount);
-        assertEq(maliciousRecorder.reentrancyCount(), 1);
+    function test_ReentrancyOnVoid_SameFunction() public {
+        operator = _deployOperatorWithMaliciousHook(MaliciousHook.AttackType.REENTER_SAME_FUNCTION, 3);
+        maliciousHook.setTargetAction(MaliciousHook.TargetAction.VOID);
+
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(operator));
+
+        vm.prank(payer);
+        collector.preApprove(paymentInfo);
+
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+
+        uint256 payerBalanceBefore = token.balanceOf(payer);
+        operator.void(paymentInfo, "");
+        uint256 payerBalanceAfter = token.balanceOf(payer);
+
+        assertEq(payerBalanceAfter - payerBalanceBefore, PAYMENT_AMOUNT, "single void amount returned");
+        assertEq(maliciousHook.reentrancyCount(), 1);
+        assertTrue(maliciousHook.reentrancyBlocked(), "nonReentrant must block re-void");
+    }
+
+    function test_ReentrancyOnRefund_SameFunction() public {
+        operator = _deployOperatorWithMaliciousHook(MaliciousHook.AttackType.REENTER_SAME_FUNCTION, 4);
+        maliciousHook.setTargetAction(MaliciousHook.TargetAction.REFUND);
+
+        // Set up: authorize, capture, then refund. Refund pulls from receiver via
+        // ReceiverRefundCollector, which transfers from receiver's wallet.
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(operator));
+
+        vm.prank(payer);
+        collector.preApprove(paymentInfo);
+
+        operator.authorize(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+        operator.capture(paymentInfo, PAYMENT_AMOUNT, "");
+
+        ReceiverRefundCollector refundCollector = new ReceiverRefundCollector(address(escrow));
+        vm.prank(receiver);
+        token.approve(address(refundCollector), type(uint256).max);
+
+        operator.refund(paymentInfo, PAYMENT_AMOUNT, address(refundCollector), "");
+
+        assertEq(maliciousHook.reentrancyCount(), 1);
+        assertTrue(maliciousHook.reentrancyBlocked(), "nonReentrant must block re-refund");
+    }
+
+    function test_ReentrancyOnCharge_SameFunction() public {
+        operator = _deployOperatorWithMaliciousHook(MaliciousHook.AttackType.REENTER_SAME_FUNCTION, 1);
+        maliciousHook.setTargetAction(MaliciousHook.TargetAction.CHARGE);
+
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(address(operator));
+
+        vm.prank(payer);
+        collector.preApprove(paymentInfo);
+
+        uint256 receiverBalanceBefore = token.balanceOf(receiver);
+        operator.charge(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+        uint256 receiverBalanceAfter = token.balanceOf(receiver);
+
+        assertEq(receiverBalanceAfter - receiverBalanceBefore, PAYMENT_AMOUNT, "no double-charge");
+        assertEq(maliciousHook.reentrancyCount(), 1);
+        assertTrue(maliciousHook.reentrancyBlocked(), "nonReentrant must block re-charge");
     }
 }

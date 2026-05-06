@@ -2,7 +2,9 @@
 // CONTRACTS UNAUDITED: USE AT YOUR OWN RISK
 pragma solidity ^0.8.28;
 
+import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {RefundRequest} from "./RefundRequest.sol";
+import {ZeroAddress} from "../../types/Errors.sol";
 
 /**
  * @title RefundRequestFactory
@@ -10,6 +12,11 @@ import {RefundRequest} from "./RefundRequest.sol";
  *         Uses CREATE2 for address predictability.
  *
  * @dev Key is keccak256(arbiter). Each unique arbiter gets one canonical deployment.
+ *      ESCROW is factory-level (immutable), shared across every RefundRequest deployed
+ *      by this factory. AUTHORIZED_CODEHASH is hardcoded to bytes32(0) — the canonical
+ *      RefundRequest only accepts direct calls from paymentInfo.operator. To compose
+ *      with HookCombinator, deploy RefundRequest manually with the combinator's runtime
+ *      codehash instead of using this factory.
  */
 contract RefundRequestFactory {
     error ZeroArbiter();
@@ -17,12 +24,20 @@ contract RefundRequestFactory {
     /// @notice Salt prefix for CREATE2
     bytes32 private constant SALT_PREFIX = "refundRequest";
 
+    /// @notice Canonical escrow injected into every deployed RefundRequest
+    AuthCaptureEscrow public immutable ESCROW;
+
     /// @notice Deployed refund request addresses
-    /// @dev Key: keccak256(abi.encodePacked(arbiter))
+    /// @dev Key: keccak256(abi.encode(arbiter))
     mapping(bytes32 => address) public refundRequests;
 
     /// @notice Emitted when a new refund request is deployed
     event RefundRequestDeployed(address indexed refundRequest, address indexed arbiter);
+
+    constructor(address escrow) {
+        if (escrow == address(0)) revert ZeroAddress();
+        ESCROW = AuthCaptureEscrow(escrow);
+    }
 
     /**
      * @notice Deploy a new RefundRequest for an arbiter
@@ -40,8 +55,9 @@ contract RefundRequestFactory {
         }
 
         // ============ EFFECTS ============
-        bytes32 salt = keccak256(abi.encodePacked(SALT_PREFIX, key));
-        bytes memory bytecode = abi.encodePacked(type(RefundRequest).creationCode, abi.encode(arbiter));
+        bytes32 salt = keccak256(abi.encode(SALT_PREFIX, key));
+        bytes memory bytecode =
+            abi.encodePacked(type(RefundRequest).creationCode, abi.encode(arbiter, address(ESCROW), bytes32(0)));
         refundRequest = address(
             uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)))))
         );
@@ -50,7 +66,7 @@ contract RefundRequestFactory {
         refundRequests[key] = refundRequest;
 
         // ============ INTERACTIONS ============
-        address deployed = address(new RefundRequest{salt: salt}(arbiter));
+        address deployed = address(new RefundRequest{salt: salt}(arbiter, address(ESCROW), bytes32(0)));
 
         assert(deployed == refundRequest);
 
@@ -74,8 +90,9 @@ contract RefundRequestFactory {
      */
     function computeAddress(address arbiter) external view returns (address refundRequest) {
         bytes32 key = getKey(arbiter);
-        bytes32 salt = keccak256(abi.encodePacked(SALT_PREFIX, key));
-        bytes memory bytecode = abi.encodePacked(type(RefundRequest).creationCode, abi.encode(arbiter));
+        bytes32 salt = keccak256(abi.encode(SALT_PREFIX, key));
+        bytes memory bytecode =
+            abi.encodePacked(type(RefundRequest).creationCode, abi.encode(arbiter, address(ESCROW), bytes32(0)));
         bytes32 hash = keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)));
         refundRequest = address(uint160(uint256(hash)));
     }
@@ -86,6 +103,6 @@ contract RefundRequestFactory {
      * @return The mapping key
      */
     function getKey(address arbiter) public pure returns (bytes32) {
-        return keccak256(abi.encodePacked(arbiter));
+        return keccak256(abi.encode(arbiter));
     }
 }

@@ -5,6 +5,7 @@ pragma solidity ^0.8.28;
 import {Ownable} from "solady/auth/Ownable.sol";
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {IFeeCalculator} from "./static-fee-calculator/IFeeCalculator.sol";
+import {ZeroAddress} from "../../types/Errors.sol";
 
 /**
  * @title ProtocolFeeConfig
@@ -15,6 +16,13 @@ import {IFeeCalculator} from "./static-fee-calculator/IFeeCalculator.sol";
  * OWNERSHIP: Uses Solady's Ownable with built-in 2-step transfer for safety:
  *        1. New owner calls requestOwnershipHandover()
  *        2. Current owner calls completeOwnershipHandover(newOwner) within 48 hours
+ *
+ *        renounceOwnership() is INHERITED from Solady's Ownable and intentionally NOT
+ *        disabled: keeping it preserves the standard Ownable ABI for tooling. Renouncing
+ *        permanently freezes both timelocks (recipient and calculator) at their current
+ *        values, leaving the protocol unable to migrate fees. Operationally, the multisig
+ *        owner MUST treat renounceOwnership as a destructive last-resort action and
+ *        prefer transferOwnership for routine handovers.
  *
  * PRODUCTION REQUIREMENT: Owner MUST be a multisig (e.g., Gnosis Safe) in production.
  */
@@ -48,8 +56,8 @@ contract ProtocolFeeConfig is Ownable {
     uint256 public pendingRecipientTimestamp;
 
     constructor(address _calculator, address _protocolFeeRecipient, address _owner) {
-        if (_owner == address(0)) revert();
-        if (_protocolFeeRecipient == address(0)) revert();
+        if (_owner == address(0)) revert ZeroAddress();
+        if (_protocolFeeRecipient == address(0)) revert ZeroAddress();
         _initializeOwner(_owner);
         calculator = IFeeCalculator(_calculator);
         protocolFeeRecipient = _protocolFeeRecipient;
@@ -80,7 +88,7 @@ contract ProtocolFeeConfig is Ownable {
     /// @notice Queue a recipient change (7-day timelock)
     /// @param _protocolFeeRecipient New fee recipient (must not be address(0))
     function queueRecipient(address _protocolFeeRecipient) external onlyOwner {
-        if (_protocolFeeRecipient == address(0)) revert();
+        if (_protocolFeeRecipient == address(0)) revert ZeroAddress();
         pendingRecipient = _protocolFeeRecipient;
         pendingRecipientTimestamp = block.timestamp + TIMELOCK_DELAY;
         emit RecipientChangeQueued(_protocolFeeRecipient, pendingRecipientTimestamp);

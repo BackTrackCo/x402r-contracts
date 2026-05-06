@@ -9,13 +9,16 @@ import {NotCondition} from "./NotCondition.sol";
  * @notice Factory for deploying NotCondition instances with deterministic addresses.
  *         Uses CREATE2 for address predictability.
  *
- * @dev Key is keccak256(abi.encodePacked(condition)). Each unique condition gets one canonical negation deployment.
+ * @dev Key is keccak256(abi.encode(condition)). Each unique condition gets one canonical negation deployment.
  */
 contract NotConditionFactory {
     error ZeroCondition();
 
+    /// @notice Salt prefix for CREATE2
+    bytes32 private constant SALT_PREFIX = "notCondition";
+
     /// @notice Deployed condition addresses
-    /// @dev Key: keccak256(abi.encodePacked(condition))
+    /// @dev Key: keccak256(abi.encode(condition))
     mapping(bytes32 => address) public conditions;
 
     /// @notice Emitted when a new NotCondition is deployed
@@ -38,7 +41,7 @@ contract NotConditionFactory {
 
         // ============ EFFECTS ============
         // Pre-compute deterministic CREATE2 address (CEI pattern)
-        bytes32 salt = keccak256(abi.encodePacked("notCondition", key));
+        bytes32 salt = keccak256(abi.encode(SALT_PREFIX, key));
         bytes memory bytecode = abi.encodePacked(type(NotCondition).creationCode, abi.encode(_condition));
         condition = address(
             uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)))))
@@ -71,7 +74,7 @@ contract NotConditionFactory {
      */
     function computeAddress(ICondition _condition) external view returns (address condition) {
         bytes32 key = getKey(_condition);
-        bytes32 salt = keccak256(abi.encodePacked("notCondition", key));
+        bytes32 salt = keccak256(abi.encode(SALT_PREFIX, key));
         bytes memory bytecode = abi.encodePacked(type(NotCondition).creationCode, abi.encode(_condition));
         bytes32 hash = keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)));
         condition = address(uint160(uint256(hash)));
@@ -83,6 +86,6 @@ contract NotConditionFactory {
      * @return The mapping key
      */
     function getKey(ICondition _condition) public pure returns (bytes32) {
-        return keccak256(abi.encodePacked(_condition));
+        return keccak256(abi.encode(_condition));
     }
 }

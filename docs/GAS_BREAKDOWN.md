@@ -12,10 +12,10 @@ Most gas is spent in the escrow layer (which we don't control), not our operator
 
 ### PaymentOperator.authorize()
 - **Without indexing**: ~231,000 gas
-- **With PaymentIndexRecorder**: ~273,000 gas (first) / ~253,000 gas (subsequent)
+- **With PaymentIndexHook**: ~273,000 gas (first) / ~253,000 gas (subsequent)
 
-### PaymentOperator.release()
-- **Base release**: ~65,000 gas
+### PaymentOperator.capture()
+- **Base capture**: ~65,000 gas
 - **With conditions**: +2,000-10,000 gas per condition
 
 ### PaymentOperator.charge()
@@ -63,7 +63,7 @@ Total escrow:          ~175,000 gas
 **What it does:**
 - Fee calculation and locking
 - Access control (conditions)
-- Event recording (optional recorders)
+- Event recording (optional hooks)
 - Fee distribution
 - Reentrancy protection
 
@@ -77,7 +77,7 @@ Condition check:        2,000 gas (if address(0))
 Fee calculation:        3,000 gas
 Fee locking storage:    22,000 gas (first) / 5,000 gas (subsequent)
 Event emission:         1,500 gas
-Recorder call:          2,000 gas (if address(0))
+Hook call:          2,000 gas (if address(0))
 Function overhead:      1,000 gas
 Validations & misc:    22,500 gas
 ─────────────────────────────────────
@@ -110,13 +110,13 @@ With indexing:     273,000 gas (-33% from v2.0)
 - Removed `paymentInfos` mapping (PaymentInfo no longer stored in operator)
 - Removed view functions (`getPaymentState`, `isInEscrow`, etc.) - query escrow directly
 - Added fee locking (stores only `totalFeeBps` + `protocolFeeBps` = 2 slots)
-- Indexing moved to optional `PaymentIndexRecorder`
+- Indexing moved to optional `PaymentIndexHook`
 
 ---
 
 ## Optional Features Gas Cost
 
-### PaymentIndexRecorder
+### PaymentIndexHook
 
 Adds on-chain payment indexing by payer/receiver.
 
@@ -162,7 +162,7 @@ PaymentInfo is NOT stored - query escrow via `escrow.paymentState(hash)`.
 
 ### 3. Optional Indexing
 
-Payment indexing is optional via `PaymentIndexRecorder`:
+Payment indexing is optional via `PaymentIndexHook`:
 - **With indexing**: +42k gas first, +22k subsequent
 - **Without indexing**: Use external indexer (The Graph) for queries
 
@@ -175,7 +175,7 @@ Payment indexing is optional via `PaymentIndexRecorder`:
 **Trade-off**: Use external indexer for payment queries
 **Best for**: Most use cases
 
-### ⚠️ Optional: With PaymentIndexRecorder
+### ⚠️ Optional: With PaymentIndexHook
 **Gas cost**: ~273,000 gas per authorize
 **Trade-off**: On-chain payment queries, higher gas
 **Best for**: Protocols requiring on-chain payment lookups

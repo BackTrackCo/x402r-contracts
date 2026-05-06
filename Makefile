@@ -1,80 +1,69 @@
 # Makefile for x402r-contracts deployment and management
 
-.PHONY: help deploy-testnet deploy-mainnet deploy-optimism verify-owner test coverage clean
+.PHONY: help predict deploy-primitives deploy-x402r verify-owner test coverage clean format slither fuzz gas-snapshot gas-check
 
 # Default target
 help:
 	@echo "x402r-contracts Makefile"
 	@echo ""
-	@echo "Available targets:"
-	@echo "  deploy-testnet    - Deploy to testnet (allows EOA owner)"
-	@echo "  deploy-mainnet    - Deploy to mainnet (requires multisig)"
+	@echo "Deploy targets (run in order, per chain):"
+	@echo "  predict           - Predict canonical CREATE2 addresses (read-only, no broadcast)"
+	@echo "  deploy-primitives - Deploy upstream MIT base/commerce-payments contracts"
+	@echo "  deploy-x402r      - Deploy x402r-authored BUSL contracts (requires primitives)"
+	@echo ""
+	@echo "Other targets:"
 	@echo "  verify-owner      - Verify owner address is multisig"
 	@echo "  test              - Run test suite"
 	@echo "  coverage          - Generate test coverage report"
+	@echo "  format            - Run forge fmt"
+	@echo "  slither           - Run Slither analysis"
+	@echo "  fuzz              - Run Echidna fuzzing"
+	@echo "  gas-snapshot      - Update gas snapshot"
+	@echo "  gas-check         - Check for gas regressions"
 	@echo "  clean             - Clean build artifacts"
 	@echo ""
 	@echo "Example usage:"
-	@echo "  make deploy-testnet"
-	@echo "  make deploy-mainnet OWNER_ADDRESS=0x1234..."
+	@echo "  make predict"
+	@echo "  make deploy-primitives RPC_URL=https://sepolia.base.org"
+	@echo "  make deploy-x402r     RPC_URL=https://sepolia.base.org"
 
-# Testnet deployment (Base Sepolia)
-deploy-testnet:
-	@echo "🧪 Deploying to testnet (Base Sepolia)..."
-	@echo ""
-	forge script script/DeployTestnet.s.sol \
-		--rpc-url base-sepolia \
-		--broadcast \
-		--verify \
-		-vvv
+# Predict canonical addresses without broadcasting (cross-check before any deploy)
+predict:
+	forge script script/PredictAddresses.s.sol -vvv
 
-# Mainnet deployment (Base)
-deploy-mainnet:
-	@echo "⚠️  MAINNET DEPLOYMENT"
-	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-	@echo ""
-	@if [ -z "$$OWNER_ADDRESS" ]; then \
-		echo "❌ ERROR: OWNER_ADDRESS not set"; \
-		echo ""; \
-		echo "Usage: make deploy-mainnet OWNER_ADDRESS=0x..."; \
+# Deploy upstream commerce-payments primitives (MIT). Idempotent per chain.
+deploy-primitives:
+	@if [ -z "$$RPC_URL" ]; then \
+		echo "❌ ERROR: RPC_URL not set"; \
+		echo "Usage: make deploy-primitives RPC_URL=https://..."; \
 		exit 1; \
 	fi
-	@echo "Owner address: $$OWNER_ADDRESS"
+	@echo "🚀 Deploying base/commerce-payments primitives to $$RPC_URL"
 	@echo ""
-	@echo "🔍 Verify this is a multisig on Basescan:"
-	@echo "   https://basescan.org/address/$$OWNER_ADDRESS"
-	@echo ""
-	@read -p "⚠️  Confirm owner is multisig contract [y/N]: " confirm && [ "$$confirm" = "y" ] || (echo "Deployment cancelled" && exit 1)
-	@echo ""
-	@echo "🚀 Starting mainnet deployment..."
-	@echo ""
-	forge script script/DeployProduction.s.sol \
-		--rpc-url base \
+	forge script script/DeployCommercePayments.s.sol \
+		--rpc-url $$RPC_URL \
 		--broadcast \
 		--verify \
 		--slow \
 		-vvv
 
-# Optimism deployment (full chain)
-deploy-optimism:
-	@echo "⚠️  OPTIMISM MAINNET DEPLOYMENT"
-	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+# Deploy x402r-authored contracts (BUSL). Requires primitives to be deployed already.
+# Set CANONICAL_OWNER and CANONICAL_FEE_RECIPIENT in script/DeployX402r.s.sol
+# before running. The script require()-guards both at runtime.
+deploy-x402r:
+	@if [ -z "$$RPC_URL" ]; then \
+		echo "❌ ERROR: RPC_URL not set"; \
+		echo "Usage: make deploy-x402r RPC_URL=https://..."; \
+		exit 1; \
+	fi
+	@echo "🚀 Deploying x402r-authored contracts to $$RPC_URL"
 	@echo ""
-	@echo "🔍 Verify deployer has ETH on Optimism"
-	@echo "   https://optimistic.etherscan.io"
-	@echo ""
-	@read -p "⚠️  Confirm deployment to Optimism mainnet [y/N]: " confirm && [ "$$confirm" = "y" ] || (echo "Deployment cancelled" && exit 1)
-	@echo ""
-	@echo "🚀 Starting Optimism deployment..."
-	@echo ""
-	USDC_ADDRESS=0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85 \
-	TVL_LIMIT=100000000000 \
-	forge script script/DeployAllChain.s.sol \
-		--rpc-url optimism \
+	forge script script/DeployX402r.s.sol \
+		--rpc-url $$RPC_URL \
 		--broadcast \
 		--verify \
 		--slow \
-		-vvvv
+		-vvv
 
 # Verify owner address is a contract
 verify-owner:
