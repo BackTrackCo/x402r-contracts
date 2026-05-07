@@ -62,6 +62,10 @@ contract DeployX402r is Create2Deployer {
     ///      addresses on this chain, fragmenting from the chains that already deployed. The
     ///      pre-flight assert below recomputes the predicted address with the current env values
     ///      and reverts if it doesn't match this canonical pin.
+    ///
+    ///      Audit trail: see `deployments/canonical.json` for the chain IDs and on-chain deploy
+    ///      tx hashes that produced this address. Independently reproducible by running
+    ///      `forge script script/PredictAddresses.s.sol -vvv` with the canonical env vars set.
     address internal constant EXPECTED_PROTOCOL_FEE_CONFIG = 0xBe2d24614F339a1eB103A399F93AA2a39Ca815Bc;
 
     function run() external {
@@ -88,7 +92,7 @@ contract DeployX402r is Create2Deployer {
         );
         require(
             predictedProtocolFeeConfig == EXPECTED_PROTOCOL_FEE_CONFIG,
-            "OWNER_ADDRESS / PROTOCOL_FEE_RECIPIENT do not match the canonical namespace - check env"
+            "OWNER_ADDRESS / PROTOCOL_FEE_RECIPIENT do not match the canonical namespace - check env; intentional owner rotation requires bumping salt to x402r-canonical-v2::*"
         );
 
         uint256 deployerPk = vm.envUint("PRIVATE_KEY");

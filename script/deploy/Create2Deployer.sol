@@ -47,6 +47,10 @@ abstract contract Create2Deployer is Script {
     /// @notice Off-chain prediction of the CREATE2 address that `_deploy2(label, initCode)` will land at.
     /// @dev Mirrors CreateX's internal salt-guard hash for permissionless mode (no msg.sender
     ///      mixing, no chainId mixing) and the standard CREATE2 derivation.
+    ///
+    ///      Caller must guarantee CreateX is deployed on the target chain — `_predict2` does not
+    ///      check, and standalone use on a fresh chain will return a bogus address. Paths that
+    ///      broadcast should prefer `_deploy2`, which validates CreateX before deploying.
     function _predict2(string memory label, bytes32 initCodeHash) internal pure returns (address) {
         bytes32 guardedSalt = keccak256(abi.encode(_salt(label)));
         return address(

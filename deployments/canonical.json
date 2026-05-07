@@ -1,0 +1,25 @@
+{
+  "_comment": "Canonical CREATE2 pin for ProtocolFeeConfig. Cross-checks the EXPECTED_PROTOCOL_FEE_CONFIG hardcode in script/DeployX402r.s.sol against actual on-chain deploys. Recompute with `forge script script/PredictAddresses.s.sol -vvv` (requires OWNER_ADDRESS and PROTOCOL_FEE_RECIPIENT env vars). Verify on-chain with `cast code <address> --rpc-url <chain>` — non-empty output proves the canonical address is live on that chain. txHash entries are null where the broadcast file was not preserved locally; on-chain code presence has been verified on every listed chain (3885 bytes, identical across all 12).",
+  "contract": "ProtocolFeeConfig",
+  "salt": "x402r-canonical-v1::ProtocolFeeConfig",
+  "address": "0xBe2d24614F339a1eB103A399F93AA2a39Ca815Bc",
+  "constructorArgs": {
+    "calculator": "0x0000000000000000000000000000000000000000",
+    "feeRecipient": "0x773DBcb5bDB3DF8359bA4e42d7Ce7Ae3FC9EE235",
+    "owner": "0x773DBcb5bDB3DF8359bA4e42d7Ce7Ae3FC9EE235"
+  },
+  "deployments": [
+    { "chain": "Ethereum",        "chainId": 1,        "txHash": null,                                                                       "codeVerified": true },
+    { "chain": "Optimism",        "chainId": 10,       "txHash": "0xea2126f835d0e991b0a72e7ce6592a166647d7cd0b79309c0e137d3285880d08", "codeVerified": true },
+    { "chain": "Polygon",         "chainId": 137,      "txHash": "0x5d06037847793ca8dde0d1ed52496567aeca800ff46202663c2347bdeda5506b", "codeVerified": true },
+    { "chain": "Monad",           "chainId": 143,      "txHash": "0x4d996b3936b0591cb20780d1c94130d2c38e0c28d2b40b78c7f68bc469739688", "codeVerified": true },
+    { "chain": "Base",            "chainId": 8453,     "txHash": "0x8519f5ac495348d00ce34c741b284ab1fa9ace8e8e5faba4cb50aeb2a8083c41", "codeVerified": true },
+    { "chain": "Arbitrum One",    "chainId": 42161,    "txHash": "0x03789ba14fa1876562e0fde9073afe73f893e851fdac38372ae5fe7579f6d7b7", "codeVerified": true },
+    { "chain": "Celo",            "chainId": 42220,    "txHash": "0xb3fda88d0ac77498c12ef2398ef123d8e22639a4a0bd234275a65f153db00f59", "codeVerified": true },
+    { "chain": "Avalanche",       "chainId": 43114,    "txHash": "0x94b90ed7aa4593c2a6d653536366567c55a9197c39e440807ede837a35d9f85e", "codeVerified": true },
+    { "chain": "Linea",           "chainId": 59144,    "txHash": "0xea86f9ee39a563c927da5339de933779a1ef3198ce4fc14d45c62123b1c71ca0", "codeVerified": true },
+    { "chain": "Base Sepolia",    "chainId": 84532,    "txHash": "0x98bdb87e569ea1e42bdecf513d5bb00f1ebcda279006ff37fdf77ef88dc87519", "codeVerified": true },
+    { "chain": "Ethereum Sepolia","chainId": 11155111, "txHash": null,                                                                       "codeVerified": true },
+    { "chain": "Arbitrum Sepolia","chainId": 421614,   "txHash": null,                                                                       "codeVerified": true }
+  ]
+}
