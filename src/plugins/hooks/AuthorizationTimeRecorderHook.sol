@@ -7,7 +7,7 @@ import {BaseHook} from "./BaseHook.sol";
 import {AuthorizationRecorded} from "../escrow-period/types/Events.sol";
 
 /**
- * @title AuthorizationTimeHook
+ * @title AuthorizationTimeRecorderHook
  * @notice Records authorization timestamps for payments.
  * @dev Generic recording without escrow period constraints.
  *      Use this when you need timestamp tracking for analytics, time-based queries,
@@ -25,13 +25,13 @@ import {AuthorizationRecorded} from "../escrow-period/types/Events.sol";
  *
  * USAGE:
  *   // Standalone: just timestamp tracking
- *   AuthorizationTimeHook hook = new AuthorizationTimeHook(address(escrow), bytes32(0));
+ *   AuthorizationTimeRecorderHook hook = new AuthorizationTimeRecorderHook(address(escrow), bytes32(0));
  *   operator = factory.deployOperator({
  *       authorizePostActionHook: address(hook),
  *       ...
  *   });
  */
-contract AuthorizationTimeHook is BaseHook {
+contract AuthorizationTimeRecorderHook is BaseHook {
     /// @notice Stores the authorization timestamp for each payment
     /// @dev Key: paymentInfoHash, Value: block.timestamp when authorized
     ///      Each paymentInfo hash can only be authorized once (escrow enforces this)

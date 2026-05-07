@@ -17,9 +17,9 @@ import {Permit2PaymentCollector} from "commerce-payments/collectors/Permit2Payme
  *         `script/`).
  *
  * @dev Salt namespace: `commerce-payments::v1::<ContractName>`.
- *      Idempotent per chain: re-running on a chain where the addresses already exist will
- *      revert (CreateX rejects duplicate CREATE2 deploys). That's intentional — it's the
- *      first-mover lock. To deploy on a new chain, just run this script.
+ *      Idempotent per chain: re-running is a no-op for any contract whose canonical address
+ *      already has code (`Create2Deployer._deploy2` predicts and skips). To deploy on a new
+ *      chain, just run this script.
  *
  *      Pre-flight (per chain):
  *      - CreateX live at 0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed

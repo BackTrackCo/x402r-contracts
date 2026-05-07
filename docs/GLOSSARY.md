@@ -114,7 +114,7 @@ Abstract base class for hooks. Provides `_verifyAndHash()` which validates the c
 A time window after authorization during which funds are held in escrow before capture is permitted. Enforced by `EscrowPeriod` (which implements both `ICondition` and `IHook`) as both the `AUTHORIZE_POST_ACTION_HOOK` and `CAPTURE_PRE_ACTION_CONDITION`.
 
 ### EscrowPeriod
-Combined hook and condition contract. Records `block.timestamp` when a payment is authorized (via `AuthorizationTimeHook` inheritance), checks `block.timestamp >= authorizedAt + ESCROW_PERIOD` and `!frozen` for capture, and provides freeze/unfreeze capabilities.
+Combined hook and condition contract. Records `block.timestamp` when a payment is authorized (via `AuthorizationTimeRecorderHook` inheritance), checks `block.timestamp >= authorizedAt + ESCROW_PERIOD` and `!frozen` for capture, and provides freeze/unfreeze capabilities.
 
 ### Freeze
 A standalone `ICondition` contract that blocks capture when a payment is frozen. The payer (or authorized party) calls `freeze.freeze(paymentInfo)` to set `frozenUntil = block.timestamp + FREEZE_DURATION`. A frozen payment cannot be captured until `frozenUntil` passes or `unfreeze()` is called. Freeze contracts are deployed via `FreezeFactory` with configurable freeze/unfreeze conditions passed directly as constructor parameters.

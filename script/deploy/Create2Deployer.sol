@@ -29,13 +29,28 @@ interface ICreateX {
 abstract contract Create2Deployer is Script {
     ICreateX constant CREATEX = ICreateX(0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed);
 
+    /// @notice Deploy a contract via CREATE2, or return the existing address if already deployed.
+    /// @dev Idempotent: re-running on a chain where the address already has code skips the
+    ///      CreateX call (which would otherwise revert on duplicate). Lets a single deploy
+    ///      script complete a partial broadcast or add a new contract to an existing namespace
+    ///      without manual chain-state branching.
     function _deploy2(string memory label, bytes memory initCode) internal returns (address deployed) {
+        address predicted = _predict2(label, keccak256(initCode));
+        if (predicted.code.length > 0) {
+            return predicted;
+        }
+        require(address(CREATEX).code.length > 0, "Create2Deployer: CreateX not deployed on this chain");
         deployed = CREATEX.deployCreate2(_salt(label), initCode);
+        require(deployed == predicted, "Create2Deployer: deployed address mismatch");
     }
 
     /// @notice Off-chain prediction of the CREATE2 address that `_deploy2(label, initCode)` will land at.
     /// @dev Mirrors CreateX's internal salt-guard hash for permissionless mode (no msg.sender
     ///      mixing, no chainId mixing) and the standard CREATE2 derivation.
+    ///
+    ///      Caller must guarantee CreateX is deployed on the target chain — `_predict2` does not
+    ///      check, and standalone use on a fresh chain will return a bogus address. Paths that
+    ///      broadcast should prefer `_deploy2`, which validates CreateX before deploying.
     function _predict2(string memory label, bytes32 initCodeHash) internal pure returns (address) {
         bytes32 guardedSalt = keccak256(abi.encode(_salt(label)));
         return address(

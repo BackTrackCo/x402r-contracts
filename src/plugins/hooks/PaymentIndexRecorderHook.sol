@@ -6,7 +6,7 @@ import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
 import {BaseHook} from "./BaseHook.sol";
 
 /**
- * @title PaymentIndexHook
+ * @title PaymentIndexRecorderHook
  * @notice Hook that indexes payments by payer and receiver for on-chain lookups,
  *         and stores full PaymentInfo for retrieval.
  * @dev Extracted from PaymentOperator for optional gas optimization.
@@ -18,17 +18,27 @@ import {BaseHook} from "./BaseHook.sol";
  *
  *      NOTE: Amount can be read from escrow.paymentState(hash).capturableAmount
  *
+ *      AGGREGATION SEMANTIC: When deployed as a chain singleton (the canonical CREATE2
+ *      deployment routes here whenever an operator's HookCombinator runtime codehash
+ *      matches `authorizedCodehash`), `payerPaymentCount[alice]` and
+ *      `getPayerPayments(alice, ...)` aggregate every authorization that landed via
+ *      *any* operator routing through `HookCombinator`. Per-operator views require
+ *      reading `paymentInfo.operator` from the returned struct and filtering caller-
+ *      side. Cross-operator hash collisions are not a concern: `paymentInfo.operator`
+ *      is part of the upstream `AuthCaptureEscrow.getHash` encoding, so distinct
+ *      operators always produce distinct hashes for otherwise-identical payments.
+ *
  * GAS COST: ~175k per authorization (payer + receiver indexing + PaymentInfo storage)
  *
  * USAGE:
  *   // Deploy once, share across operators
- *   PaymentIndexHook indexHook = new PaymentIndexHook(address(escrow));
+ *   PaymentIndexRecorderHook indexHook = new PaymentIndexRecorderHook(address(escrow), bytes32(0));
  *
  *   // Query payments with full PaymentInfo
  *   (AuthCaptureEscrow.PaymentInfo[] memory infos, uint256 total) = indexHook.getPayerPayments(alice, 0, 10);
  *   AuthCaptureEscrow.PaymentInfo memory info = indexHook.getPaymentInfo(hash);
  */
-contract PaymentIndexHook is BaseHook {
+contract PaymentIndexRecorderHook is BaseHook {
     // ============ Errors ============
     error IndexOutOfBounds();
 

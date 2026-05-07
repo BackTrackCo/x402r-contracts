@@ -3,16 +3,16 @@
 pragma solidity ^0.8.28;
 
 import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-import {AuthorizationTimeHook} from "../hooks/AuthorizationTimeHook.sol";
+import {AuthorizationTimeRecorderHook} from "../hooks/AuthorizationTimeRecorderHook.sol";
 import {ICondition} from "../conditions/ICondition.sol";
 import {InvalidEscrowPeriod} from "./types/Errors.sol";
 
 /**
  * @title EscrowPeriod
- * @notice Combined escrow period hook and condition. Extends AuthorizationTimeHook
+ * @notice Combined escrow period hook and condition. Extends AuthorizationTimeRecorderHook
  *         with escrow period enforcement and ICondition implementation.
  *
- * @dev Implements both IHook (via AuthorizationTimeHook inheritance) and ICondition.
+ * @dev Implements both IHook (via AuthorizationTimeRecorderHook inheritance) and ICondition.
  *      Use the same address for both the AUTHORIZE_POST_ACTION_HOOK and CAPTURE_PRE_ACTION_CONDITION slots
  *      on PaymentOperator.
  *
@@ -22,18 +22,18 @@ import {InvalidEscrowPeriod} from "./types/Errors.sol";
  * TRUST ASSUMPTIONS:
  *      - Timestamp: Uses block.timestamp for time-based escrow periods.
  */
-contract EscrowPeriod is AuthorizationTimeHook, ICondition {
+contract EscrowPeriod is AuthorizationTimeRecorderHook, ICondition {
     /// @notice Duration of the escrow period in seconds
     uint256 public immutable ESCROW_PERIOD;
 
     constructor(uint256 _escrowPeriod, address _escrow, bytes32 _authorizedCodehash)
-        AuthorizationTimeHook(_escrow, _authorizedCodehash)
+        AuthorizationTimeRecorderHook(_escrow, _authorizedCodehash)
     {
         if (_escrowPeriod == 0) revert InvalidEscrowPeriod();
         ESCROW_PERIOD = _escrowPeriod;
     }
 
-    // Note: record() inherited from AuthorizationTimeHook
+    // Note: run() inherited from AuthorizationTimeRecorderHook
 
     // ============ ICondition Implementation ============
 
@@ -53,7 +53,7 @@ contract EscrowPeriod is AuthorizationTimeHook, ICondition {
 
     // ============ View Functions ============
 
-    // Note: getAuthorizationTime() inherited from AuthorizationTimeHook
+    // Note: getAuthorizationTime() inherited from AuthorizationTimeRecorderHook
 
     /**
      * @notice Check if a payment is currently within its escrow period

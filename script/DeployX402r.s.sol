@@ -21,7 +21,9 @@ import {
 import {AndConditionFactory} from "../src/plugins/conditions/combinators/AndConditionFactory.sol";
 import {OrConditionFactory} from "../src/plugins/conditions/combinators/OrConditionFactory.sol";
 import {NotConditionFactory} from "../src/plugins/conditions/combinators/NotConditionFactory.sol";
+import {HookCombinator} from "../src/plugins/hooks/combinators/HookCombinator.sol";
 import {HookCombinatorFactory} from "../src/plugins/hooks/combinators/HookCombinatorFactory.sol";
+import {PaymentIndexRecorderHook} from "../src/plugins/hooks/PaymentIndexRecorderHook.sol";
 import {RefundRequestFactory} from "../src/requests/refund/RefundRequestFactory.sol";
 import {ReceiverRefundCollector} from "../src/collectors/ReceiverRefundCollector.sol";
 import {RefundRequestEvidenceFactory} from "../src/evidence/RefundRequestEvidenceFactory.sol";
@@ -39,45 +41,70 @@ import {RefundRequestEvidenceFactory} from "../src/evidence/RefundRequestEvidenc
  *      submodule pin). The script asserts the predicted address has code; if not, run
  *      `DeployCommercePayments.s.sol` first.
  *
- *      Set CANONICAL_OWNER and CANONICAL_FEE_RECIPIENT below before running. Both are pinned
- *      constants, not env vars: any change moves the CREATE2 addresses of the contracts that
- *      take them as constructor args (ProtocolFeeConfig and everything downstream).
+ *      Required env vars (alongside `PRIVATE_KEY`):
+ *        - `OWNER_ADDRESS`           — owner of `ProtocolFeeConfig` (controls the 7-day timelocked
+ *                                      fee-calculator swap). Address-typed.
+ *        - `PROTOCOL_FEE_RECIPIENT`  — recipient of protocol fees. Address-typed.
+ *
+ *      Both addresses are baked immutably into `ProtocolFeeConfig`'s ctor args and so move the
+ *      CREATE2 addresses of every contract downstream of it. Change them and the canonical
+ *      namespace shifts — `_deploy2` is idempotent across re-runs at the *same* values, but a
+ *      different `OWNER_ADDRESS` lands at a fresh address on the same chain.
  *
  *      Usage:
  *        forge script script/DeployX402r.s.sol --rpc-url <RPC> --broadcast --verify -vvv
  */
 contract DeployX402r is Create2Deployer {
-    // ---- Canonical x402r EOAs ----
-    // TBD: Replace with production multisig addresses BEFORE running this script.
-    // Any change here moves the CREATE2 addresses of contracts that take these as
-    // constructor args (ProtocolFeeConfig, PaymentOperatorFactory, and everything
-    // downstream of them).
-    //
-    // DO NOT broadcast with the placeholder address(0) — the run() pre-flight require()s
-    // below fail-fast on broadcast, but more fundamentally: the canonical address bakes
-    // these constructor args in immutably, so deploying with a placeholder permanently
-    // pins the wrong owner at the canonical address on that chain.
-    address constant CANONICAL_OWNER = address(0);
-    address constant CANONICAL_FEE_RECIPIENT = address(0);
+    /// @notice Canonical `ProtocolFeeConfig` CREATE2 address derived from the live owner/recipient.
+    /// @dev Hardcoded as a fragmentation guard: `ProtocolFeeConfig`'s ctor takes the env-provided
+    ///      `OWNER_ADDRESS` and `PROTOCOL_FEE_RECIPIENT`, and every contract downstream of it bakes
+    ///      this address in. A typo in either env var silently lands the entire namespace at fresh
+    ///      addresses on this chain, fragmenting from the chains that already deployed. The
+    ///      pre-flight assert below recomputes the predicted address with the current env values
+    ///      and reverts if it doesn't match this canonical pin.
+    ///
+    ///      Audit trail: see `deployments/canonical.json` for the chain IDs and on-chain deploy
+    ///      tx hashes that produced this address. Independently reproducible by running
+    ///      `forge script script/PredictAddresses.s.sol -vvv` with the canonical env vars set.
+    address internal constant EXPECTED_PROTOCOL_FEE_CONFIG = 0xBe2d24614F339a1eB103A399F93AA2a39Ca815Bc;
 
     function run() external {
-        require(CANONICAL_OWNER != address(0), "Set CANONICAL_OWNER before deploying");
-        require(CANONICAL_FEE_RECIPIENT != address(0), "Set CANONICAL_FEE_RECIPIENT before deploying");
+        address canonicalOwner = vm.envAddress("OWNER_ADDRESS");
+        address canonicalFeeRecipient = vm.envAddress("PROTOCOL_FEE_RECIPIENT");
+        require(canonicalOwner != address(0), "OWNER_ADDRESS must be non-zero");
+        require(canonicalFeeRecipient != address(0), "PROTOCOL_FEE_RECIPIENT must be non-zero");
 
         // Predict + assert the upstream escrow is already deployed.
         address escrow =
             _predict2("commerce-payments::v1::AuthCaptureEscrow", keccak256(type(AuthCaptureEscrow).creationCode));
         require(escrow.code.length > 0, "AuthCaptureEscrow not deployed - run DeployCommercePayments.s.sol first");
 
+        // Fragmentation guard: predict ProtocolFeeConfig with the env-provided owner/recipient and
+        // assert it matches the canonical pin. A typo in either env var would otherwise land at a
+        // fresh address and cascade through every downstream contract.
+        address predictedProtocolFeeConfig = _predict2(
+            "x402r-canonical-v1::ProtocolFeeConfig",
+            keccak256(
+                abi.encodePacked(
+                    type(ProtocolFeeConfig).creationCode, abi.encode(address(0), canonicalFeeRecipient, canonicalOwner)
+                )
+            )
+        );
+        require(
+            predictedProtocolFeeConfig == EXPECTED_PROTOCOL_FEE_CONFIG,
+            "OWNER_ADDRESS / PROTOCOL_FEE_RECIPIENT do not match the canonical namespace - check env; intentional owner rotation requires bumping salt to x402r-canonical-v2::*"
+        );
+
         uint256 deployerPk = vm.envUint("PRIVATE_KEY");
+        require(deployerPk != 0, "PRIVATE_KEY must be non-zero");
 
         console.log("\n========================================");
         console.log("  x402r BUSL contracts (CREATE2)");
         console.log("========================================");
         console.log("Chain ID:           ", block.chainid);
         console.log("Deployer:           ", vm.addr(deployerPk));
-        console.log("Owner:              ", CANONICAL_OWNER);
-        console.log("Fee Recipient:      ", CANONICAL_FEE_RECIPIENT);
+        console.log("Owner:              ", canonicalOwner);
+        console.log("Fee Recipient:      ", canonicalFeeRecipient);
         console.log("AuthCaptureEscrow:  ", escrow);
 
         vm.startBroadcast(deployerPk);
@@ -93,7 +120,7 @@ contract DeployX402r is Create2Deployer {
         address protocolFeeConfig = _deploy2(
             "x402r-canonical-v1::ProtocolFeeConfig",
             abi.encodePacked(
-                type(ProtocolFeeConfig).creationCode, abi.encode(address(0), CANONICAL_FEE_RECIPIENT, CANONICAL_OWNER)
+                type(ProtocolFeeConfig).creationCode, abi.encode(address(0), canonicalFeeRecipient, canonicalOwner)
             )
         );
         console.log("ProtocolFeeConfig:", protocolFeeConfig);
@@ -189,6 +216,35 @@ contract DeployX402r is Create2Deployer {
         );
         console.log("RefundRequestEvidenceFactory:", refundRequestEvidenceFactory);
 
+        // =============================================
+        // 6. Hook singletons
+        // =============================================
+        // PaymentIndexRecorderHook can be a chain singleton because both of its constructor args are
+        // chain-invariants:
+        //   - escrow:        canonical AuthCaptureEscrow CREATE2 address
+        //   - authorizedCodehash: HookCombinator runtime codehash, which is identical across
+        //                    every HookCombinator instance regardless of stored hooks (storage
+        //                    slots, not bytecode, hold the per-instance config). The codehash
+        //                    is reproducible from the locked toolchain — see PredictAddresses.
+        // Gating PaymentIndexRecorderHook on the canonical HookCombinator codehash means any operator
+        // routing post-action through HookCombinator can reuse this one deployment.
+        //
+        // v1-vs-v2 footgun: any future change to `HookCombinator`'s runtime bytecode shifts the
+        // codehash and so requires a new salt label (`x402r-canonical-v2::*`) and a fresh
+        // `PaymentIndexRecorderHook` deploy. The v1 hook will reject calls from the new combinator
+        // (codehash gate fails). When bumping HookCombinator, bump the namespace label too.
+        console.log("\n--- 6. Hook singletons ---");
+
+        bytes32 hookCombinatorCodehash = keccak256(type(HookCombinator).runtimeCode);
+        console.log("HookCombinator codehash:");
+        console.logBytes32(hookCombinatorCodehash);
+
+        address paymentIndexHook = _deploy2(
+            "x402r-canonical-v1::PaymentIndexRecorderHook",
+            abi.encodePacked(type(PaymentIndexRecorderHook).creationCode, abi.encode(escrow, hookCombinatorCodehash))
+        );
+        console.log("PaymentIndexRecorderHook:", paymentIndexHook);
+
         vm.stopBroadcast();
 
         // =============================================
@@ -216,6 +272,8 @@ contract DeployX402r is Create2Deployer {
         console.log("  RefundRequestFactory:          ", refundReqFactory);
         console.log("  ReceiverRefundCollector:       ", receiverRefundCollector);
         console.log("  RefundRequestEvidenceFactory:  ", refundRequestEvidenceFactory);
+        console.log("");
+        console.log("  PaymentIndexRecorderHook:              ", paymentIndexHook);
         console.log("========================================");
     }
 }

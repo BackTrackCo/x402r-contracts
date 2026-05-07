@@ -185,7 +185,7 @@ remaining = total - offset
 actualCount = min(remaining, count)
 ```
 
-**Code location:** `PaymentIndexHook.sol:getPayerPayments()`, `getReceiverPayments()`
+**Code location:** `PaymentIndexRecorderHook.sol:getPayerPayments()`, `getReceiverPayments()`
 
 **Edge cases:**
 - `offset >= total`: returns empty array
@@ -201,7 +201,7 @@ payerPaymentCount[payer]++
 receiverPaymentCount[receiver]++
 ```
 
-**Code location:** `PaymentIndexHook.sol:run()`
+**Code location:** `PaymentIndexRecorderHook.sol:run()`
 
 **Overflow safety:** `uint256` counters. Would need 10^77 calls to overflow — practically impossible.
 

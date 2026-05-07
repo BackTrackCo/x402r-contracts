@@ -19,7 +19,7 @@ import {NotConditionFactory} from "../src/plugins/conditions/combinators/NotCond
 import {OrCondition} from "../src/plugins/conditions/combinators/OrCondition.sol";
 import {OrConditionFactory} from "../src/plugins/conditions/combinators/OrConditionFactory.sol";
 import {IHook} from "../src/plugins/hooks/IHook.sol";
-import {AuthorizationTimeHook} from "../src/plugins/hooks/AuthorizationTimeHook.sol";
+import {AuthorizationTimeRecorderHook} from "../src/plugins/hooks/AuthorizationTimeRecorderHook.sol";
 import {HookCombinator} from "../src/plugins/hooks/combinators/HookCombinator.sol";
 import {HookCombinatorFactory} from "../src/plugins/hooks/combinators/HookCombinatorFactory.sol";
 import {RefundRequestEvidenceFactory} from "../src/evidence/RefundRequestEvidenceFactory.sol";
@@ -470,8 +470,8 @@ contract FactoryCoverageTest is Test {
     function test_HookCombinatorFactory_Deploy() public {
         HookCombinatorFactory factory = new HookCombinatorFactory();
         IHook[] memory recs = new IHook[](2);
-        recs[0] = IHook(address(new AuthorizationTimeHook(address(escrow), bytes32(0))));
-        recs[1] = IHook(address(new AuthorizationTimeHook(address(escrow), bytes32(0))));
+        recs[0] = IHook(address(new AuthorizationTimeRecorderHook(address(escrow), bytes32(0))));
+        recs[1] = IHook(address(new AuthorizationTimeRecorderHook(address(escrow), bytes32(0))));
 
         address deployed = factory.deploy(recs);
         assertTrue(deployed != address(0), "HookCombinator should be deployed");
@@ -480,7 +480,7 @@ contract FactoryCoverageTest is Test {
 
     function test_HookCombinatorFactory_IdempotentDeploy() public {
         HookCombinatorFactory factory = new HookCombinatorFactory();
-        IHook rec = IHook(address(new AuthorizationTimeHook(address(escrow), bytes32(0))));
+        IHook rec = IHook(address(new AuthorizationTimeRecorderHook(address(escrow), bytes32(0))));
         IHook[] memory recs = new IHook[](1);
         recs[0] = rec;
 
@@ -492,7 +492,7 @@ contract FactoryCoverageTest is Test {
     function test_HookCombinatorFactory_ComputeAddress() public {
         HookCombinatorFactory factory = new HookCombinatorFactory();
         IHook[] memory recs = new IHook[](1);
-        recs[0] = IHook(address(new AuthorizationTimeHook(address(escrow), bytes32(0))));
+        recs[0] = IHook(address(new AuthorizationTimeRecorderHook(address(escrow), bytes32(0))));
 
         address predicted = factory.computeAddress(recs);
         address actual = factory.deploy(recs);
@@ -502,7 +502,7 @@ contract FactoryCoverageTest is Test {
     function test_HookCombinatorFactory_GetDeployed() public {
         HookCombinatorFactory factory = new HookCombinatorFactory();
         IHook[] memory recs = new IHook[](1);
-        recs[0] = IHook(address(new AuthorizationTimeHook(address(escrow), bytes32(0))));
+        recs[0] = IHook(address(new AuthorizationTimeRecorderHook(address(escrow), bytes32(0))));
 
         assertEq(factory.getDeployed(recs), address(0), "Should be zero before deployment");
         address deployed = factory.deploy(recs);
@@ -520,7 +520,7 @@ contract FactoryCoverageTest is Test {
         HookCombinatorFactory factory = new HookCombinatorFactory();
         IHook[] memory recs = new IHook[](11);
         for (uint256 i = 0; i < 11; i++) {
-            recs[i] = IHook(address(new AuthorizationTimeHook(address(escrow), bytes32(0))));
+            recs[i] = IHook(address(new AuthorizationTimeRecorderHook(address(escrow), bytes32(0))));
         }
         vm.expectRevert(HookCombinatorFactory.TooManyHooks.selector);
         factory.deploy(recs);
@@ -528,8 +528,8 @@ contract FactoryCoverageTest is Test {
 
     function test_HookCombinatorFactory_GetKey() public {
         HookCombinatorFactory factory = new HookCombinatorFactory();
-        IHook rec1 = IHook(address(new AuthorizationTimeHook(address(escrow), bytes32(0))));
-        IHook rec2 = IHook(address(new AuthorizationTimeHook(address(escrow), bytes32(0))));
+        IHook rec1 = IHook(address(new AuthorizationTimeRecorderHook(address(escrow), bytes32(0))));
+        IHook rec2 = IHook(address(new AuthorizationTimeRecorderHook(address(escrow), bytes32(0))));
         IHook[] memory recs1 = new IHook[](1);
         recs1[0] = rec1;
         IHook[] memory recs2 = new IHook[](1);
