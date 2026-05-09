@@ -1,0 +1,41 @@
+{
+  "_comment": "Canonical CREATE2 v1.0.1 escrow-dependent contracts. Salt namespace `x402r-canonical-v1.0.1::*`. Same source as v1, rebound to the canonical AuthCaptureEscrow from `commerce-payments at v1.0.0`. Recompute PaymentIndexRecorderHook via `forge script script/PredictAddresses.s.sol -vvv`; the other five addresses derive deterministically from the same escrow ctor arg via `_deploy2` (dry-run DeployX402r.s.sol on any chain where the canonical escrow is live). Verify on-chain with `cast code <address> --rpc-url <chain>` — non-empty output proves the canonical address is live on that chain.",
+  "saltNamespace": "x402r-canonical-v1.0.1",
+  "escrow": "0xBdEA0D1bcC5966192B070Fdf62aB4EF5b4420cff",
+  "contracts": {
+    "PaymentOperatorFactory":   "0xa0d4734842df1690a5B33Cb21828c946e39D55a2",
+    "EscrowPeriodFactory":      "0xe72D2014ebC48F1d92521e8629574918E8030548",
+    "FreezeFactory":            "0xeC092cf1215DB44af0Abe87c1157E304FEa5d0Eb",
+    "RefundRequestFactory":     "0xe971C674fD5c3462023f3F891dF6289DFbC9CEFC",
+    "ReceiverRefundCollector":  "0x88C9826dFA17Ad9d3a726015C667dD995394D341",
+    "PaymentIndexRecorderHook": "0x358ECA14fFD51e63D2Bb8DDE3aBAA14f8D5274C3"
+  },
+  "deployments": [
+    {
+      "chain": "Base",
+      "chainId": 8453,
+      "codeVerified": true,
+      "txHashes": {
+        "PaymentOperatorFactory":   "0xb7b1d99d6b2282d0b45ca2d2479d7da0b5a94e39c9fa2f5bbcc19a8e946957ec",
+        "EscrowPeriodFactory":      "0x9b8c8e619e27975950fce3d3e2c4d62036a8a414e842bd48b8fa09862247c383",
+        "FreezeFactory":            "0x765d5fdb89c036cddbd59088e8ad175a171cc651164e9caae131693444684825",
+        "RefundRequestFactory":     "0x939390035739df1d26e847e5ad0fa2fff15faa27854a4a6febf00c3262600a54",
+        "ReceiverRefundCollector":  "0x819640f8e053c11dce778d41ee0da45c4e794c78c40cefa5b19a0a1e618ad7bf",
+        "PaymentIndexRecorderHook": "0x7fcb6d148ba7d10f22d7cb42c4091d6ab1650e846ad8cb404d2d9f0c8c26dfc2"
+      }
+    },
+    {
+      "chain": "Base Sepolia",
+      "chainId": 84532,
+      "codeVerified": true,
+      "txHashes": {
+        "PaymentOperatorFactory":   "0x505693f6d6dd9bdd6d41cafe7bb02da278643a5dc2bb3c25c649dc26b7bcb77d",
+        "EscrowPeriodFactory":      "0x4fa73c523e1328715b950d33ae13db88eb0c340dabd60a884434d453b8758336",
+        "FreezeFactory":            "0x410d2d1fd6aa039119567d4aab6f98f14fd921c1c922213bb7b9538fbba5ef36",
+        "RefundRequestFactory":     "0x92b5530e3306a7edb8d61a9b9d645d0b3184cfead4f097968ca03f7ad63e3a3a",
+        "ReceiverRefundCollector":  "0x50c33eb5cfc4cd50fc3c4b5bda77a08eeffefe9838ae4c96026f5ee79f007c9e",
+        "PaymentIndexRecorderHook": "0x09dd472fd10212cddc8d07d5650be860243999655259ab6716519d1a539f58b7"
+      }
+    }
+  ]
+}
