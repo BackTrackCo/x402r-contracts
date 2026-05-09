@@ -41,9 +41,12 @@ Operator stores only `authorizedFees[hash]` and `accumulatedProtocolFees[token]`
 
 ## Deploy
 
-Two-stage CREATE2 canonical deploy via CreateX permissionless salts:
+Single-stage CREATE2 canonical deploy via CreateX permissionless salts. The upstream `base/commerce-payments@v1.0.0` primitives (`AuthCaptureEscrow`, `ERC3009PaymentCollector`, `Permit2PaymentCollector`) are deployed by Base at canonical addresses on Base mainnet + Base Sepolia (see the upstream README); x402r does not redeploy them.
 
-- `script/DeployCommercePayments.s.sol` — upstream `base/commerce-payments` primitives (MIT, vendored from the `v1.0.0` tag): `AuthCaptureEscrow`, `ERC3009PaymentCollector`, `Permit2PaymentCollector`. Salt namespace `commerce-payments::v1::*`.
-- `script/DeployX402r.s.sol` — x402r-authored contracts (BUSL): operator factory, plugins, refund-side, hook singletons. Predicts the escrow address and asserts it's deployed before broadcasting. Salt namespace `x402r-canonical-v1::*`. Reads `OWNER_ADDRESS` and `PROTOCOL_FEE_RECIPIENT` from env (alongside `PRIVATE_KEY`); both are baked immutably into `ProtocolFeeConfig` and so move every canonical address downstream of it. Idempotent — `_deploy2` skips any contract whose predicted address already has code, so partial broadcasts resume cleanly and adding a new singleton to the namespace doesn't require chain-state branching.
+- `script/DeployX402r.s.sol` — x402r-authored contracts (BUSL): operator factory, plugins, refund-side, hook singletons. Asserts the canonical Base `AuthCaptureEscrow` (`BASE_AUTH_CAPTURE_ESCROW` constant) has code on the target chain before broadcasting. Reads `OWNER_ADDRESS` and `PROTOCOL_FEE_RECIPIENT` from env (alongside `PRIVATE_KEY`); both are baked immutably into `ProtocolFeeConfig` and so move that canonical address. Idempotent — `_deploy2` skips any contract whose predicted address already has code, so partial broadcasts resume cleanly and adding a new singleton to the namespace doesn't require chain-state branching.
+
+Two salt namespaces:
+- `x402r-canonical-v1::*` — escrow-independent contracts (`ProtocolFeeConfig`, condition singletons, ctor-arg-free factories, `RefundRequestEvidenceFactory`). Stable across the v1 deployments tracked in `deployments/canonical.json`.
+- `x402r-canonical-v1.0.1::*` — escrow-dependent contracts (`PaymentOperatorFactory`, `EscrowPeriodFactory`, `FreezeFactory`, `RefundRequestFactory`, `ReceiverRefundCollector`, `PaymentIndexRecorderHook`). Same source as v1, rebound to the canonical Base escrow. Deployable only on chains where the canonical Base escrow exists (today: Base mainnet + Base Sepolia).
 
 Cross-check before deploying: `forge script script/PredictAddresses.s.sol -vvv` (or `make predict`) recomputes every canonical address and prints the initCodeHashes — addresses must match across machines or the toolchain has drifted.

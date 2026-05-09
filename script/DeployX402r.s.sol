@@ -4,8 +4,6 @@ pragma solidity ^0.8.28;
 import {console} from "forge-std/Script.sol";
 import {Create2Deployer} from "./deploy/Create2Deployer.sol";
 
-import {AuthCaptureEscrow} from "commerce-payments/AuthCaptureEscrow.sol";
-
 import {PaymentOperatorFactory} from "../src/operator/PaymentOperatorFactory.sol";
 import {ProtocolFeeConfig} from "../src/plugins/fees/ProtocolFeeConfig.sol";
 import {SignatureConditionFactory} from "../src/plugins/conditions/access/signature/SignatureConditionFactory.sol";
@@ -30,16 +28,24 @@ import {RefundRequestEvidenceFactory} from "../src/evidence/RefundRequestEvidenc
 
 /**
  * @title DeployX402r
- * @notice Deterministic CREATE2 deployment of x402r-authored contracts (BUSL-1.1) at canonical
- *         addresses. Depends on the upstream `base/commerce-payments` primitives (MIT) being
- *         already deployed via `script/DeployCommercePayments.s.sol`.
+ * @notice Deterministic CREATE2 deployment of x402r-authored contracts (BUSL-1.1) bound to the
+ *         canonical, audited `base/commerce-payments at v1.0.0` deployment of `AuthCaptureEscrow`.
  *
- * @dev Salt namespace: `x402r-canonical-v1::<ContractName>`.
+ * @dev Salt namespaces:
+ *        - `x402r-canonical-v1::*`     — escrow-independent contracts (ProtocolFeeConfig,
+ *                                        condition singletons, ctor-arg-free factories,
+ *                                        RefundRequestEvidenceFactory). Already live on the
+ *                                        chains listed in `deployments/canonical.json`.
+ *        - `x402r-canonical-v1.0.1::*` — escrow-dependent contracts (PaymentOperatorFactory,
+ *                                        EscrowPeriodFactory, FreezeFactory, RefundRequestFactory,
+ *                                        ReceiverRefundCollector, PaymentIndexRecorderHook).
+ *                                        v1.0.1 signals: same source code as v1, rebound to the
+ *                                        canonical Base escrow at `BASE_AUTH_CAPTURE_ESCROW`.
  *
- *      The escrow address is predicted from the canonical CREATE2 derivation (label
- *      `commerce-payments::v1::AuthCaptureEscrow` + locked upstream initCode at the v1.0.0
- *      submodule pin). The script asserts the predicted address has code; if not, run
- *      `DeployCommercePayments.s.sol` first.
+ *      Escrow source: hardcoded to the canonical Base deployment of `AuthCaptureEscrow` from
+ *      `base/commerce-payments at v1.0.0` (see the upstream README). The script asserts the address
+ *      has code on the target chain; if not, the canonical primitives are not yet deployed there
+ *      and x402r cannot bring up at v1.0.1 on that chain (today: Base mainnet + Base Sepolia only).
  *
  *      Required env vars (alongside `PRIVATE_KEY`):
  *        - `OWNER_ADDRESS`           — owner of `ProtocolFeeConfig` (controls the 7-day timelocked
@@ -47,14 +53,22 @@ import {RefundRequestEvidenceFactory} from "../src/evidence/RefundRequestEvidenc
  *        - `PROTOCOL_FEE_RECIPIENT`  — recipient of protocol fees. Address-typed.
  *
  *      Both addresses are baked immutably into `ProtocolFeeConfig`'s ctor args and so move the
- *      CREATE2 addresses of every contract downstream of it. Change them and the canonical
- *      namespace shifts — `_deploy2` is idempotent across re-runs at the *same* values, but a
- *      different `OWNER_ADDRESS` lands at a fresh address on the same chain.
+ *      CREATE2 address of `ProtocolFeeConfig` itself. Change them and the v1 namespace shifts —
+ *      `_deploy2` is idempotent across re-runs at the *same* values, but a different
+ *      `OWNER_ADDRESS` lands at a fresh address on the same chain.
  *
  *      Usage:
  *        forge script script/DeployX402r.s.sol --rpc-url <RPC> --broadcast --verify -vvv
  */
 contract DeployX402r is Create2Deployer {
+    /// @notice Canonical `AuthCaptureEscrow` from `base/commerce-payments at v1.0.0`, deployed by
+    ///         Base at this address on Base mainnet (8453) and Base Sepolia (84532).
+    /// @dev    Source of truth: https://github.com/base/commerce-payments README. The CREATE2
+    ///         derivation is internal to Base's deploy process; we treat this address as an
+    ///         external constant. Verify on-chain with `cast code` before broadcasting on a new
+    ///         chain — the pre-flight assert below requires `code.length > 0`.
+    address internal constant BASE_AUTH_CAPTURE_ESCROW = 0xBdEA0D1bcC5966192B070Fdf62aB4EF5b4420cff;
+
     /// @notice Canonical `ProtocolFeeConfig` CREATE2 address derived from the live owner/recipient.
     /// @dev Hardcoded as a fragmentation guard: `ProtocolFeeConfig`'s ctor takes the env-provided
     ///      `OWNER_ADDRESS` and `PROTOCOL_FEE_RECIPIENT`, and every contract downstream of it bakes
@@ -74,10 +88,13 @@ contract DeployX402r is Create2Deployer {
         require(canonicalOwner != address(0), "OWNER_ADDRESS must be non-zero");
         require(canonicalFeeRecipient != address(0), "PROTOCOL_FEE_RECIPIENT must be non-zero");
 
-        // Predict + assert the upstream escrow is already deployed.
-        address escrow =
-            _predict2("commerce-payments::v1::AuthCaptureEscrow", keccak256(type(AuthCaptureEscrow).creationCode));
-        require(escrow.code.length > 0, "AuthCaptureEscrow not deployed - run DeployCommercePayments.s.sol first");
+        // Assert the canonical Base AuthCaptureEscrow is deployed on this chain. If not, Base has
+        // not extended commerce-payments to this chain yet and x402r v1.0.1 cannot bring up here.
+        address escrow = BASE_AUTH_CAPTURE_ESCROW;
+        require(
+            escrow.code.length > 0,
+            "AuthCaptureEscrow not deployed on this chain - canonical base/commerce-payments at v1.0.0 missing"
+        );
 
         // Fragmentation guard: predict ProtocolFeeConfig with the env-provided owner/recipient and
         // assert it matches the canonical pin. A typo in either env var would otherwise land at a
@@ -126,7 +143,7 @@ contract DeployX402r is Create2Deployer {
         console.log("ProtocolFeeConfig:", protocolFeeConfig);
 
         address paymentOperatorFactory = _deploy2(
-            "x402r-canonical-v1::PaymentOperatorFactory",
+            "x402r-canonical-v1.0.1::PaymentOperatorFactory",
             abi.encodePacked(type(PaymentOperatorFactory).creationCode, abi.encode(escrow, protocolFeeConfig))
         );
         console.log("PaymentOperatorFactory:", paymentOperatorFactory);
@@ -184,13 +201,14 @@ contract DeployX402r is Create2Deployer {
         console.log("\n--- 4. Per-payment factories ---");
 
         address escrowPeriodFactory = _deploy2(
-            "x402r-canonical-v1::EscrowPeriodFactory",
+            "x402r-canonical-v1.0.1::EscrowPeriodFactory",
             abi.encodePacked(type(EscrowPeriodFactory).creationCode, abi.encode(escrow))
         );
         console.log("EscrowPeriodFactory:", escrowPeriodFactory);
 
         address freezeFactory = _deploy2(
-            "x402r-canonical-v1::FreezeFactory", abi.encodePacked(type(FreezeFactory).creationCode, abi.encode(escrow))
+            "x402r-canonical-v1.0.1::FreezeFactory",
+            abi.encodePacked(type(FreezeFactory).creationCode, abi.encode(escrow))
         );
         console.log("FreezeFactory:", freezeFactory);
 
@@ -200,13 +218,13 @@ contract DeployX402r is Create2Deployer {
         console.log("\n--- 5. Refund-side ---");
 
         address refundReqFactory = _deploy2(
-            "x402r-canonical-v1::RefundRequestFactory",
+            "x402r-canonical-v1.0.1::RefundRequestFactory",
             abi.encodePacked(type(RefundRequestFactory).creationCode, abi.encode(escrow))
         );
         console.log("RefundRequestFactory:", refundReqFactory);
 
         address receiverRefundCollector = _deploy2(
-            "x402r-canonical-v1::ReceiverRefundCollector",
+            "x402r-canonical-v1.0.1::ReceiverRefundCollector",
             abi.encodePacked(type(ReceiverRefundCollector).creationCode, abi.encode(escrow))
         );
         console.log("ReceiverRefundCollector:", receiverRefundCollector);
@@ -229,10 +247,11 @@ contract DeployX402r is Create2Deployer {
         // Gating PaymentIndexRecorderHook on the canonical HookCombinator codehash means any operator
         // routing post-action through HookCombinator can reuse this one deployment.
         //
-        // v1-vs-v2 footgun: any future change to `HookCombinator`'s runtime bytecode shifts the
-        // codehash and so requires a new salt label (`x402r-canonical-v2::*`) and a fresh
-        // `PaymentIndexRecorderHook` deploy. The v1 hook will reject calls from the new combinator
-        // (codehash gate fails). When bumping HookCombinator, bump the namespace label too.
+        // Versioning footgun: any future change to `HookCombinator`'s runtime bytecode shifts the
+        // codehash and so requires a new salt label (e.g. `x402r-canonical-v2::*`) and a fresh
+        // `PaymentIndexRecorderHook` deploy. The existing hook will reject calls from the new
+        // combinator (codehash gate fails). When bumping HookCombinator, bump the namespace label
+        // too.
         console.log("\n--- 6. Hook singletons ---");
 
         bytes32 hookCombinatorCodehash = keccak256(type(HookCombinator).runtimeCode);
@@ -240,7 +259,7 @@ contract DeployX402r is Create2Deployer {
         console.logBytes32(hookCombinatorCodehash);
 
         address paymentIndexHook = _deploy2(
-            "x402r-canonical-v1::PaymentIndexRecorderHook",
+            "x402r-canonical-v1.0.1::PaymentIndexRecorderHook",
             abi.encodePacked(type(PaymentIndexRecorderHook).creationCode, abi.encode(escrow, hookCombinatorCodehash))
         );
         console.log("PaymentIndexRecorderHook:", paymentIndexHook);

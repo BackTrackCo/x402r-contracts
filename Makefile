@@ -1,6 +1,6 @@
 # Makefile for x402r-contracts deployment and management
 
-.PHONY: help predict deploy-primitives deploy-x402r verify-owner test coverage clean format slither fuzz gas-snapshot gas-check
+.PHONY: help predict deploy-x402r verify-owner test coverage clean format slither fuzz gas-snapshot gas-check
 
 # Default target
 help:
@@ -8,8 +8,7 @@ help:
 	@echo ""
 	@echo "Deploy targets (run in order, per chain):"
 	@echo "  predict           - Predict canonical CREATE2 addresses (read-only, no broadcast)"
-	@echo "  deploy-primitives - Deploy upstream MIT base/commerce-payments contracts"
-	@echo "  deploy-x402r      - Deploy x402r-authored BUSL contracts (requires primitives)"
+	@echo "  deploy-x402r      - Deploy x402r-authored BUSL contracts against canonical Base escrow"
 	@echo ""
 	@echo "Other targets:"
 	@echo "  verify-owner      - Verify owner address is multisig"
@@ -24,32 +23,16 @@ help:
 	@echo ""
 	@echo "Example usage:"
 	@echo "  make predict"
-	@echo "  make deploy-primitives RPC_URL=https://sepolia.base.org"
-	@echo "  make deploy-x402r     RPC_URL=https://sepolia.base.org"
+	@echo "  make deploy-x402r RPC_URL=https://sepolia.base.org"
 
 # Predict canonical addresses without broadcasting (cross-check before any deploy)
 predict:
 	forge script script/PredictAddresses.s.sol -vvv
 
-# Deploy upstream commerce-payments primitives (MIT). Idempotent per chain.
-deploy-primitives:
-	@if [ -z "$$RPC_URL" ]; then \
-		echo "❌ ERROR: RPC_URL not set"; \
-		echo "Usage: make deploy-primitives RPC_URL=https://..."; \
-		exit 1; \
-	fi
-	@echo "🚀 Deploying base/commerce-payments primitives to $$RPC_URL"
-	@echo ""
-	forge script script/DeployCommercePayments.s.sol \
-		--rpc-url $$RPC_URL \
-		--broadcast \
-		--verify \
-		--slow \
-		-vvv
-
-# Deploy x402r-authored contracts (BUSL). Requires primitives to be deployed already.
-# Set CANONICAL_OWNER and CANONICAL_FEE_RECIPIENT in script/DeployX402r.s.sol
-# before running. The script require()-guards both at runtime.
+# Deploy x402r-authored contracts (BUSL) against the canonical Base AuthCaptureEscrow.
+# Requires the canonical base/commerce-payments@v1.0.0 escrow to be deployed on the target chain
+# (today: Base mainnet + Base Sepolia). Set OWNER_ADDRESS and PROTOCOL_FEE_RECIPIENT in env;
+# the script require()-guards both at runtime.
 deploy-x402r:
 	@if [ -z "$$RPC_URL" ]; then \
 		echo "❌ ERROR: RPC_URL not set"; \
