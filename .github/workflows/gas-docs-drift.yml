@@ -1,0 +1,139 @@
+name: Gas Docs Drift
+
+# Keeps the figures on docs.x402r.org/contracts/gas-costs honest. Re-runs the
+# docs-cited GasBenchmark.t.sol, compares against a committed baseline, and
+# opens a tracking issue when the numbers drift past threshold so the docs page
+# (and its pinned commit) can be refreshed. On main it also refreshes the
+# baseline so the next drift is measured from current.
+
+on:
+  schedule:
+    - cron: '0 6 * * 1' # Mondays 06:00 UTC
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'test/gas/**'
+      - 'foundry.toml'
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  benchmark-drift:
+    name: Benchmark drift vs docs baseline
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Snapshot docs benchmark
+        run: |
+          forge snapshot --match-contract GasBenchmark --snap test/gas/.docs-gas-benchmark.new
+          cat test/gas/.docs-gas-benchmark.new
+
+      - name: Compare against committed baseline
+        id: drift
+        run: |
+          baseline=test/gas/.docs-gas-benchmark
+          current=test/gas/.docs-gas-benchmark.new
+          if [ ! -f "$baseline" ]; then
+            echo "No baseline committed yet, seeding it."
+            echo "state=seed" >> "$GITHUB_OUTPUT"
+          elif diff -u "$baseline" "$current" > test/gas/benchmark-drift.txt; then
+            echo "No drift."
+            echo "state=clean" >> "$GITHUB_OUTPUT"
+          else
+            echo "Drift detected:"
+            cat test/gas/benchmark-drift.txt
+            echo "state=drift" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Refresh committed baseline (main only)
+        if: github.ref == 'refs/heads/main' && steps.drift.outputs.state != 'clean'
+        run: |
+          mv test/gas/.docs-gas-benchmark.new test/gas/.docs-gas-benchmark
+          if [ -n "$(git status --porcelain test/gas/.docs-gas-benchmark)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add test/gas/.docs-gas-benchmark
+            git commit -m "chore(gas): refresh docs benchmark baseline [skip ci]"
+            git push
+          fi
+
+      - name: Open or update docs-drift issue
+        if: steps.drift.outputs.state == 'drift'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const diff = fs.existsSync('test/gas/benchmark-drift.txt')
+              ? fs.readFileSync('test/gas/benchmark-drift.txt', 'utf8')
+              : '(diff unavailable)';
+            const marker = '<!-- gas-docs-drift -->';
+            const sha = context.sha;
+            const body = [
+              marker,
+              '`GasBenchmark.t.sol` has drifted from the committed docs baseline.',
+              '',
+              'The figures on **docs.x402r.org/contracts/gas-costs** are pinned to a commit and quote exact numbers. Regenerate the page and bump the pinned commit:',
+              '',
+              '```bash',
+              `git checkout ${sha}`,
+              'forge test --match-path test/gas/GasBenchmark.t.sol -vv',
+              '```',
+              '',
+              `Current head: \`${sha}\``,
+              '',
+              '<details><summary>Benchmark diff</summary>',
+              '',
+              '```diff',
+              diff.trim(),
+              '```',
+              '',
+              '</details>',
+            ].join('\n');
+
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'documentation',
+              per_page: 100,
+            });
+            const hit = existing.data.find(i => (i.body || '').includes(marker));
+            if (hit) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: hit.number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: 'Gas costs drifted, refresh docs gas-costs page',
+                labels: ['documentation'],
+                body,
+              });
+            }
+
+      - name: Upload benchmark snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-gas-benchmark-${{ github.run_number }}
+          path: |
+            test/gas/.docs-gas-benchmark.new
+            test/gas/benchmark-drift.txt
+          retention-days: 90
+          if-no-files-found: ignore
