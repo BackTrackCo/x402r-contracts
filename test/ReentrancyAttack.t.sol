@@ -184,7 +184,7 @@ contract ReentrancyAttackTest is Test {
         collector.preApprove(paymentInfo);
 
         uint256 receiverBalanceBefore = token.balanceOf(receiver);
-        operator.charge(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+        operator.charge(paymentInfo, PAYMENT_AMOUNT, address(collector), "", 0, paymentInfo.feeReceiver);
         uint256 receiverBalanceAfter = token.balanceOf(receiver);
 
         assertEq(receiverBalanceAfter - receiverBalanceBefore, PAYMENT_AMOUNT, "no double-charge");

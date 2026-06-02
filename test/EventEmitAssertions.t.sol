@@ -121,7 +121,7 @@ contract EventEmitAssertionsTest is Test {
 
         vm.expectEmit(true, true, true, true, address(operator));
         emit ChargeExecuted(pi, hash, payer, receiver, PAYMENT_AMOUNT);
-        operator.charge(pi, PAYMENT_AMOUNT, address(collector), "");
+        operator.charge(pi, PAYMENT_AMOUNT, address(collector), "", 0, pi.feeReceiver);
     }
 
     function test_capture_emitsCaptureExecuted() public {

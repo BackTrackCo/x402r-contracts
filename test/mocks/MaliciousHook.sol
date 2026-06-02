@@ -101,7 +101,7 @@ contract MaliciousHook is IHook {
                 reentrancyBlocked = true;
             }
         } else if (targetAction == TargetAction.CHARGE) {
-            try targetOperator.charge(paymentInfo, amount, address(0), "") {}
+            try targetOperator.charge(paymentInfo, amount, address(0), "", 0, paymentInfo.feeReceiver) {}
             catch {
                 reentrancyBlocked = true;
             }

@@ -296,7 +296,7 @@ contract GasBenchmark is Test {
         collector.preApprove(pi);
 
         uint256 gasBefore = gasleft();
-        bareOperator.charge(pi, PAYMENT_AMOUNT, address(collector), "");
+        bareOperator.charge(pi, PAYMENT_AMOUNT, address(collector), "", 0, pi.feeReceiver);
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("=== BARE COMMERCE PAYMENTS ===");

@@ -224,6 +224,26 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
      * @dev Checks CHARGE_PRE_ACTION_CONDITION, performs charge, then calls CHARGE_POST_ACTION_HOOK.
      *      Unlike authorize(), funds go directly to receiver (no escrow hold).
      *      Refunds are only possible via refund().
+     *
+     *      Signature note: this deliberately mirrors the canonical `AuthCaptureEscrow.charge`
+     *      selector (`charge(PaymentInfo,uint256,address,bytes,uint16,address)` = `0x9e65819f`)
+     *      so a facilitator that forwards the literal escrow `charge` selector to a smart-contract
+     *      captureAuthorizer dispatches here. The auth-capture facilitator always encodes this
+     *      6-arg escrow form for the `autoCapture` single-shot flow; a narrower 4-arg signature
+     *      would expose a different selector, the forwarded call would find no matching function,
+     *      hit the fallback, and revert. The two-phase `authorize` path needs no such alignment
+     *      because the operator and escrow already share the identical 4-arg `authorize` selector
+     *      (`0x41d66202`).
+     *
+     *      Fee handling: the operator's modular protocol+operator fee model is authoritative. Both
+     *      trailing escrow-fee args (`feeBps`, `feeReceiver`) are intentionally ignored — fees are
+     *      recomputed internally (to keep `accumulatedProtocolFees` accounting correct) and the
+     *      escrow is always called with `feeReceiver = address(this)`. The args carry no effect, so
+     *      they are left unnamed (which also avoids unused-variable notes). They cannot be misused:
+     *      `validFees` requires `paymentInfo.feeReceiver == address(this)`, and the escrow's own
+     *      `_validateFee` then checks the forwarded receiver (`address(this)`) against
+     *      `paymentInfo.feeReceiver` — so the real fee receiver is pinned to this operator
+     *      regardless of what the caller passes.
      * @param paymentInfo PaymentInfo struct
      * @param amount Amount to charge
      * @param tokenCollector Address of the token collector
@@ -235,7 +255,9 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
         uint256 amount,
         address tokenCollector,
-        bytes calldata collectorData
+        bytes calldata collectorData,
+        uint16,
+        address
     ) external nonReentrant validFees(paymentInfo) {
         if (address(CHARGE_PRE_ACTION_CONDITION) != address(0)) {
             if (!CHARGE_PRE_ACTION_CONDITION.check(paymentInfo, amount, msg.sender, collectorData)) {
@@ -248,12 +270,13 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
             revert FeeBoundsIncompatible(totalFeeBps, paymentInfo.minFeeBps, paymentInfo.maxFeeBps);
         }
         uint256 protocolFeeAmount = (amount * protocolFeeBps) / 10000;
-        address feeReceiver = address(this);
 
         bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
 
         // ============ INTERACTIONS ============
-        ESCROW.charge(paymentInfo, amount, tokenCollector, collectorData, totalFeeBps, feeReceiver);
+        // feeReceiver is forced to address(this) so fees always accrue to the operator regardless
+        // of the (ignored) feeReceiver arg; validFees + escrow _validateFee pin it to this operator.
+        ESCROW.charge(paymentInfo, amount, tokenCollector, collectorData, totalFeeBps, address(this));
 
         // ============ EFFECTS (post-INTERACTIONS for strict CEI) ============
         // Done after the escrow call so that any future revert path (e.g. wrapping the

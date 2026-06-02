@@ -200,7 +200,7 @@ contract PaymentOperatorInvariants is Test {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _createPaymentInfo(payer, receiver, amount, salt);
 
         collector.preApprove(paymentInfo);
-        operator.charge(paymentInfo, amount, address(collector), "");
+        operator.charge(paymentInfo, amount, address(collector), "", 0, paymentInfo.feeReceiver);
 
         _trackPayment(paymentInfo, amount);
         totalReleasedAmount += amount;

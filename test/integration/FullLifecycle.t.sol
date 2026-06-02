@@ -219,7 +219,7 @@ contract FullLifecycleTest is Test {
 
         vm.prank(payer);
         collector.preApprove(paymentInfo);
-        operator.charge(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+        operator.charge(paymentInfo, PAYMENT_AMOUNT, address(collector), "", 0, paymentInfo.feeReceiver);
 
         uint256 expectedTotalFee = (PAYMENT_AMOUNT * TOTAL_BPS) / 10000;
         uint256 expectedNetAmount = PAYMENT_AMOUNT - expectedTotalFee;
