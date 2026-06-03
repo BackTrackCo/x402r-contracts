@@ -166,7 +166,7 @@ contract ModularFeesTest is Test {
         vm.prank(payer);
         collector.preApprove(paymentInfo);
 
-        op.charge(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+        op.charge(paymentInfo, PAYMENT_AMOUNT, address(collector), "", 0, paymentInfo.feeReceiver);
 
         uint256 expectedProtocolFee = (PAYMENT_AMOUNT * protocolBps) / 10000;
 

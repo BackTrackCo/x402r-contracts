@@ -136,7 +136,7 @@ contract FeeBoundsEdgeCaseFuzzTest is Test {
         vm.startPrank(payer);
         collector.preApprove(paymentInfo);
         vm.expectRevert(abi.encodeWithSelector(FeeBoundsIncompatible.selector, uint16(totalBps), minFeeBps, maxFeeBps));
-        op.charge(paymentInfo, amount, address(collector), "");
+        op.charge(paymentInfo, amount, address(collector), "", 0, paymentInfo.feeReceiver);
         vm.stopPrank();
     }
 

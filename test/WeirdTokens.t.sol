@@ -117,7 +117,7 @@ contract WeirdTokensTest is Test {
 
         // Attempt charge - should revert for same reason
         vm.expectRevert(AuthCaptureEscrow.TokenCollectionFailed.selector);
-        operator.charge(paymentInfo, PAYMENT_AMOUNT, address(collector), "");
+        operator.charge(paymentInfo, PAYMENT_AMOUNT, address(collector), "", 0, paymentInfo.feeReceiver);
     }
 
     function test_FeeOnTransferToken_VerifyFeeAmount() public view {
