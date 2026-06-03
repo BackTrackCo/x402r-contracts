@@ -235,21 +235,28 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
      *      because the operator and escrow already share the identical 4-arg `authorize` selector
      *      (`0x41d66202`).
      *
-     *      Fee handling: the operator's modular protocol+operator fee model is authoritative. Both
-     *      trailing escrow-fee args (`feeBps`, `feeReceiver`) are intentionally ignored — fees are
-     *      recomputed internally (to keep `accumulatedProtocolFees` accounting correct) and the
-     *      escrow is always called with `feeReceiver = address(this)`. The args carry no effect, so
-     *      they are left unnamed (which also avoids unused-variable notes). They cannot be misused:
-     *      `validFees` requires `paymentInfo.feeReceiver == address(this)`, and the escrow's own
-     *      `_validateFee` then checks the forwarded receiver (`address(this)`) against
-     *      `paymentInfo.feeReceiver` — so the real fee receiver is pinned to this operator
-     *      regardless of what the caller passes.
+     *      Fee handling — the operator owns the fee RATE, but the fee RECEIVER is delegated to the
+     *      canonical escrow's own validation:
+     *      - `feeReceiver` is passed straight through to the escrow. The escrow's `_validateFee`
+     *        reverts unless it equals `paymentInfo.feeReceiver` (`InvalidFeeReceiver`) or rejects a
+     *        zero receiver when a fee is due (`ZeroFeeReceiver`), and `validFees` already requires
+     *        `paymentInfo.feeReceiver == address(this)`. So the only non-reverting value is this
+     *        operator: a mismatched or zero arg reverts for free, fees can never be routed away from
+     *        the operator (keeping `accumulatedProtocolFees` accounting sound), and no operator-level
+     *        check is needed.
+     *      - `feeBps` is IGNORED (left unnamed, which also avoids an unused-variable note) and
+     *        recomputed internally. The facilitator passes `paymentInfo.minFeeBps` as a placeholder
+     *        within the payer-signed `[minFeeBps, maxFeeBps]` range, NOT the actual fee, and the
+     *        operator's protocol-fee accounting needs its own recomputed rate (still bounded by the
+     *        range), so the supplied value cannot be forwarded.
      * @param paymentInfo PaymentInfo struct
      * @param amount Amount to charge
      * @param tokenCollector Address of the token collector
      * @param collectorData Data passed to both the token collector AND forwarded to
      *        CHARGE_PRE_ACTION_CONDITION.check() and CHARGE_POST_ACTION_HOOK.run() as the `data` parameter.
      *        NOTE: Dual-purpose — see authorize() for collision considerations.
+     * @param feeReceiver Forwarded to the escrow, which requires it to equal paymentInfo.feeReceiver
+     *        (pinned to address(this) by validFees); any other value reverts.
      */
     function charge(
         AuthCaptureEscrow.PaymentInfo calldata paymentInfo,
@@ -257,7 +264,7 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         address tokenCollector,
         bytes calldata collectorData,
         uint16,
-        address
+        address feeReceiver
     ) external nonReentrant validFees(paymentInfo) {
         if (address(CHARGE_PRE_ACTION_CONDITION) != address(0)) {
             if (!CHARGE_PRE_ACTION_CONDITION.check(paymentInfo, amount, msg.sender, collectorData)) {
@@ -274,9 +281,10 @@ contract PaymentOperator is ReentrancyGuardTransient, PaymentOperatorAccess {
         bytes32 paymentInfoHash = ESCROW.getHash(paymentInfo);
 
         // ============ INTERACTIONS ============
-        // feeReceiver is forced to address(this) so fees always accrue to the operator regardless
-        // of the (ignored) feeReceiver arg; validFees + escrow _validateFee pin it to this operator.
-        ESCROW.charge(paymentInfo, amount, tokenCollector, collectorData, totalFeeBps, address(this));
+        // totalFeeBps is the internally recomputed rate (the caller's feeBps arg is ignored).
+        // feeReceiver is passed through: escrow _validateFee reverts unless it equals
+        // paymentInfo.feeReceiver, which validFees pins to address(this) — so fees land on the operator.
+        ESCROW.charge(paymentInfo, amount, tokenCollector, collectorData, totalFeeBps, feeReceiver);
 
         // ============ EFFECTS (post-INTERACTIONS for strict CEI) ============
         // Done after the escrow call so that any future revert path (e.g. wrapping the

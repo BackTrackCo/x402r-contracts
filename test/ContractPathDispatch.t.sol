@@ -142,9 +142,10 @@ contract ContractPathDispatchTest is Test {
         assertEq(capturable, uint120(PAYMENT_AMOUNT), "authorize held funds in escrow");
     }
 
-    /// @notice The ignored 6-arg fee fields cannot redirect fees: even with a bogus feeReceiver and
-    ///         an out-of-band feeBps, the operator recomputes fees and pins the receiver to itself.
-    function test_ContractPath_Charge_IgnoresSuppliedFeeArgs() public {
+    /// @notice `feeBps` is a placeholder the facilitator passes within the payer-signed range, not
+    ///         the actual fee. It is ignored and recomputed internally, so an out-of-band value
+    ///         (here 9999, above the operator's real rate) still dispatches and charges the real fee.
+    function test_ContractPath_Charge_IgnoresSuppliedFeeBps() public {
         AuthCaptureEscrow.PaymentInfo memory paymentInfo = _paymentInfo();
 
         vm.prank(payer);
@@ -152,16 +153,61 @@ contract ContractPathDispatchTest is Test {
 
         bytes memory data = abi.encodeCall(
             AuthCaptureEscrow.charge,
-            (paymentInfo, PAYMENT_AMOUNT, address(collector), "", uint16(9999), makeAddr("attackerFeeReceiver"))
+            (paymentInfo, PAYMENT_AMOUNT, address(collector), "", uint16(9999), paymentInfo.feeReceiver)
         );
 
         vm.prank(facilitator);
         (bool ok,) = address(operator).call(data);
-        assertTrue(ok, "supplied fee args are ignored, not validated, so the call still dispatches");
+        assertTrue(ok, "supplied feeBps is ignored, not validated, so the call still dispatches");
 
         uint256 expectedTotalFee = (PAYMENT_AMOUNT * TOTAL_BPS) / 10000;
-        assertEq(token.balanceOf(makeAddr("attackerFeeReceiver")), 0, "no fees leak to the supplied feeReceiver");
-        assertEq(token.balanceOf(address(operator)), expectedTotalFee, "operator still holds the recomputed fee");
+        assertEq(token.balanceOf(address(operator)), expectedTotalFee, "operator holds the recomputed fee, not 9999bps");
+    }
+
+    /// @notice `feeReceiver` is passed through to the escrow, which reverts on a mismatch with
+    ///         paymentInfo.feeReceiver — so a wrong receiver fails loudly rather than being silently
+    ///         overridden, and fees can never be routed away from the operator.
+    function test_ContractPath_Charge_RevertsOnFeeReceiverMismatch() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _paymentInfo();
+
+        vm.prank(payer);
+        collector.preApprove(paymentInfo);
+
+        bytes memory data = abi.encodeCall(
+            AuthCaptureEscrow.charge,
+            (
+                paymentInfo,
+                PAYMENT_AMOUNT,
+                address(collector),
+                "",
+                uint16(paymentInfo.minFeeBps),
+                makeAddr("wrongReceiver")
+            )
+        );
+
+        vm.prank(facilitator);
+        (bool ok, bytes memory ret) = address(operator).call(data);
+        assertFalse(ok, "a feeReceiver != paymentInfo.feeReceiver must revert");
+        assertEq(bytes4(ret), AuthCaptureEscrow.InvalidFeeReceiver.selector, "escrow rejects the mismatch");
+    }
+
+    /// @notice The "unset" feeReceiver (address(0)) is not special-cased: the escrow rejects it
+    ///         (ZeroFeeReceiver when a fee is due) just like any other non-operator value.
+    function test_ContractPath_Charge_RevertsOnZeroFeeReceiver() public {
+        AuthCaptureEscrow.PaymentInfo memory paymentInfo = _paymentInfo();
+
+        vm.prank(payer);
+        collector.preApprove(paymentInfo);
+
+        bytes memory data = abi.encodeCall(
+            AuthCaptureEscrow.charge,
+            (paymentInfo, PAYMENT_AMOUNT, address(collector), "", uint16(paymentInfo.minFeeBps), address(0))
+        );
+
+        vm.prank(facilitator);
+        (bool ok, bytes memory ret) = address(operator).call(data);
+        assertFalse(ok, "a zero feeReceiver with a non-zero fee must revert");
+        assertEq(bytes4(ret), AuthCaptureEscrow.ZeroFeeReceiver.selector, "escrow rejects the zero receiver");
     }
 
     // ============ Helpers ============
