@@ -5,6 +5,15 @@ libs = ["lib"]
 # Match upstream commerce-payments deploy profile so the canonical AuthCaptureEscrow
 # bytecode we deploy is byte-identical to what the upstream deploy profile produces.
 # Any drift here moves the CREATE2 canonical address.
+#
+# PLATFORM CAVEAT: these settings pin the compiler INPUTS, but Solc 0.8.33's via_ir output for
+# the heaviest contract (PaymentOperatorFactory) is not byte-identical across platform builds
+# (macOS/Darwin vs Linux). The canonical pins in DeployX402r reproduce on macOS; a Linux build
+# re-derives a different PaymentOperatorFactory address, so the deploy guard (_assertCanonicalPin)
+# reverts there. Run canonical deploys from a platform that reproduces the pins (verify with
+# `make predict`). Because of this, CI (Linux) does NOT re-derive addresses from bytecode — see
+# test/script/CanonicalAddresses.t.sol, which verifies the manifest against the deploy-script pins
+# and against live on-chain code instead.
 evm_version = "cancun"
 solc = "0.8.33"
 optimizer = true
@@ -13,6 +22,10 @@ via_ir = true
 # Strip metadata hash for cross-machine reproducibility — without this, the IPFS
 # hash of source-path metadata leaks into the bytecode and varies per developer.
 bytecode_hash = "none"
+
+# Read access to the deployment manifests so `test/script/CanonicalAddresses.t.sol` can re-derive
+# every canonical address from salt + initCodeHash and assert it matches the listed JSON address.
+fs_permissions = [{ access = "read", path = "./deployments" }]
 
 # Remappings
 remappings = [

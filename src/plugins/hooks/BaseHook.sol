@@ -41,6 +41,13 @@ abstract contract BaseHook is IHook {
     /// @notice Runtime codehash of authorized caller contract (e.g. HookCombinator)
     /// @dev bytes32(0) means no authorized codehash — only the operator itself can call run().
     ///      Uses EXTCODEHASH to verify caller bytecode, which is unforgeable (unlike ERC-165).
+    ///
+    ///      Implicit toolchain coupling (not a vuln, deploy-time footgun): the gate matches only the
+    ///      EXACT runtime bytecode pinned at deploy. An operator who recompiles their own
+    ///      `HookCombinator` on a different toolchain (solc version, optimizer runs, evm_version)
+    ///      gets a different EXTCODEHASH, silently fails this gate, and falls back to the
+    ///      operator-only path (`msg.sender == paymentInfo.operator`). To reuse the canonical shared
+    ///      hook, route through a `HookCombinator` built with the locked `foundry.toml` profile.
     bytes32 public immutable AUTHORIZED_CODEHASH;
 
     constructor(address escrow, bytes32 authorizedCodehash) {

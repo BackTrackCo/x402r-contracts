@@ -1,18 +1,23 @@
 # Contract Deployment
 
-Deploy x402r smart contracts to EVM networks via two CREATE2 canonical-deploy scripts, split by license.
+Deploy x402r smart contracts to EVM networks via a single CREATE2 canonical-deploy script bound to the canonical Base `AuthCaptureEscrow`.
 
 ---
 
 ## Overview
 
-x402r uses **deterministic CREATE2 deployment via CreateX permissionless salts**. Same salt + byte-identical initCode = same address on every chain, regardless of who broadcasts. Deployment is split into two scripts to keep the licensing line clear:
+x402r uses **deterministic CREATE2 deployment via CreateX permissionless salts**. Same salt + byte-identical initCode = same address on every chain, regardless of who broadcasts.
 
-| Script | Contracts | License of deployed contracts |
-|---|---|---|
-| `script/DeployCommercePayments.s.sol` | `AuthCaptureEscrow`, `ERC3009PaymentCollector`, `Permit2PaymentCollector` | MIT (vendored from `base/commerce-payments` at the `v1.0.0` tag) |
-| `script/DeployX402r.s.sol` | Operator factory, plugins, refund-side | BUSL-1.1 (x402r-authored) |
-| `script/PredictAddresses.s.sol` | _(read-only)_ | — |
+The upstream `base/commerce-payments@v1.0.0` primitives (`AuthCaptureEscrow`, `ERC3009PaymentCollector`, `Permit2PaymentCollector`) are deployed by Base at canonical addresses on Base mainnet (8453) and Base Sepolia (84532); see the [upstream README](https://github.com/base/commerce-payments) for those addresses. x402r does not redeploy them — `DeployX402r.s.sol` reads the escrow from the hardcoded `BASE_AUTH_CAPTURE_ESCROW` constant and asserts the address has code on the target chain before broadcasting.
+
+| Script | Contracts |
+|---|---|
+| `script/DeployX402r.s.sol` | Operator factory, plugins, refund-side, hook singletons (BUSL-1.1, x402r-authored) |
+| `script/PredictAddresses.s.sol` | _(read-only)_ |
+
+Salt namespaces:
+- `x402r-canonical-v1::*` — escrow-independent contracts (`ProtocolFeeConfig`, condition singletons, ctor-arg-free factories, `RefundRequestEvidenceFactory`). Already live on the chains in `deployments/canonical.json`.
+- `x402r-canonical-v1.0.1::*` — escrow-dependent contracts (`PaymentOperatorFactory`, `EscrowPeriodFactory`, `FreezeFactory`, `RefundRequestFactory`, `ReceiverRefundCollector`, `PaymentIndexRecorderHook`). Same source as v1, rebound to the canonical Base escrow. Bringing up v1.0.1 requires the canonical Base escrow on the chain — today, Base mainnet + Base Sepolia.
 
 This matches the convention used by Permit2, UniversalRouter, Seaport, EntryPoint, and upstream `base/commerce-payments`: anyone with the source can verify and reproduce the deployment. The trust root is bytecode reproducibility — anyone deploying the exact x402r bytecode at the canonical salt is, by definition, deploying x402r.
 
@@ -24,13 +29,12 @@ This matches the convention used by Permit2, UniversalRouter, Seaport, EntryPoin
 
 Before deploying, ensure you have:
 - **Foundry** installed (`curl -L https://foundry.paradigm.xyz | bash && foundryup`)
-- **Private key** for a deployer EOA with gas on the target chain. The salt is permissionless, so the deployer's identity does not affect the resulting address — but you should still treat the canonical deploy as a one-time event per chain to avoid duplicates.
+- **Private key** for a deployer EOA with gas on the target chain. The salt is permissionless, so the deployer's identity does not affect the resulting address — but you should still treat the canonical deploy as a one-time event per chain to avoid duplicates. This EOA is disposable and single-purpose: it only pays gas and holds no lasting authority over the protocol (ownership routes to the `OWNER_ADDRESS` multisig baked into `ProtocolFeeConfig`; the factories and collectors are ownerless). Do not reuse this key as `OWNER_ADDRESS`, fund it beyond deploy gas, or treat it as a privileged account. Fund it for the broadcast and retire it.
 - **CreateX** deployed at `0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed` on the target chain
-- **Multicall3** at `0xcA11bde05977b3631167028862bE2a173976CA11` (used by `ERC3009PaymentCollector`)
-- **Permit2** at `0x000000000022D473030F116dDEE9F6B43aC78BA3` (used by `Permit2PaymentCollector`)
+- **Canonical Base AuthCaptureEscrow** deployed at `0xBdEA0D1bcC5966192B070Fdf62aB4EF5b4420cff` on the target chain (today: Base mainnet + Base Sepolia). The deploy script reverts pre-broadcast if the address has no code.
 - **Block explorer API key** for verification (optional but recommended)
-- **Multisig wallet** address for `CANONICAL_OWNER` (x402r-side only)
-- **Protocol fee recipient** address for `CANONICAL_FEE_RECIPIENT` (x402r-side only)
+- **Multisig wallet** address for `OWNER_ADDRESS`
+- **Protocol fee recipient** address for `PROTOCOL_FEE_RECIPIENT`
 
 ## Setup Environment
 
@@ -40,20 +44,15 @@ Before deploying, ensure you have:
 cd x402r-contracts
 ```
 
-2. Edit `script/DeployX402r.s.sol` and set the canonical EOAs (these are pinned constants, not env vars — any drift moves the canonical addresses, so they're locked in source):
-
-```solidity
-address constant CANONICAL_OWNER = 0x...;          // Production multisig
-address constant CANONICAL_FEE_RECIPIENT = 0x...;  // Production fee recipient
-```
-
-The script `require()`s both at runtime, so a missed update fails loudly. (`DeployCommercePayments.s.sol` has no env-pinned constants.)
-
-3. Set the deployer key:
+2. Set the deployer key and canonical EOAs:
 
 ```bash
 export PRIVATE_KEY=0x...
+export OWNER_ADDRESS=0x...           # Production multisig (Gnosis Safe)
+export PROTOCOL_FEE_RECIPIENT=0x...  # Production fee recipient
 ```
+
+`DeployX402r.s.sol` reads `OWNER_ADDRESS` and `PROTOCOL_FEE_RECIPIENT` from env and `require()`s both. They are baked immutably into `ProtocolFeeConfig`, and the script's fragmentation guard reverts if the predicted `ProtocolFeeConfig` address doesn't match `EXPECTED_PROTOCOL_FEE_CONFIG` (catches typos that would otherwise fragment from the canonical deployment).
 
 ## Deploy
 
@@ -61,47 +60,38 @@ export PRIVATE_KEY=0x...
 
 `make predict` (or `forge script script/PredictAddresses.s.sol -vvv`) prints every canonical address along with its `initCodeHash`. Run this on every developer machine that will broadcast a deploy. Predicted addresses must match across machines and against the manifest — divergence is the canary for toolchain drift, and stops the deploy before it lands at a non-canonical address.
 
-### Step 2: Deploy MIT primitives
+> **Platform determinism.** Solc 0.8.33's `via_ir` output for the heaviest contract (`PaymentOperatorFactory`) is not byte-identical across platform builds: a **macOS/Darwin** build reproduces the canonical pins, a **Linux** build re-derives a different `PaymentOperatorFactory` address. The deploy guard (`_assertCanonicalPin`) reverts on a non-reproducing platform, so it cannot silently fragment — but it does mean **canonical deploys must run from a platform that reproduces the pins.** Run `make predict` first and confirm the `PaymentOperatorFactory` address matches `deployments/canonical-v1.0.1.json` before broadcasting. (This is also why CI does not re-derive addresses from bytecode; `test/script/CanonicalAddresses.t.sol` verifies the manifest against the deploy-script pins and live on-chain code instead.)
 
-```bash
-RPC_URL=https://sepolia.base.org make deploy-primitives
-```
-
-Deploys the upstream `base/commerce-payments` contracts (MIT), in order:
-
-- `AuthCaptureEscrow`
-- `ERC3009PaymentCollector(escrow, MULTICALL3)`
-- `Permit2PaymentCollector(escrow, PERMIT2)`
-
-Salt namespace `commerce-payments::v1::*`. Idempotent per chain — re-running on a chain where the contracts already exist will revert (CreateX rejects duplicate deploys at the same salt).
-
-### Step 3: Deploy x402r-authored contracts
+### Step 2: Deploy x402r-authored contracts
 
 ```bash
 RPC_URL=https://sepolia.base.org make deploy-x402r
 ```
 
-The script predicts the escrow address and asserts it has code; if not, run Step 2 first. Deploys, in order:
+The script asserts the canonical Base `AuthCaptureEscrow` has code on the target chain; if not, the canonical primitives are not yet deployed there and x402r v1.0.1 cannot bring up. Deploys, in order:
 
-1. **Protocol infrastructure** (salt namespace `x402r-canonical-v1::*`):
-   - `ProtocolFeeConfig` (initial calculator = `address(0)`; owner sets via 7-day timelock per chain)
-   - `PaymentOperatorFactory`
-2. **Plugin singletons** (no ctor args):
+1. **Protocol infrastructure**:
+   - `ProtocolFeeConfig` (salt `x402r-canonical-v1::*`; initial calculator = `address(0)`; owner sets via 7-day timelock per chain)
+   - `PaymentOperatorFactory` (salt `x402r-canonical-v1.0.1::*`; escrow-bound)
+2. **Plugin singletons** (salt `x402r-canonical-v1::*`, no ctor args):
    - `PayerCondition`, `ReceiverCondition`, `AlwaysTrueCondition`
-3. **Plugin factories**:
+3. **Plugin factories** (salt `x402r-canonical-v1::*`):
    - `SignatureConditionFactory`, `StaticAddressConditionFactory`
    - `AndConditionFactory`, `OrConditionFactory`, `NotConditionFactory`
    - `HookCombinatorFactory`, `StaticFeeCalculatorFactory`
-4. **Per-payment factories** (escrow-bound):
+4. **Per-payment factories** (salt `x402r-canonical-v1.0.1::*`, escrow-bound):
    - `EscrowPeriodFactory`, `FreezeFactory`
 5. **Refund-side**:
-   - `RefundRequestFactory`, `ReceiverRefundCollector`, `RefundRequestEvidenceFactory`
+   - `RefundRequestFactory` (v1.0.1, escrow-bound)
+   - `ReceiverRefundCollector` (v1.0.1, escrow-bound)
+   - `RefundRequestEvidenceFactory` (v1)
+6. **Hook singletons**:
+   - `PaymentIndexRecorderHook` (v1.0.1, escrow-bound)
 
-Or invoke `forge script` directly for either:
+Or invoke `forge script` directly:
 
 ```bash
-forge script script/DeployCommercePayments.s.sol --rpc-url $RPC_URL --broadcast --verify --slow -vvv
-forge script script/DeployX402r.s.sol           --rpc-url $RPC_URL --broadcast --verify --slow -vvv
+forge script script/DeployX402r.s.sol --rpc-url $RPC_URL --broadcast --verify --slow -vvv
 ```
 
 ## Verify Deployment
@@ -112,7 +102,6 @@ The script logs every address it deploys. Save the output to a manifest file (a 
 
 Deployment addresses are also saved by Foundry in:
 ```
-broadcast/DeployCommercePayments.s.sol/<chain-id>/run-latest.json
 broadcast/DeployX402r.s.sol/<chain-id>/run-latest.json
 ```
 
@@ -167,14 +156,15 @@ Configure RPC endpoints in `foundry.toml` or use `--rpc-url`:
 
 Before deploying to mainnet:
 
-- [ ] `CANONICAL_OWNER` is a multisig wallet (Gnosis Safe) — pinned in `DeployX402r.s.sol`
-- [ ] `CANONICAL_FEE_RECIPIENT` is configured — pinned in `DeployX402r.s.sol`
+- [ ] `OWNER_ADDRESS` env var is a multisig wallet (Gnosis Safe)
+- [ ] `PROTOCOL_FEE_RECIPIENT` env var is configured
 - [ ] CreateX is deployed on the target chain
+- [ ] Canonical Base `AuthCaptureEscrow` (`0xBdEA0D1bcC5966192B070Fdf62aB4EF5b4420cff`) has code on the target chain (`cast code` returns non-empty)
 - [ ] Foundry submodule pin matches the manifest commit (lib/commerce-payments at v1.0.0)
 - [ ] Foundry compiler config matches the manifest (solc, evm_version, optimizer_runs, bytecode_hash)
 - [ ] Deployer account has sufficient gas tokens
 - [ ] Block explorer API key is configured
-- [ ] Deployment script tested on testnet — addresses match manifest
+- [ ] `make predict` output matches the manifest — addresses identical across machines
 - [ ] All tests passing: `forge test`
 - [ ] Monitoring systems ready (see [MONITORING.md](./MONITORING.md))
 
