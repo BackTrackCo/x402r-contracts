@@ -14,6 +14,10 @@ via_ir = true
 # hash of source-path metadata leaks into the bytecode and varies per developer.
 bytecode_hash = "none"
 
+# Read access to the deployment manifests so `test/script/CanonicalAddresses.t.sol` can re-derive
+# every canonical address from salt + initCodeHash and assert it matches the listed JSON address.
+fs_permissions = [{ access = "read", path = "./deployments" }]
+
 # Remappings
 remappings = [
     "commerce-payments/=lib/commerce-payments/src/",
