@@ -2,130 +2,144 @@
 pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
-import {Create2Deployer} from "../../script/deploy/Create2Deployer.sol";
+import {DeployX402r} from "../../script/DeployX402r.s.sol";
 
-import {PaymentOperatorFactory} from "../../src/operator/PaymentOperatorFactory.sol";
-import {EscrowPeriodFactory} from "../../src/plugins/escrow-period/EscrowPeriodFactory.sol";
-import {FreezeFactory} from "../../src/plugins/freeze/FreezeFactory.sol";
-import {RefundRequestFactory} from "../../src/requests/refund/RefundRequestFactory.sol";
-import {ReceiverRefundCollector} from "../../src/collectors/ReceiverRefundCollector.sol";
-import {PaymentIndexRecorderHook} from "../../src/plugins/hooks/PaymentIndexRecorderHook.sol";
-import {HookCombinator} from "../../src/plugins/hooks/combinators/HookCombinator.sol";
-import {ProtocolFeeConfig} from "../../src/plugins/fees/ProtocolFeeConfig.sol";
+/// @notice Exposes `DeployX402r`'s internal canonical pins so the test asserts against the SAME
+///         constants the deploy script guards on — no mirrored copies in the test that could
+///         silently drift from the script.
+contract DeployConstants is DeployX402r {
+    function escrow() external pure returns (address) {
+        return BASE_AUTH_CAPTURE_ESCROW;
+    }
 
-/// @notice Exposes Create2Deployer's internal `_predict2` so the test can re-derive addresses.
-contract PredictHarness is Create2Deployer {
-    function predict2(string memory label, bytes32 initCodeHash) external pure returns (address) {
-        return _predict2(label, initCodeHash);
+    function escrowCodehash() external pure returns (bytes32) {
+        return EXPECTED_ESCROW_CODEHASH;
+    }
+
+    function protocolFeeConfig() external pure returns (address) {
+        return EXPECTED_PROTOCOL_FEE_CONFIG;
+    }
+
+    function paymentOperatorFactory() external pure returns (address) {
+        return EXPECTED_PAYMENT_OPERATOR_FACTORY;
+    }
+
+    function escrowPeriodFactory() external pure returns (address) {
+        return EXPECTED_ESCROW_PERIOD_FACTORY;
+    }
+
+    function freezeFactory() external pure returns (address) {
+        return EXPECTED_FREEZE_FACTORY;
+    }
+
+    function refundRequestFactory() external pure returns (address) {
+        return EXPECTED_REFUND_REQUEST_FACTORY;
+    }
+
+    function receiverRefundCollector() external pure returns (address) {
+        return EXPECTED_RECEIVER_REFUND_COLLECTOR;
+    }
+
+    function paymentIndexRecorderHook() external pure returns (address) {
+        return EXPECTED_PAYMENT_INDEX_RECORDER_HOOK;
     }
 }
 
 /// @title  CanonicalAddressesTest
-/// @notice Machine cross-check for `deployments/canonical-v1.0.1.json`. Re-derives each of the six
-///         escrow-dependent v1.0.1 addresses from salt + initCodeHash using the locked toolchain and
-///         the canonical escrow ctor arg, then asserts equality with the address listed in the JSON.
-///         Nothing else binds the *listed* address to the recomputation `DeployX402r` performs — the
-///         tx hashes are on-chain-auditable but the JSON can otherwise silently drift from what the
-///         deploy script produces. This test closes that gap and doubles as a toolchain-drift canary:
-///         any change to `foundry.toml` or a contract's creationCode shifts a predicted address and
-///         fails here before it can fragment a real deploy.
+/// @notice Cross-check for `deployments/canonical-v1.0.1.json` along two platform-independent axes:
+///
+///         1. Consistency — every address in the manifest equals the corresponding `EXPECTED_*` pin
+///            the deploy script guards on. This binds the manifest JSON to the single source of
+///            truth (`DeployX402r`) so the two cannot silently diverge (e.g. someone edits one copy
+///            and not the other).
+///
+///         2. On-chain reality — each canonical address is live on Base, and the escrow matches its
+///            pinned codehash. This binds the *listed* address to what is actually deployed, which is
+///            the guarantee that matters. Gated on `BASE_RPC_URL` so it skips cleanly off-network.
+///
+///         Note on why this does NOT re-derive addresses from `creationCode`: CREATE2 addresses are a
+///         function of the exact init bytecode, and Solc's `via_ir` output for the heaviest contract
+///         (`PaymentOperatorFactory`) is not byte-identical across platform builds of the same
+///         compiler version (macOS vs Linux). A local-recompute assertion therefore produces a
+///         false-positive "drift" on any platform other than the one the canonical deploy was
+///         produced on. The deploy script's own `_assertCanonicalPin` still recomputes at deploy time
+///         (on the deploy platform, where it is the correct check); here we verify against the
+///         manifest and against on-chain reality instead, both of which are platform-invariant.
 contract CanonicalAddressesTest is Test {
-    /// @dev Mirror of `DeployX402r.BASE_AUTH_CAPTURE_ESCROW` — the canonical Base AuthCaptureEscrow.
-    address internal constant BASE_AUTH_CAPTURE_ESCROW = 0xBdEA0D1bcC5966192B070Fdf62aB4EF5b4420cff;
-
-    /// @dev Mirror of `DeployX402r.EXPECTED_PROTOCOL_FEE_CONFIG`. The operator factory bakes this in
-    ///      as its second ctor arg, so the recomputation needs it to land at the canonical address.
-    address internal constant EXPECTED_PROTOCOL_FEE_CONFIG = 0xBe2d24614F339a1eB103A399F93AA2a39Ca815Bc;
-
     string internal constant MANIFEST = "deployments/canonical-v1.0.1.json";
 
-    PredictHarness internal harness;
+    DeployConstants internal pins;
 
     function setUp() public {
-        harness = new PredictHarness();
+        pins = new DeployConstants();
     }
 
-    /// @notice The escrow ctor arg every v1.0.1 address derives from must match the JSON manifest.
-    function test_ManifestEscrowMatchesConstant() public view {
-        address manifestEscrow = vm.parseJsonAddress(_manifest(), ".escrow");
-        assertEq(manifestEscrow, BASE_AUTH_CAPTURE_ESCROW, "manifest escrow drifted from the deploy-script constant");
+    // --------------------------------------------------------------------------------------------
+    // 1. Consistency: manifest JSON == deploy-script pins (pure, platform/version invariant)
+    // --------------------------------------------------------------------------------------------
+
+    function test_ManifestEscrowMatchesScript() public view {
+        assertEq(_json(".escrow"), pins.escrow(), "manifest escrow != DeployX402r.BASE_AUTH_CAPTURE_ESCROW");
     }
 
-    function test_PaymentOperatorFactoryMatchesManifest() public view {
-        bytes32 initCodeHash = keccak256(
-            abi.encodePacked(
-                type(PaymentOperatorFactory).creationCode,
-                abi.encode(BASE_AUTH_CAPTURE_ESCROW, EXPECTED_PROTOCOL_FEE_CONFIG)
-            )
-        );
-        _assertMatches("x402r-canonical-v1.0.1::PaymentOperatorFactory", initCodeHash, "PaymentOperatorFactory");
-    }
-
-    function test_EscrowPeriodFactoryMatchesManifest() public view {
-        bytes32 initCodeHash =
-            keccak256(abi.encodePacked(type(EscrowPeriodFactory).creationCode, abi.encode(BASE_AUTH_CAPTURE_ESCROW)));
-        _assertMatches("x402r-canonical-v1.0.1::EscrowPeriodFactory", initCodeHash, "EscrowPeriodFactory");
-    }
-
-    function test_FreezeFactoryMatchesManifest() public view {
-        bytes32 initCodeHash =
-            keccak256(abi.encodePacked(type(FreezeFactory).creationCode, abi.encode(BASE_AUTH_CAPTURE_ESCROW)));
-        _assertMatches("x402r-canonical-v1.0.1::FreezeFactory", initCodeHash, "FreezeFactory");
-    }
-
-    function test_RefundRequestFactoryMatchesManifest() public view {
-        bytes32 initCodeHash =
-            keccak256(abi.encodePacked(type(RefundRequestFactory).creationCode, abi.encode(BASE_AUTH_CAPTURE_ESCROW)));
-        _assertMatches("x402r-canonical-v1.0.1::RefundRequestFactory", initCodeHash, "RefundRequestFactory");
-    }
-
-    function test_ReceiverRefundCollectorMatchesManifest() public view {
-        bytes32 initCodeHash = keccak256(
-            abi.encodePacked(type(ReceiverRefundCollector).creationCode, abi.encode(BASE_AUTH_CAPTURE_ESCROW))
-        );
-        _assertMatches("x402r-canonical-v1.0.1::ReceiverRefundCollector", initCodeHash, "ReceiverRefundCollector");
-    }
-
-    function test_PaymentIndexRecorderHookMatchesManifest() public view {
-        bytes32 hookCombinatorCodehash = keccak256(type(HookCombinator).runtimeCode);
-        bytes32 initCodeHash = keccak256(
-            abi.encodePacked(
-                type(PaymentIndexRecorderHook).creationCode,
-                abi.encode(BASE_AUTH_CAPTURE_ESCROW, hookCombinatorCodehash)
-            )
-        );
-        _assertMatches("x402r-canonical-v1.0.1::PaymentIndexRecorderHook", initCodeHash, "PaymentIndexRecorderHook");
-    }
-
-    /// @notice ProtocolFeeConfig is env-dependent (owner/recipient), so it is only re-derived when the
-    ///         canonical env is present (e.g. in a deploy dry-run / CI with secrets). When set, it must
-    ///         recompute to the same pin the deploy script guards on.
-    function test_ProtocolFeeConfigMatchesPinWhenEnvSet() public view {
-        address owner = vm.envOr("OWNER_ADDRESS", address(0));
-        address feeRecipient = vm.envOr("PROTOCOL_FEE_RECIPIENT", address(0));
-        if (owner == address(0) || feeRecipient == address(0)) return; // skip without canonical env
-
-        bytes32 initCodeHash = keccak256(
-            abi.encodePacked(type(ProtocolFeeConfig).creationCode, abi.encode(address(0), feeRecipient, owner))
-        );
-        address predicted = harness.predict2("x402r-canonical-v1::ProtocolFeeConfig", initCodeHash);
+    function test_ManifestContractsMatchScriptPins() public view {
+        assertEq(_json(".contracts.PaymentOperatorFactory"), pins.paymentOperatorFactory(), "PaymentOperatorFactory");
+        assertEq(_json(".contracts.EscrowPeriodFactory"), pins.escrowPeriodFactory(), "EscrowPeriodFactory");
+        assertEq(_json(".contracts.FreezeFactory"), pins.freezeFactory(), "FreezeFactory");
+        assertEq(_json(".contracts.RefundRequestFactory"), pins.refundRequestFactory(), "RefundRequestFactory");
+        assertEq(_json(".contracts.ReceiverRefundCollector"), pins.receiverRefundCollector(), "ReceiverRefundCollector");
         assertEq(
-            predicted,
-            EXPECTED_PROTOCOL_FEE_CONFIG,
-            "ProtocolFeeConfig recomputed from env does not match the canonical pin - env or toolchain drift"
+            _json(".contracts.PaymentIndexRecorderHook"), pins.paymentIndexRecorderHook(), "PaymentIndexRecorderHook"
         );
     }
 
-    /// @dev Predict `label`'s address and assert it equals `.contracts.<contractKey>` in the manifest.
-    function _assertMatches(string memory label, bytes32 initCodeHash, string memory contractKey) internal view {
-        address predicted = harness.predict2(label, initCodeHash);
-        address listed = vm.parseJsonAddress(_manifest(), string.concat(".contracts.", contractKey));
-        assertEq(
-            predicted, listed, string.concat(contractKey, ": re-derived address does not match canonical-v1.0.1.json")
-        );
+    // --------------------------------------------------------------------------------------------
+    // 2. On-chain reality: canonical addresses are live on Base (fork, gated on BASE_RPC_URL)
+    // --------------------------------------------------------------------------------------------
+
+    function test_CanonicalContractsLiveOnBase() public {
+        string memory rpc = vm.envOr("BASE_RPC_URL", string(""));
+        if (bytes(rpc).length == 0) {
+            vm.skip(true);
+            return;
+        }
+
+        // Read every pin off the harness BEFORE forking: the harness is deployed on the local state
+        // in setUp(), so it does not exist on the Base fork. Cache to memory, then switch state.
+        address escrowAddr = pins.escrow();
+        bytes32 expectedEscrowCodehash = pins.escrowCodehash();
+        address[7] memory canonical = [
+            pins.protocolFeeConfig(),
+            pins.paymentOperatorFactory(),
+            pins.escrowPeriodFactory(),
+            pins.freezeFactory(),
+            pins.refundRequestFactory(),
+            pins.receiverRefundCollector(),
+            pins.paymentIndexRecorderHook()
+        ];
+        string[7] memory names = [
+            "ProtocolFeeConfig",
+            "PaymentOperatorFactory",
+            "EscrowPeriodFactory",
+            "FreezeFactory",
+            "RefundRequestFactory",
+            "ReceiverRefundCollector",
+            "PaymentIndexRecorderHook"
+        ];
+
+        vm.createSelectFork(rpc);
+
+        assertEq(escrowAddr.codehash, expectedEscrowCodehash, "escrow codehash on Base != EXPECTED_ESCROW_CODEHASH");
+        for (uint256 i = 0; i < canonical.length; i++) {
+            assertGt(
+                canonical[i].code.length,
+                0,
+                string.concat(names[i], " has no code on Base - manifest address is not live")
+            );
+        }
     }
 
-    function _manifest() internal view returns (string memory) {
-        return vm.readFile(MANIFEST);
+    function _json(string memory key) internal view returns (address) {
+        return vm.parseJsonAddress(vm.readFile(MANIFEST), key);
     }
 }

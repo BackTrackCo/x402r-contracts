@@ -60,6 +60,8 @@ export PROTOCOL_FEE_RECIPIENT=0x...  # Production fee recipient
 
 `make predict` (or `forge script script/PredictAddresses.s.sol -vvv`) prints every canonical address along with its `initCodeHash`. Run this on every developer machine that will broadcast a deploy. Predicted addresses must match across machines and against the manifest — divergence is the canary for toolchain drift, and stops the deploy before it lands at a non-canonical address.
 
+> **Platform determinism.** Solc 0.8.33's `via_ir` output for the heaviest contract (`PaymentOperatorFactory`) is not byte-identical across platform builds: a **macOS/Darwin** build reproduces the canonical pins, a **Linux** build re-derives a different `PaymentOperatorFactory` address. The deploy guard (`_assertCanonicalPin`) reverts on a non-reproducing platform, so it cannot silently fragment — but it does mean **canonical deploys must run from a platform that reproduces the pins.** Run `make predict` first and confirm the `PaymentOperatorFactory` address matches `deployments/canonical-v1.0.1.json` before broadcasting. (This is also why CI does not re-derive addresses from bytecode; `test/script/CanonicalAddresses.t.sol` verifies the manifest against the deploy-script pins and live on-chain code instead.)
+
 ### Step 2: Deploy x402r-authored contracts
 
 ```bash
