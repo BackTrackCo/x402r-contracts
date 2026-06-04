@@ -1,0 +1,26 @@
+{
+  "_comment": "Canonical CREATE2 v1.0.2 escrow-dependent contracts. Salt namespace `x402r-canonical-v1.0.2::*`. Currently PaymentOperatorFactory only: bumped from v1.0.1 because its source changed — the factory embeds `type(PaymentOperator).creationCode`, and the operator's 6-arg `charge` alignment shifts the factory's initCodeHash and CREATE2 address. The other five escrow-dependent contracts are unchanged and stay in canonical-v1.0.1.json. Derive via `_deploy2` (dry-run DeployX402r.s.sol on any chain where the canonical escrow is live). Verify on-chain with `cast code <address> --rpc-url <chain>` — non-empty output proves the canonical address is live on that chain.",
+  "saltNamespace": "x402r-canonical-v1.0.2",
+  "escrow": "0xBdEA0D1bcC5966192B070Fdf62aB4EF5b4420cff",
+  "contracts": {
+    "PaymentOperatorFactory": "0xc24153B7ED8DC03e551F29DDEeA5CadFe57e2716"
+  },
+  "deployments": [
+    {
+      "chain": "Base",
+      "chainId": 8453,
+      "codeVerified": true,
+      "txHashes": {
+        "PaymentOperatorFactory": "0x4c7716a6c4df77b01807627683021c2116b5e6a95d173b93056ed2b840e276cd"
+      }
+    },
+    {
+      "chain": "Base Sepolia",
+      "chainId": 84532,
+      "codeVerified": true,
+      "txHashes": {
+        "PaymentOperatorFactory": "0x019dca43827db94583fc6e018c82c709a5e6983d33b9605c9eaa7ef85dbbec61"
+      }
+    }
+  ]
+}
