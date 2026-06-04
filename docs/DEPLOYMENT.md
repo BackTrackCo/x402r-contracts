@@ -29,7 +29,7 @@ This matches the convention used by Permit2, UniversalRouter, Seaport, EntryPoin
 
 Before deploying, ensure you have:
 - **Foundry** installed (`curl -L https://foundry.paradigm.xyz | bash && foundryup`)
-- **Private key** for a deployer EOA with gas on the target chain. The salt is permissionless, so the deployer's identity does not affect the resulting address — but you should still treat the canonical deploy as a one-time event per chain to avoid duplicates.
+- **Private key** for a deployer EOA with gas on the target chain. The salt is permissionless, so the deployer's identity does not affect the resulting address — but you should still treat the canonical deploy as a one-time event per chain to avoid duplicates. This EOA is disposable and single-purpose: it only pays gas and holds no lasting authority over the protocol (ownership routes to the `OWNER_ADDRESS` multisig baked into `ProtocolFeeConfig`; the factories and collectors are ownerless). Do not reuse this key as `OWNER_ADDRESS`, fund it beyond deploy gas, or treat it as a privileged account. Fund it for the broadcast and retire it.
 - **CreateX** deployed at `0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed` on the target chain
 - **Canonical Base AuthCaptureEscrow** deployed at `0xBdEA0D1bcC5966192B070Fdf62aB4EF5b4420cff` on the target chain (today: Base mainnet + Base Sepolia). The deploy script reverts pre-broadcast if the address has no code.
 - **Block explorer API key** for verification (optional but recommended)
