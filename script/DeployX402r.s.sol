@@ -36,11 +36,16 @@ import {RefundRequestEvidenceFactory} from "../src/evidence/RefundRequestEvidenc
  *                                        condition singletons, ctor-arg-free factories,
  *                                        RefundRequestEvidenceFactory). Already live on the
  *                                        chains listed in `deployments/canonical.json`.
- *        - `x402r-canonical-v1.0.1::*` — escrow-dependent contracts (PaymentOperatorFactory,
- *                                        EscrowPeriodFactory, FreezeFactory, RefundRequestFactory,
+ *        - `x402r-canonical-v1.0.1::*` — escrow-dependent contracts whose source is unchanged from v1
+ *                                        (EscrowPeriodFactory, FreezeFactory, RefundRequestFactory,
  *                                        ReceiverRefundCollector, PaymentIndexRecorderHook).
  *                                        v1.0.1 signals: same source code as v1, rebound to the
  *                                        canonical Base escrow at `BASE_AUTH_CAPTURE_ESCROW`.
+ *        - `x402r-canonical-v1.0.2::*` — PaymentOperatorFactory only. The factory embeds
+ *                                        `type(PaymentOperator).creationCode`, so the operator's
+ *                                        6-arg `charge` change shifts the factory's initCodeHash.
+ *                                        v1.0.2 signals: factory source changed (not just rebound),
+ *                                        so its address must not collide with the v1.0.1 label.
  *
  *      Escrow source: hardcoded to the canonical Base deployment of `AuthCaptureEscrow` from
  *      `base/commerce-payments at v1.0.0` (see the upstream README). The script asserts the address
@@ -102,8 +107,10 @@ contract DeployX402r is Create2Deployer {
     ///      anchor; the env is not cross-checked.
     address internal constant EXPECTED_PROTOCOL_FEE_CONFIG = 0xBe2d24614F339a1eB103A399F93AA2a39Ca815Bc;
 
-    /// @notice Canonical CREATE2 pins for the six escrow-dependent v1.0.1 contracts.
-    /// @dev Source of truth: `deployments/canonical-v1.0.1.json`, re-derived by
+    /// @notice Canonical CREATE2 pins for the six escrow-dependent contracts (five at v1.0.1, plus
+    ///         PaymentOperatorFactory at v1.0.2 — see EXPECTED_PAYMENT_OPERATOR_FACTORY).
+    /// @dev Source of truth: `deployments/canonical-v1.0.1.json` (five) and
+    ///      `deployments/canonical-v1.0.2.json` (factory), re-derived by
     ///      `test/script/CanonicalAddresses.t.sol`. Unlike `EXPECTED_PROTOCOL_FEE_CONFIG`, these are
     ///      env-INDEPENDENT: every one is a pure function of the `BASE_AUTH_CAPTURE_ESCROW` ctor arg
     ///      (plus `EXPECTED_PROTOCOL_FEE_CONFIG` for the operator factory and the `HookCombinator`
@@ -111,7 +118,10 @@ contract DeployX402r is Create2Deployer {
     ///      predicts each and reverts on mismatch, so escrow rebinding or toolchain drift aborts the
     ///      run before any contract is broadcast — extending the single-contract `ProtocolFeeConfig`
     ///      guard to cover the whole escrow-dependent namespace.
-    address internal constant EXPECTED_PAYMENT_OPERATOR_FACTORY = 0xa0d4734842df1690a5B33Cb21828c946e39D55a2;
+    /// @dev v1.0.2 namespace: PaymentOperatorFactory embeds `type(PaymentOperator).creationCode`, so
+    ///      the operator's 6-arg `charge` change (PR #40) shifts the factory's initCodeHash and CREATE2
+    ///      address. The other five escrow-dependent contracts are unaffected and stay at v1.0.1.
+    address internal constant EXPECTED_PAYMENT_OPERATOR_FACTORY = 0xc24153B7ED8DC03e551F29DDEeA5CadFe57e2716;
     address internal constant EXPECTED_ESCROW_PERIOD_FACTORY = 0xe72D2014ebC48F1d92521e8629574918E8030548;
     address internal constant EXPECTED_FREEZE_FACTORY = 0xeC092cf1215DB44af0Abe87c1157E304FEa5d0Eb;
     address internal constant EXPECTED_REFUND_REQUEST_FACTORY = 0xe971C674fD5c3462023f3F891dF6289DFbC9CEFC;
@@ -157,14 +167,14 @@ contract DeployX402r is Create2Deployer {
         );
 
         // Extend the fragmentation guard across the whole escrow-dependent namespace. Each of the six
-        // v1.0.1 addresses is env-independent (a pure function of `escrow`, plus the operator factory's
+        // escrow-dependent addresses is env-independent (a pure function of `escrow`, plus the operator factory's
         // `protocolFeeConfig` arg and the hook's HookCombinator codehash), so this pre-flight predicts
         // each and reverts on any drift before `vm.startBroadcast` — nothing is broadcast if a single
         // pin is off, vs. the prior state where only ProtocolFeeConfig was guarded and the other six
         // could silently land at fresh addresses.
         bytes32 hookCombinatorCodehash = keccak256(type(HookCombinator).runtimeCode);
         _assertCanonicalPin(
-            "x402r-canonical-v1.0.1::PaymentOperatorFactory",
+            "x402r-canonical-v1.0.2::PaymentOperatorFactory",
             keccak256(
                 abi.encodePacked(
                     type(PaymentOperatorFactory).creationCode, abi.encode(escrow, predictedProtocolFeeConfig)
@@ -233,7 +243,7 @@ contract DeployX402r is Create2Deployer {
         console.log("ProtocolFeeConfig:", protocolFeeConfig);
 
         address paymentOperatorFactory = _deploy2(
-            "x402r-canonical-v1.0.1::PaymentOperatorFactory",
+            "x402r-canonical-v1.0.2::PaymentOperatorFactory",
             abi.encodePacked(type(PaymentOperatorFactory).creationCode, abi.encode(escrow, protocolFeeConfig))
         );
         console.log("PaymentOperatorFactory:", paymentOperatorFactory);
@@ -386,12 +396,12 @@ contract DeployX402r is Create2Deployer {
         console.log("========================================");
     }
 
-    /// @notice Predict a v1.0.1 escrow-dependent address and assert it matches its canonical pin.
+    /// @notice Predict an escrow-dependent address and assert it matches its canonical pin.
     /// @dev Pre-flight only — reverts before any broadcast on escrow rebinding or toolchain drift.
     function _assertCanonicalPin(string memory label, bytes32 initCodeHash, address expected) internal pure {
         require(
             _predict2(label, initCodeHash) == expected,
-            string.concat(label, " predicted address drifted from its canonical v1.0.1 pin - do not broadcast")
+            string.concat(label, " predicted address drifted from its canonical pin - do not broadcast")
         );
     }
 }

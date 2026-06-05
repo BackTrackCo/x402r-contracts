@@ -67,6 +67,7 @@ contract DeployConstants is DeployX402r {
 ///         manifest and against on-chain reality instead, both of which are platform-invariant.
 contract CanonicalAddressesTest is Test {
     string internal constant MANIFEST = "deployments/canonical-v1.0.1.json";
+    string internal constant MANIFEST_V1_0_2 = "deployments/canonical-v1.0.2.json";
 
     DeployConstants internal pins;
 
@@ -79,17 +80,37 @@ contract CanonicalAddressesTest is Test {
     // --------------------------------------------------------------------------------------------
 
     function test_ManifestEscrowMatchesScript() public view {
-        assertEq(_json(".escrow"), pins.escrow(), "manifest escrow != DeployX402r.BASE_AUTH_CAPTURE_ESCROW");
+        assertEq(
+            _json(MANIFEST, ".escrow"), pins.escrow(), "v1.0.1 manifest escrow != DeployX402r.BASE_AUTH_CAPTURE_ESCROW"
+        );
+        assertEq(
+            _json(MANIFEST_V1_0_2, ".escrow"),
+            pins.escrow(),
+            "v1.0.2 manifest escrow != DeployX402r.BASE_AUTH_CAPTURE_ESCROW"
+        );
     }
 
     function test_ManifestContractsMatchScriptPins() public view {
-        assertEq(_json(".contracts.PaymentOperatorFactory"), pins.paymentOperatorFactory(), "PaymentOperatorFactory");
-        assertEq(_json(".contracts.EscrowPeriodFactory"), pins.escrowPeriodFactory(), "EscrowPeriodFactory");
-        assertEq(_json(".contracts.FreezeFactory"), pins.freezeFactory(), "FreezeFactory");
-        assertEq(_json(".contracts.RefundRequestFactory"), pins.refundRequestFactory(), "RefundRequestFactory");
-        assertEq(_json(".contracts.ReceiverRefundCollector"), pins.receiverRefundCollector(), "ReceiverRefundCollector");
+        // PaymentOperatorFactory lives in the v1.0.2 manifest (source changed; see canonical-v1.0.2.json).
         assertEq(
-            _json(".contracts.PaymentIndexRecorderHook"), pins.paymentIndexRecorderHook(), "PaymentIndexRecorderHook"
+            _json(MANIFEST_V1_0_2, ".contracts.PaymentOperatorFactory"),
+            pins.paymentOperatorFactory(),
+            "PaymentOperatorFactory"
+        );
+        assertEq(_json(MANIFEST, ".contracts.EscrowPeriodFactory"), pins.escrowPeriodFactory(), "EscrowPeriodFactory");
+        assertEq(_json(MANIFEST, ".contracts.FreezeFactory"), pins.freezeFactory(), "FreezeFactory");
+        assertEq(
+            _json(MANIFEST, ".contracts.RefundRequestFactory"), pins.refundRequestFactory(), "RefundRequestFactory"
+        );
+        assertEq(
+            _json(MANIFEST, ".contracts.ReceiverRefundCollector"),
+            pins.receiverRefundCollector(),
+            "ReceiverRefundCollector"
+        );
+        assertEq(
+            _json(MANIFEST, ".contracts.PaymentIndexRecorderHook"),
+            pins.paymentIndexRecorderHook(),
+            "PaymentIndexRecorderHook"
         );
     }
 
@@ -139,7 +160,7 @@ contract CanonicalAddressesTest is Test {
         }
     }
 
-    function _json(string memory key) internal view returns (address) {
-        return vm.parseJsonAddress(vm.readFile(MANIFEST), key);
+    function _json(string memory manifest, string memory key) internal view returns (address) {
+        return vm.parseJsonAddress(vm.readFile(manifest), key);
     }
 }
