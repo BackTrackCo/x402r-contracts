@@ -33,6 +33,30 @@
         "ReceiverRefundCollector":  "0x50c33eb5cfc4cd50fc3c4b5bda77a08eeffefe9838ae4c96026f5ee79f007c9e",
         "PaymentIndexRecorderHook": "0x09dd472fd10212cddc8d07d5650be860243999655259ab6716519d1a539f58b7"
       }
+    },
+    {
+      "chain": "Arc",
+      "chainId": 5042,
+      "codeVerified": true,
+      "txHashes": {
+        "EscrowPeriodFactory":      "0x46fcb5104d5b223fb1b85f7dc05ccfe9250aef9460ac4e68c18df3434098f4ac",
+        "FreezeFactory":            "0x5bac1fb4406d4732db4cee0574934073e6cfc4036f761b6b37fc71247c348226",
+        "RefundRequestFactory":     "0xf9c7f32ac1f612ef2e84177b1383065c9b89dec864370e516075ca52a5888255",
+        "ReceiverRefundCollector":  "0x7bacc40b7eb9051ed4a8e561d61b06acac3277e55c11a302cc2e079c24f0a779",
+        "PaymentIndexRecorderHook": "0x07bb4e8d9db1732b21f18d7d1bfbc5f6b211bb3a5a0f7331590f7683ebecc159"
+      }
+    },
+    {
+      "chain": "Arc Testnet",
+      "chainId": 5042002,
+      "codeVerified": true,
+      "txHashes": {
+        "EscrowPeriodFactory":      "0x1d7e79235397578d03ce1d7328cbbe03299470418aa3ff86536c57c531e9d771",
+        "FreezeFactory":            "0x0b97c3d48bc4d81bd564e4c64e6a2cb8a59e007320b6d4830b60ef5d49fbcfb0",
+        "RefundRequestFactory":     "0xea3a3acb548564c2997ec4987b72f3b959d8a0600276ed91a14bb2f029c12ad7",
+        "ReceiverRefundCollector":  "0x159ed5f54b1b6bcf38810189225ec807ce803896e557872e1da33d206b0bac1c",
+        "PaymentIndexRecorderHook": "0xcdaf3e8bb621a2f9800a710669c16b6c737bc9268a2d5b04f6151add398a2a34"
+      }
     }
   ]
 }

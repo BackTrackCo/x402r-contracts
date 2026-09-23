@@ -48,10 +48,14 @@ celo = "${CELO_RPC_URL}"
 monad = "${MONAD_RPC_URL}"
 avalanche = "${AVALANCHE_RPC_URL}"
 optimism = "${OPTIMISM_RPC_URL}"
+arc = "${ARC_RPC_URL}"
+arc-testnet = "${ARC_TESTNET_RPC_URL}"
 
 # Etherscan / block explorer verification configuration
 # API keys are read from environment variables (set in .env file)
 # Copy .env.example to .env and add your API keys
+# Arc (5042 / 5042002) has no Etherscan-compatible API; its Blockscout explorer verifies through
+# Sourcify instead, so it has no entry below — verify with `forge verify-contract --verifier sourcify`.
 [etherscan]
 base-sepolia = { key = "${ETHERSCAN_API_KEY}", url = "https://api-sepolia.basescan.org/api" }
 base = { key = "${ETHERSCAN_API_KEY}", url = "https://api.basescan.org/api" }

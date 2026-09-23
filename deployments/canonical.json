@@ -1,5 +1,5 @@
 {
-  "_comment": "Canonical CREATE2 pin for ProtocolFeeConfig. Cross-checks the EXPECTED_PROTOCOL_FEE_CONFIG hardcode in script/DeployX402r.s.sol against actual on-chain deploys. Recompute with `forge script script/PredictAddresses.s.sol -vvv` (requires OWNER_ADDRESS and PROTOCOL_FEE_RECIPIENT env vars). Verify on-chain with `cast code <address> --rpc-url <chain>` — non-empty output proves the canonical address is live on that chain. txHash entries are null where the broadcast file was not preserved locally; on-chain code presence has been verified on every listed chain (3885 bytes, identical across all 12).",
+  "_comment": "Canonical CREATE2 pin for ProtocolFeeConfig. Cross-checks the EXPECTED_PROTOCOL_FEE_CONFIG hardcode in script/DeployX402r.s.sol against actual on-chain deploys. Recompute with `forge script script/PredictAddresses.s.sol -vvv` (requires OWNER_ADDRESS and PROTOCOL_FEE_RECIPIENT env vars). Verify on-chain with `cast code <address> --rpc-url <chain>` — non-empty output proves the canonical address is live on that chain. txHash entries are null where the broadcast file was not preserved locally; on-chain code presence has been verified on every listed chain (3885 bytes, identical across all 14).",
   "contract": "ProtocolFeeConfig",
   "salt": "x402r-canonical-v1::ProtocolFeeConfig",
   "address": "0xBe2d24614F339a1eB103A399F93AA2a39Ca815Bc",
@@ -20,6 +20,8 @@
     { "chain": "Linea",           "chainId": 59144,    "txHash": "0xea86f9ee39a563c927da5339de933779a1ef3198ce4fc14d45c62123b1c71ca0", "codeVerified": true },
     { "chain": "Base Sepolia",    "chainId": 84532,    "txHash": "0x98bdb87e569ea1e42bdecf513d5bb00f1ebcda279006ff37fdf77ef88dc87519", "codeVerified": true },
     { "chain": "Ethereum Sepolia","chainId": 11155111, "txHash": null,                                                                       "codeVerified": true },
-    { "chain": "Arbitrum Sepolia","chainId": 421614,   "txHash": null,                                                                       "codeVerified": true }
+    { "chain": "Arbitrum Sepolia","chainId": 421614,   "txHash": null,                                                                       "codeVerified": true },
+    { "chain": "Arc",             "chainId": 5042,     "txHash": "0xbfd52c06b08baeb55fcd9311166de431d9559565ea5dc17c215bfb644846e12d", "codeVerified": true },
+    { "chain": "Arc Testnet",     "chainId": 5042002,  "txHash": "0x65e744e3e6c8060ef4c4ce008e8fb584d7482a1e60ccc136682f43da50de758e", "codeVerified": true }
   ]
 }

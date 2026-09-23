@@ -10,6 +10,8 @@ x402r uses **deterministic CREATE2 deployment via CreateX permissionless salts**
 
 The upstream `base/commerce-payments@v1.0.0` primitives (`AuthCaptureEscrow`, `ERC3009PaymentCollector`, `Permit2PaymentCollector`) are deployed by Base at canonical addresses on Base mainnet (8453) and Base Sepolia (84532); see the [upstream README](https://github.com/base/commerce-payments) for those addresses. x402r does not redeploy them — `DeployX402r.s.sol` reads the escrow from the hardcoded `BASE_AUTH_CAPTURE_ESCROW` constant and asserts the address has code on the target chain before broadcasting.
 
+On a chain where Base has not deployed the primitives itself, such as Arc (mainnet 5042, testnet 5042002), that assertion still has to pass before `DeployX402r.s.sol` can run. Arc's bring-up replayed Base's exact creation calldata for `AuthCaptureEscrow`, `ERC3009PaymentCollector`, `Permit2PaymentCollector`, `PreApprovalPaymentCollector`, and `OperatorRefundCollector` through the Arachnid deterministic deployer (`0x4e59b44847b379578588920cA78FbF26c0B4956C`), landing each at its identical Base address with a matching runtime codehash. `SpendPermissionPaymentCollector` was skipped: its `SpendPermissionManager` dependency is not deployed on Arc. This replay is a one-time precondition for any new chain that lacks Base's own deployment; once the primitives are live at the canonical addresses, `DeployX402r.s.sol` runs unmodified.
+
 | Script | Contracts |
 |---|---|
 | `script/DeployX402r.s.sol` | Operator factory, plugins, refund-side, hook singletons (BUSL-1.1, x402r-authored) |
@@ -20,7 +22,7 @@ Salt namespaces:
 - `x402r-canonical-v1.0.1::*` — escrow-dependent contracts whose source is unchanged from v1 (`EscrowPeriodFactory`, `FreezeFactory`, `RefundRequestFactory`, `ReceiverRefundCollector`, `PaymentIndexRecorderHook`). Same source as v1, rebound to the canonical Base escrow.
 - `x402r-canonical-v1.0.2::*` — `PaymentOperatorFactory` only. The factory embeds `type(PaymentOperator).creationCode`, so the operator's 6-arg `charge` change shifts the factory's initCodeHash and CREATE2 address; the bumped label keeps the new address from colliding with the v1.0.1 one. Recorded in `deployments/canonical-v1.0.2.json`.
 
-Bringing up the escrow-dependent contracts requires the canonical Base escrow on the chain — today, Base mainnet + Base Sepolia.
+Bringing up the escrow-dependent contracts requires the canonical Base escrow on the chain — today, Base mainnet, Base Sepolia, Arc mainnet, and Arc testnet.
 
 This matches the convention used by Permit2, UniversalRouter, Seaport, EntryPoint, and upstream `base/commerce-payments`: anyone with the source can verify and reproduce the deployment. The trust root is bytecode reproducibility — anyone deploying the exact x402r bytecode at the canonical salt is, by definition, deploying x402r.
 
@@ -34,7 +36,7 @@ Before deploying, ensure you have:
 - **Foundry** installed (`curl -L https://foundry.paradigm.xyz | bash && foundryup`)
 - **Private key** for a deployer EOA with gas on the target chain. The salt is permissionless, so the deployer's identity does not affect the resulting address — but you should still treat the canonical deploy as a one-time event per chain to avoid duplicates. This EOA is disposable and single-purpose: it only pays gas and holds no lasting authority over the protocol (ownership routes to the `OWNER_ADDRESS` multisig baked into `ProtocolFeeConfig`; the factories and collectors are ownerless). Do not reuse this key as `OWNER_ADDRESS`, fund it beyond deploy gas, or treat it as a privileged account. Fund it for the broadcast and retire it.
 - **CreateX** deployed at `0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed` on the target chain
-- **Canonical Base AuthCaptureEscrow** deployed at `0xBdEA0D1bcC5966192B070Fdf62aB4EF5b4420cff` on the target chain (today: Base mainnet + Base Sepolia). The deploy script reverts pre-broadcast if the address has no code.
+- **Canonical Base AuthCaptureEscrow** deployed at `0xBdEA0D1bcC5966192B070Fdf62aB4EF5b4420cff` on the target chain (today: Base mainnet, Base Sepolia, Arc mainnet, Arc testnet). The deploy script reverts pre-broadcast if the address has no code. On a chain Base hasn't deployed to itself, this means replaying the primitives via the Arachnid deployer first (see Overview).
 - **Block explorer API key** for verification (optional but recommended)
 - **Multisig wallet** address for `OWNER_ADDRESS`
 - **Protocol fee recipient** address for `PROTOCOL_FEE_RECIPIENT`
@@ -137,6 +139,10 @@ make verify-owner OWNER_ADDRESS=$CANONICAL_OWNER RPC_URL=$RPC_URL
 Contracts are auto-verified during deployment via `--verify`. Confirm at:
 - **Base Mainnet**: https://basescan.org/address/YOUR_ADDRESS
 - **Base Sepolia**: https://sepolia.basescan.org/address/YOUR_ADDRESS
+- **Arc**: https://explorer.arc.io/address/YOUR_ADDRESS
+- **Arc Testnet**: https://explorer.testnet.arc.io/address/YOUR_ADDRESS
+
+Arc has no Etherscan-compatible API (no `[etherscan]` entry in `foundry.toml`); verification there runs through Sourcify instead, e.g. `forge verify-contract $CONTRACT_ADDRESS <path>:<name> --chain-id 5042 --verifier sourcify`.
 
 ## Deploy Operator Instances
 
@@ -154,6 +160,8 @@ Configure RPC endpoints in `foundry.toml` or use `--rpc-url`:
 | Base Sepolia | https://sepolia.base.org | 84532 |
 | Optimism | https://mainnet.optimism.io | 10 |
 | Arbitrum | https://arb1.arbitrum.io/rpc | 42161 |
+| Arc | https://rpc.mainnet.arc.io | 5042 |
+| Arc Testnet | https://rpc.testnet.arc.io | 5042002 |
 
 ## Production Checklist
 
