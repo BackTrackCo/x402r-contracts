@@ -22,7 +22,7 @@ Salt namespaces:
 - `x402r-canonical-v1.0.1::*` — escrow-dependent contracts whose source is unchanged from v1 (`EscrowPeriodFactory`, `FreezeFactory`, `RefundRequestFactory`, `ReceiverRefundCollector`, `PaymentIndexRecorderHook`). Same source as v1, rebound to the canonical Base escrow.
 - `x402r-canonical-v1.0.2::*` — `PaymentOperatorFactory` only. The factory embeds `type(PaymentOperator).creationCode`, so the operator's 6-arg `charge` change shifts the factory's initCodeHash and CREATE2 address; the bumped label keeps the new address from colliding with the v1.0.1 one. Recorded in `deployments/canonical-v1.0.2.json`.
 
-Bringing up the escrow-dependent contracts requires the canonical Base escrow on the chain — today, Base mainnet, Base Sepolia, Arc mainnet, and Arc testnet.
+Bringing up the escrow-dependent contracts requires the canonical Base escrow on the chain. Today these are Base mainnet, Base Sepolia, Arc mainnet, and Arc testnet.
 
 This matches the convention used by Permit2, UniversalRouter, Seaport, EntryPoint, and upstream `base/commerce-payments`: anyone with the source can verify and reproduce the deployment. The trust root is bytecode reproducibility — anyone deploying the exact x402r bytecode at the canonical salt is, by definition, deploying x402r.
 
